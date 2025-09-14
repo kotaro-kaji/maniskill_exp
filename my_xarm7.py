@@ -12,5 +12,6 @@ class Xarm7(BaseAgent):
     uid = "my_xarm7"
     urdf_path = f"xarm7.urdf"
     
+    
 
 
