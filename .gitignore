@@ -1,0 +1,90 @@
+/runs/
+/__pycache__/
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ========== OS ==========
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+
+# ========== VSCode ==========
+.vscode/
+
+# ========== Node.js ==========
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ========== Python ==========
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pycache/
+*.env
+*.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ========== Logs ==========
+*.log
+logs/
+*.out
+*.err
+
+# ========== Build / Dist ==========
+dist/
+build/
+out/
+coverage/
+*.egg-info/
+.eggs/
+*.wheel
+*.bak
+
+# ========== Temporary files ==========
+*.tmp
+*.swp
+*.swo
+*.swn
+
+# ========== IDEs ==========
+.idea/
+*.iml
+*.ipr
+*.iws
+*.sublime-workspace
+*.sublime-project
+
+# ========== Others ==========
+*.zip
+*.tar.gz
+*.rar
+*.7z
