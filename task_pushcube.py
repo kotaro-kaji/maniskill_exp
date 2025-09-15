@@ -9,10 +9,13 @@ import torch
 
 from mani_skill.utils.building import actors
 
-from typing import Union, Dict
+from typing import Union, Dict, Any
 import sapien
 
 from mani_skill.envs.sapien_env import BaseEnv
+from mani_skill.utils.structs.types import Array, GPUMemoryConfig, SimConfig
+from transforms3d.euler import euler2quat
+import numpy as np
 
 # ★ 自作ロボットを import（これで登録の副作用が走る）
 from my_xarm7 import Xarm7  # ← your file/module path に合わせて
@@ -27,7 +30,7 @@ class MyPushCubeEnv(BaseEnv):
     goal_radius = 0.1
     cube_half_size = 0.02
 
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -60,6 +63,16 @@ class MyPushCubeEnv(BaseEnv):
                 base_color=[1, 0, 0, 1],
             ),
         )
+
+        self.goal_region = actors.build_red_white_target(
+            self.scene,
+            radius=self.goal_radius,
+            thickness=1e-5,
+            name="goal_region",
+            add_collision=False,
+            body_type="kinematic",
+            initial_pose=sapien.Pose(p=[0, 0, 1e-3]),
+        )
         # strongly recommended to set initial poses for objects, even if you plan to modify them later
         builder.initial_pose = sapien.Pose(p=[0, 0, 0.02], q=[1, 0, 0, 0])
         self.obj = builder.build(name="cube")
@@ -87,6 +100,29 @@ class MyPushCubeEnv(BaseEnv):
             q = [1, 0, 0, 0]
             obj_pose = Pose.create_from_pq(p=p, q=q)
             self.obj.set_pose(obj_pose)
+
+            # place the visual goal region slightly in front of the cube on the table
+            target_region_xyz = p + torch.tensor([0.1 + self.goal_radius, 0, 0])
+            target_region_xyz[..., 2] = 1e-3
+            self.goal_region.set_pose(
+                Pose.create_from_pq(
+                    p=target_region_xyz,
+                    q=euler2quat(0, np.pi / 2, 0),
+                )
+            )
+
+    def evaluate(self):
+        # success: cube xy within goal radius of target and cube is on table
+        is_obj_placed = (
+            torch.linalg.norm(
+                self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
+            )
+            < self.goal_radius
+        ) & (self.obj.pose.p[..., 2] < self.cube_half_size + 5e-3)
+
+        return {
+            "success": is_obj_placed,
+        }
     
     def _get_obs_extra(self, info: Dict):
         # some useful observation info for solving the task includes the pose of the tcp (tool center point) which is the point between the
@@ -102,3 +138,43 @@ class MyPushCubeEnv(BaseEnv):
                 obj_pose=self.obj.pose.raw_pose,
             )
         return obs
+
+    def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
+        # We also create a pose marking where the robot should push the cube from that is easiest (pushing from behind the cube)
+        tcp_push_pose = Pose.create_from_pq(
+            p=self.obj.pose.p
+            + torch.tensor([-self.cube_half_size - 0.005, 0, 0], device=self.device)
+        )
+        tcp_to_push_pose = tcp_push_pose.p - self.agent.tcp.pose.p
+        tcp_to_push_pose_dist = torch.linalg.norm(tcp_to_push_pose, axis=1)
+        reaching_reward = 1 - torch.tanh(5 * tcp_to_push_pose_dist)
+        reward = reaching_reward
+
+        # compute a placement reward to encourage robot to move the cube to the center of the goal region
+        # we further multiply the place_reward by a mask reached so we only add the place reward if the robot has reached the desired push pose
+        # This reward design helps train RL agents faster by staging the reward out.
+        reached = tcp_to_push_pose_dist < 0.01
+        obj_to_goal_dist = torch.linalg.norm(
+            self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
+        )
+        place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
+        reward += place_reward * reached
+        
+        # Compute a z reward to encourage the robot to keep the cube on the table
+        desired_obj_z = self.cube_half_size
+        current_obj_z = self.obj.pose.p[..., 2]
+        z_deviation = torch.abs(current_obj_z - desired_obj_z)
+        z_reward = 1 - torch.tanh(5 * z_deviation)
+        # We multiply the z reward by the place_reward and reached mask so that 
+        #   we only add the z reward if the robot has reached the desired push pose
+        #   and the z reward becomes more important as the robot gets closer to the goal.
+        reward += place_reward * z_reward * reached
+
+        # assign rewards to parallel environments that achieved success to the maximum of 3.
+        reward[info["success"]] = 4
+        return reward
+
+    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
+        # this should be equal to compute_dense_reward / max possible reward
+        max_reward = 4.0
+        return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
