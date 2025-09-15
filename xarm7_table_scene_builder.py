@@ -16,8 +16,8 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
         # Let the base class place the table and ground consistently
         super().initialize(env_idx)
 
-        # If this env uses our custom Xarm7, set its qpos and base pose
-        if self.env.robot_uids == "my_xarm7":
+        # If this env uses our custom Xarm7 variants, set qpos and base pose
+        if self.env.robot_uids in ("my_xarm7", "my_xarm7_mjcf"):
             b = len(env_idx)
 
             # Use the exact initial joint configuration defined in my_xarm7.py
