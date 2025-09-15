@@ -67,11 +67,11 @@ class Xarm7(BaseAgent):
         # PD parameters (reasonable defaults)
         self.arm_stiffness = 1e3
         self.arm_damping = 1e2
-        self.arm_force_limit = 500
+        self.arm_force_limit = 30
 
         self.gripper_stiffness = 1e3
         self.gripper_damping = 1e2
-        self.gripper_force_limit = 50
+        self.gripper_force_limit = 100
 
         super().__init__(*args, **kwargs)
 
