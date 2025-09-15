@@ -6,6 +6,7 @@ import my_xarm7  # registers your custom robot
 from mani_skill.agents.controllers.base_controller import DictController
 from mani_skill.envs.sapien_env import BaseEnv
 import my_xarm7_wo_gripper
+import my_xarm7_mjcf  # registers MJCF-based Xarm7
 
 
 def parse_args():

@@ -1,0 +1,10 @@
+<mujoco model="xarm7_robot">
+  <!-- Include shared assets, materials, defaults, actuators, and sensors -->
+  <include file="RoboManipBaselines/robo_manip_baselines/envs/assets/mujoco/robots/xarm7/xarm7_config.xml"/>
+
+  <!-- Include only the Xarm7 robot body definition -->
+  <worldbody>
+    <include file="RoboManipBaselines/robo_manip_baselines/envs/assets/mujoco/robots/xarm7/xarm7_body.xml"/>
+  </worldbody>
+</mujoco>
+
