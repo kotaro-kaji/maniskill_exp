@@ -20,24 +20,13 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
         if self.env.robot_uids == "my_xarm7":
             b = len(env_idx)
 
-            # Start from the provided keyframe in my_xarm7.py
-            qpos = self.env.agent.keyframes["home"].qpos
-
-            # Optional joint noise, matching TableSceneBuilder style
-            if getattr(self.env, "_enhanced_determinism", False):
-                qpos = (
-                    self.env._batched_episode_rng[env_idx].normal(
-                        0, self.robot_init_qpos_noise, len(qpos)
-                    )
-                    + qpos
-                )
+            # Use the exact initial joint configuration defined in my_xarm7.py
+            # without noise so it matches precisely.
+            base_qpos = self.env.agent.keyframes["home"].qpos
+            if base_qpos.ndim == 1 and b > 1:
+                qpos = np.tile(base_qpos, (b, 1))
             else:
-                qpos = (
-                    self.env._episode_rng.normal(
-                        0, self.robot_init_qpos_noise, (b, len(qpos))
-                    )
-                    + qpos
-                )
+                qpos = base_qpos
 
             # Apply initial state and place the base slightly behind the table
             self.env.agent.reset(qpos)
