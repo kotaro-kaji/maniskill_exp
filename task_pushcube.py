@@ -109,6 +109,23 @@ class MyPushCubeEnv(BaseEnv):
         )
         self.table_scene.build()
 
+    # BaseEnv.close() -> self._clear() 経由の終了時例外対策
+    # インタプリタシャットダウン時に module 参照が None 化し gc.collect が呼べず
+    # TypeError になるケースがあるため、ここで安全に wrap した _clear を提供します。
+    def _clear(self):
+        # BaseEnv._clear と同等の後片付け。gc.collect だけ try で囲う。
+        self._close_viewer()
+        self.agent = None
+        self._sensors = dict()
+        self._human_render_cameras = dict()
+        self.scene = None
+        self._hidden_objects = []
+        try:
+            import gc as _gc
+            _gc.collect()
+        except Exception:
+            pass
+
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         # using torch.device context manager to auto create tensors 
         # on CPU/CUDA depending on self.device, the device the env runs on
