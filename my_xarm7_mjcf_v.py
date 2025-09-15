@@ -41,7 +41,7 @@ class Xarm7MJCF(BaseAgent):
     _closed_qpos = init_qpos.copy()
     # Note: For this MJCF, larger angles close the gripper fingers.
     # Use a conservative close value within our controller upper bound (0.6).
-    _closed_qpos[-6:] = 0.5
+    _closed_qpos[-6:] = 0.8
     keyframes = dict(
         home=Keyframe(qpos=init_qpos.copy(), pose=sapien.Pose([0, 0, 0])),
         grip_close=Keyframe(qpos=_closed_qpos, pose=sapien.Pose([0, 0, 0])),
@@ -123,7 +123,7 @@ class Xarm7MJCF(BaseAgent):
         gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
             0.0,
-            0.6,
+            0.81,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
