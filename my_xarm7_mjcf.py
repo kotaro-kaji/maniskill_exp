@@ -37,7 +37,13 @@ class Xarm7MJCF(BaseAgent):
         dtype=np.float32,
     )
 
-    keyframes = dict(home=Keyframe(qpos=init_qpos.copy(), pose=sapien.Pose([0, 0, 0])))
+    # Define an additional keyframe with the gripper closed
+    _closed_qpos = init_qpos.copy()
+    _closed_qpos[-6:] = 0.0  # close all gripper joints
+    keyframes = dict(
+        home=Keyframe(qpos=init_qpos.copy(), pose=sapien.Pose([0, 0, 0])),
+        grip_close=Keyframe(qpos=_closed_qpos, pose=sapien.Pose([0, 0, 0])),
+    )
 
     def __init__(self, *args, **kwargs):
         self.arm_joint_names = [
