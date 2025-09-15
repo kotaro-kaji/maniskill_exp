@@ -1,5 +1,6 @@
 import my_xarm7  # imports your robot and registers it
 import my_xarm7_wo_gripper
+import my_xarm7_mjcf
 # imports the demo_robot example script and lets you test your new robot
 import mani_skill.examples.demo_robot as demo_robot_script
 
