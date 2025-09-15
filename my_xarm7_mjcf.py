@@ -110,10 +110,12 @@ class Xarm7MJCF(BaseAgent):
             "right_inner_knuckle_joint": {"joint": "left_driver_joint"},
             "right_finger_joint": {"joint": "left_driver_joint"},
         }
+        # Limit how wide the gripper can command-open
+        # Reduce upper bound from ~0.85 to 0.6 to avoid over-opening
         gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            None,
-            None,
+            0.0,
+            0.6,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
@@ -123,8 +125,8 @@ class Xarm7MJCF(BaseAgent):
 
         gripper_pd_joint_delta_pos_mimic = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            -0.1,
-            0.1,
+            -0.05,
+            0.05,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
