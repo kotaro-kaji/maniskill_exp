@@ -21,6 +21,8 @@ import numpy as np
 
 # ★ 自作ロボットを import（これで登録の副作用が走る）
 from my_xarm7 import Xarm7  # ← your file/module path に合わせて
+# my_xarm7_mjcf も登録の副作用が必要なので import
+import my_xarm7_mjcf  # registers Xarm7MJCF (uid: "my_xarm7_mjcf")
 
 # （必要なら他ロボも残す）
 # from mani_skill.agents.robots import Fetch, Panda
@@ -38,10 +40,11 @@ class MyPushCubeEnv(BaseEnv):
 
     
     # ★ サポートロボに自作UIDを追加（自作だけにするなら ["my_xarm7"] だけでOK）
-    SUPPORTED_ROBOTS = ["my_xarm7"]  # , "panda", "fetch"]
+    # my_xarm7 に加えて my_xarm7_mjcf も選択可能に
+    SUPPORTED_ROBOTS = ["my_xarm7", "my_xarm7_mjcf"]  # , "panda", "fetch"]
 
     # ★ 型ヒントも自作に
-    agent: Xarm7  # Union[Xarm7, Panda, Fetch] みたいにしてもOK
+    agent: Xarm7  # Union[Xarm7, Xarm7MJCF] などでもOK
 
     def __init__(self, *args, robot_uids="my_xarm7", **kwargs):
         # "panda" や "fetch" も許すなら、タプル/リストで受けられるのは元のまま
