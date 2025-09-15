@@ -3,13 +3,17 @@ import sapien
 
 from mani_skill.agents.base_agent import BaseAgent, Keyframe
 from mani_skill.agents.controllers import *
+from mani_skill.utils.structs import Pose as MSPose
 from mani_skill.agents.registration import register_agent
+from mani_skill.utils import sapien_utils
 
 
 @register_agent()
 class Xarm7(BaseAgent):
     uid = "my_xarm7"
     urdf_path = "xarm7.urdf"
+    # Default TCP link defined in the URDF (fixed joint from gripper base)
+    ee_link_name = "link_tcp"
 
     # 初期位置これで。
     # Note: This articulation has 13 active DOFs (7 arm + 6 gripper joints).
@@ -71,6 +75,51 @@ class Xarm7(BaseAgent):
 
         super().__init__(*args, **kwargs)
 
+    # ------------------------------------------------------------------
+    # TCP (Tool Center Point)
+    # ------------------------------------------------------------------
+    def _after_init(self):
+        # Resolve the physical TCP link from the articulation
+        # and prepare an optional offset pose you can customize.
+        self.tcp = sapien_utils.get_obj_by_name(self.robot.get_links(), self.ee_link_name)
+        # Local offset from the TCP link frame (can be changed via set_tcp_offset)
+        self._tcp_offset = sapien.Pose([0, 0, 0], [1, 0, 0, 0])
+
+    def set_tcp_link(self, link_name: str):
+        """Change the TCP base link by name (must exist in the robot)."""
+        self.ee_link_name = link_name
+        self.tcp = sapien_utils.get_obj_by_name(self.robot.get_links(), self.ee_link_name)
+
+    def set_tcp_offset(self, p=None, q=None, pose: "sapien.Pose" = None):
+        """Set local TCP offset relative to the TCP link.
+
+        Args:
+            p: iterable of 3 floats (xyz), world units
+            q: iterable of 4 floats (xyzw) quaternion
+            pose: alternatively pass a sapien.Pose
+        """
+        if pose is not None:
+            self._tcp_offset = pose
+            return
+        if p is None and q is None:
+            # Reset to identity offset
+            self._tcp_offset = sapien.Pose([0, 0, 0], [1, 0, 0, 0])
+            return
+        if p is None:
+            p = [0, 0, 0]
+        if q is None:
+            q = [1, 0, 0, 0]
+        self._tcp_offset = sapien.Pose(p, q)
+
+    @property
+    def tcp_pose(self) -> "sapien.Pose":
+        """World pose of the TCP (link pose composed with the local offset)."""
+        return self.tcp.pose * self._tcp_offset
+
+    @property
+    def tcp_pos(self):
+        return self.tcp_pose.p
+
     @property
     def _controller_configs(self):
         # Arm controllers
@@ -93,27 +142,7 @@ class Xarm7(BaseAgent):
             use_delta=True,
         )
 
-        # Gripper controllers (6 joints explicit)
-        gripper_pd_joint_pos = PDJointPosControllerConfig(
-            self.gripper_joint_names,
-            None,
-            None,
-            self.gripper_stiffness,
-            self.gripper_damping,
-            self.gripper_force_limit,
-            normalize_action=False,
-        )
-        gripper_pd_joint_delta_pos = PDJointPosControllerConfig(
-            self.gripper_joint_names,
-            -0.1,
-            0.1,
-            self.gripper_stiffness,
-            self.gripper_damping,
-            self.gripper_force_limit,
-            use_delta=True,
-        )
-
-        # Optional: 1-DOF gripper via mimic controller
+        # 1-DOF gripper via mimic controller
         gripper_mimic_map = {
             # mimic_joint: {"joint": control_joint}
             "left_inner_knuckle_joint": {"joint": "drive_joint"},
@@ -146,18 +175,9 @@ class Xarm7(BaseAgent):
         controller_configs = dict(
             pd_joint_pos=dict(
                 arm=arm_pd_joint_pos,
-                gripper=gripper_pd_joint_pos,
-            ),
-            pd_joint_delta_pos=dict(
-                arm=arm_pd_joint_delta_pos,
-                gripper=gripper_pd_joint_delta_pos,
-            ),
-            # 1-DOF gripper variants
-            pd_joint_pos_mimic=dict(
-                arm=arm_pd_joint_pos,
                 gripper=gripper_pd_joint_pos_mimic,
             ),
-            pd_joint_delta_pos_mimic=dict(
+            pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
                 gripper=gripper_pd_joint_delta_pos_mimic,
             ),
