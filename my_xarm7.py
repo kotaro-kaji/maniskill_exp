@@ -67,7 +67,8 @@ class Xarm7(BaseAgent):
         # PD parameters (reasonable defaults)
         self.arm_stiffness = 1e3
         self.arm_damping = 1e2
-        self.arm_force_limit = 500
+        # Lower force limit to avoid aggressive motion (align closer to Panda)
+        self.arm_force_limit = 100
 
         self.gripper_stiffness = 1e3
         self.gripper_damping = 1e2
@@ -151,10 +152,11 @@ class Xarm7(BaseAgent):
             "left_finger_joint": {"joint": "drive_joint"},
             "right_finger_joint": {"joint": "drive_joint"},
         }
+        # Use position-mimic for gripper (not delta), with bounded range similar to Panda
         gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            None,
-            None,
+            -0.01,
+            0.04,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
@@ -177,9 +179,10 @@ class Xarm7(BaseAgent):
                 arm=arm_pd_joint_pos,
                 gripper=gripper_pd_joint_pos_mimic,
             ),
+            # Match Panda behavior: arm uses delta pos, gripper uses position mimic
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
-                gripper=gripper_pd_joint_delta_pos_mimic,
+                gripper=gripper_pd_joint_pos_mimic,
             ),
         )
 
