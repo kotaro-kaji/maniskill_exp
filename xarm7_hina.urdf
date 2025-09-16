@@ -163,14 +163,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link1.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint1" type="revolute">
     <origin rpy="0 0 0" xyz="0 0 0.267"/>
@@ -193,14 +191,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link2.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint2" type="revolute">
     <origin rpy="-1.5708 0 0" xyz="0 0 0"/>
@@ -223,14 +219,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link3.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint3" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0 -0.293 0"/>
@@ -253,14 +247,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link4.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint4" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0.0525 0 0"/>
@@ -283,14 +275,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link5.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint5" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0.0775 -0.3425 0"/>
@@ -313,14 +303,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link6.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint6" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0 0 0"/>
@@ -343,14 +331,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/end_tool/collision/end_tool.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="joint7" type="revolute">
     <origin rpy="-1.5708 0 0" xyz="0.076 0.097 0"/>
@@ -436,6 +422,30 @@
       <mechanicalReduction>100</mechanicalReduction>
     </actuator>
   </transmission>
+  <gazebo reference="link_base">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link1">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link2">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link3">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link4">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link5">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link6">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link7">
+    <selfCollide>true</selfCollide>
+  </gazebo>
   <link name="link_eef"/>
   <joint name="joint_eef" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -460,14 +470,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <link name="left_outer_knuckle">
     <inertial>
@@ -482,14 +490,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="drive_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035 0.059098"/>
@@ -511,14 +517,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
@@ -541,14 +545,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_inner_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="left_inner_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.02 0.074098"/>
@@ -571,14 +573,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="right_outer_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035 0.059098"/>
@@ -601,14 +601,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="right_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035465 0.042039"/>
@@ -631,14 +629,12 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_inner_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="right_inner_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.02 0.074098"/>
@@ -664,5 +660,91 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <gazebo reference="xarm_gripper_base_link">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="left_outer_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="left_finger">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="left_inner_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="right_outer_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="right_finger">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="right_inner_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="left_finger_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>left_finger_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="left_inner_knuckle_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>left_inner_knuckle_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_outer_knuckle_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>right_outer_knuckle_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_finger_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>right_finger_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_inner_knuckle_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>right_inner_knuckle_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
   <!-- Insert at the end of xarm_device_macro.xacro -->
 </robot>
