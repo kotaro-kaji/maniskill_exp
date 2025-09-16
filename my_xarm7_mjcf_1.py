@@ -70,10 +70,10 @@ class Xarm7MJCFv1(BaseAgent):
         self.arm_damping = 1e2
         self.arm_force_limit = 30.0
 
-        # Gripper (match baseline my_xarm7_mjcf)
-        self.gripper_stiffness = 100.0
-        self.gripper_damping = 5.0
-        self.gripper_force_limit = 15.0
+        # Gripper (more authority for debugging: higher gains/force)
+        self.gripper_stiffness = 300.0
+        self.gripper_damping = 10.0
+        self.gripper_force_limit = 60.0
 
         super().__init__(*args, **kwargs)
 
@@ -125,6 +125,7 @@ class Xarm7MJCFv1(BaseAgent):
             self.gripper_force_limit,
             normalize_action=True,
             interpolate=True,
+            drive_mode="acceleration",
         )
         gripper_abs.mimic = mimic_map
 
@@ -137,6 +138,7 @@ class Xarm7MJCFv1(BaseAgent):
             self.gripper_force_limit,
             use_delta=True,
             interpolate=True,
+            drive_mode="acceleration",
         )
         gripper_delta.mimic = mimic_map
 
