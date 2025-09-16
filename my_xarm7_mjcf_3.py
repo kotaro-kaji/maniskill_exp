@@ -64,15 +64,15 @@ class Xarm7MJCFv3(BaseAgent):
             "right_finger_joint",
         ]
 
-        self.arm_stiffness = 1500.0
-        self.arm_damping = 120.0
-        self.arm_force_limit = 40.0
+        # Match baseline my_xarm7_mjcf (arm)
+        self.arm_stiffness = 1e3
+        self.arm_damping = 1e2
+        self.arm_force_limit = 30.0
 
-        # More responsive
-        self.gripper_stiffness = 1200.0
-        self.gripper_damping = 80.0
-        self.gripper_force_limit = 35.0
-        self.gripper_friction = 0.7
+        # Match baseline my_xarm7_mjcf (gripper)
+        self.gripper_stiffness = 100.0
+        self.gripper_damping = 5.0
+        self.gripper_force_limit = 15.0
 
         super().__init__(*args, **kwargs)
 
@@ -94,7 +94,6 @@ class Xarm7MJCFv3(BaseAgent):
             self.arm_damping,
             self.arm_force_limit,
             normalize_action=False,
-            interpolate=True,
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
@@ -104,7 +103,6 @@ class Xarm7MJCFv3(BaseAgent):
             self.arm_damping,
             self.arm_force_limit,
             use_delta=True,
-            interpolate=True,
         )
 
         mimic_map = {
@@ -122,7 +120,6 @@ class Xarm7MJCFv3(BaseAgent):
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            friction=self.gripper_friction,
             normalize_action=True,
             interpolate=True,
         )
@@ -130,12 +127,11 @@ class Xarm7MJCFv3(BaseAgent):
 
         gripper_delta = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            -0.03,
-            0.03,
+            -0.01,
+            0.01,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            friction=self.gripper_friction,
             use_delta=True,
             interpolate=True,
         )
