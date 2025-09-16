@@ -32,16 +32,9 @@ def main():
 
     while not done:
         # Read current gripper driver joint position to flip direction at bounds
-        drv = env.unwrapped.agent.robot.joints_map["left_driver_joint"].qpos
-        # drv is a tensor of shape (num_envs,), take the first
-        cur = float(drv[0].detach().cpu())
-        if cur >= gripper_max - 1e-3:
-            direction = -1.0
-        elif cur <= gripper_min + 1e-3:
-            direction = 1.0
-
+        
         action = np.zeros(8, dtype=np.float32)
-        action[-1] = direction * step_norm  # only gripper moves; arm deltas are zero
+        #action[-1] = direction * step_norm  # only gripper moves; arm deltas are zero
 
         # Clip to valid bounds (normalized [-1,1])
         low, high = env.single_action_space.low, env.single_action_space.high
