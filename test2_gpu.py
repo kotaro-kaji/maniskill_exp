@@ -48,7 +48,7 @@ def main():
         action = np.clip(action, low, high)
 
         obs, reward, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        #done = terminated or truncated
         env.render()
     env.close()
 
