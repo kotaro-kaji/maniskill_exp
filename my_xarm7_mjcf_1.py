@@ -70,10 +70,10 @@ class Xarm7MJCFv1(BaseAgent):
         self.arm_damping = 1e2
         self.arm_force_limit = 30.0
 
-        # Gripper (more authority for debugging: higher gains/force)
-        self.gripper_stiffness = 300.0
-        self.gripper_damping = 10.0
-        self.gripper_force_limit = 60.0
+        # Gripper (match baseline my_xarm7_mjcf)
+        self.gripper_stiffness = 100.0
+        self.gripper_damping = 5.0
+        self.gripper_force_limit = 15.0
 
         super().__init__(*args, **kwargs)
 
@@ -106,13 +106,28 @@ class Xarm7MJCFv1(BaseAgent):
             use_delta=True,
         )
 
-        # Single-DOF via mimic: all follow left_driver_joint
+        # Variant v1: invert right side against left_driver (keep 1-DOF)
+        # - All right-side joints mimic left_driver with multiplier=-1, offset=0.85
         mimic_map = {
+            # Left side follows left driver numerically
             "left_inner_knuckle_joint": {"joint": "left_driver_joint"},
             "left_finger_joint": {"joint": "left_driver_joint"},
-            "right_driver_joint": {"joint": "left_driver_joint"},
-            "right_inner_knuckle_joint": {"joint": "left_driver_joint"},
-            "right_finger_joint": {"joint": "left_driver_joint"},
+            # Right side mirrors (q_right = 0.85 - q_left)
+            "right_driver_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
+            "right_inner_knuckle_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
+            "right_finger_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
         }
 
         # Normalized mapping: -1 -> 0.0 (open), +1 -> 0.85 (close)
@@ -125,7 +140,6 @@ class Xarm7MJCFv1(BaseAgent):
             self.gripper_force_limit,
             normalize_action=True,
             interpolate=True,
-            drive_mode="acceleration",
         )
         gripper_abs.mimic = mimic_map
 
@@ -138,7 +152,6 @@ class Xarm7MJCFv1(BaseAgent):
             self.gripper_force_limit,
             use_delta=True,
             interpolate=True,
-            drive_mode="acceleration",
         )
         gripper_delta.mimic = mimic_map
 

@@ -422,6 +422,30 @@
       <mechanicalReduction>100</mechanicalReduction>
     </actuator>
   </transmission>
+  <gazebo reference="link_base">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link1">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link2">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link3">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link4">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link5">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link6">
+    <selfCollide>true</selfCollide>
+  </gazebo>
+  <gazebo reference="link7">
+    <selfCollide>true</selfCollide>
+  </gazebo>
   <link name="link_eef"/>
   <joint name="joint_eef" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -636,5 +660,91 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <gazebo reference="xarm_gripper_base_link">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="left_outer_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="left_finger">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="left_inner_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="right_outer_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="right_finger">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo reference="right_inner_knuckle">
+    <selfCollide>false</selfCollide>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="left_finger_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>left_finger_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="left_inner_knuckle_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>left_inner_knuckle_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_outer_knuckle_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>right_outer_knuckle_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_finger_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>right_finger_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_inner_knuckle_jointmimic_joint_plugin">
+      <joint>drive_joint</joint>
+      <mimicJoint>right_inner_knuckle_joint</mimicJoint>
+      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
+      <hasPID/>
+      <multiplier>1.0</multiplier>
+      <offset>0</offset>
+      <sensitiveness>0.0</sensitiveness>
+      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
+      <maxEffort>10.0</maxEffort>
+    </plugin>
+  </gazebo>
   <!-- Insert at the end of xarm_device_macro.xacro -->
 </robot>

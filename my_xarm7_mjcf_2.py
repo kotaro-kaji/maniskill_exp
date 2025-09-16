@@ -105,12 +105,23 @@ class Xarm7MJCFv2(BaseAgent):
             use_delta=True,
         )
 
+        # Variant v2: invert only right inner/finger (not driver)
         mimic_map = {
             "left_inner_knuckle_joint": {"joint": "left_driver_joint"},
             "left_finger_joint": {"joint": "left_driver_joint"},
+            # Keep right driver equal numerically
             "right_driver_joint": {"joint": "left_driver_joint"},
-            "right_inner_knuckle_joint": {"joint": "left_driver_joint"},
-            "right_finger_joint": {"joint": "left_driver_joint"},
+            # Mirror followers to test if inversion is needed only here
+            "right_inner_knuckle_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
+            "right_finger_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
         }
 
         # Normalized mapping: -1 -> 0.0 (open), +1 -> 0.85 (close)
