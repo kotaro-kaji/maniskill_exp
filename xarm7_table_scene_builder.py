@@ -16,19 +16,23 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
         # Let the base class place the table and ground consistently
         super().initialize(env_idx)
 
-        # If this env uses our custom Xarm7 variants, set qpos and base pose
-        if self.env.robot_uids in ("my_xarm7", "my_xarm7_mjcf"):
+        # Apply unified initial joint configuration from the agent's 'home' keyframe
+        # for all custom Xarm7 variants.
+        try:
             b = len(env_idx)
-
-            # Use the exact initial joint configuration defined in my_xarm7.py
-            # without noise so it matches precisely.
-            base_qpos = self.env.agent.keyframes["home"].qpos
-            if base_qpos.ndim == 1 and b > 1:
-                qpos = np.tile(base_qpos, (b, 1))
+            home_qpos = self.env.agent.keyframes["home"].qpos
+            # Convert to torch on correct device and batch if necessary
+            if isinstance(home_qpos, np.ndarray):
+                home_qpos = torch.tensor(home_qpos, device=self.env.device)
             else:
-                qpos = base_qpos
-
-            # Apply initial state and place the base slightly behind the table
+                home_qpos = home_qpos.to(self.env.device)
+            if home_qpos.ndim == 1 and b > 1:
+                qpos = home_qpos.unsqueeze(0).repeat(b, 1)
+            else:
+                qpos = home_qpos
+            # Reset agent state with exact qpos and place base behind the table
             self.env.agent.reset(qpos)
-            # Similar to Panda placement in TableSceneBuilder
             self.env.agent.robot.set_pose(sapien.Pose([-0.615, 0, 0]))
+        except Exception:
+            # If no keyframe is defined, fall back to base behavior
+            pass
