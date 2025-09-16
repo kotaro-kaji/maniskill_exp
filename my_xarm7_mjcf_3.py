@@ -105,12 +105,25 @@ class Xarm7MJCFv3(BaseAgent):
             use_delta=True,
         )
 
+        # Variant v3: absolute input mode + right side inversion (keep 1-DOF)
         mimic_map = {
             "left_inner_knuckle_joint": {"joint": "left_driver_joint"},
             "left_finger_joint": {"joint": "left_driver_joint"},
-            "right_driver_joint": {"joint": "left_driver_joint"},
-            "right_inner_knuckle_joint": {"joint": "left_driver_joint"},
-            "right_finger_joint": {"joint": "left_driver_joint"},
+            "right_driver_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
+            "right_inner_knuckle_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
+            "right_finger_joint": {
+                "joint": "left_driver_joint",
+                "multiplier": -1.0,
+                "offset": 0.85,
+            },
         }
 
         # Experimental: use articulation joint limits (no override), non-normalized absolute input in radians
