@@ -22,7 +22,8 @@ def main():
     obs, _ = env.reset(seed=0)
     done = False
     while not done:
-        action = env.action_space.sample()
+        #action = env.action_space.sample()
+        action = [ 0.9079149,  0.7303872,  -0.9322209,   0.9849459,  -0.10654075,  0.3548803, -0.02951217, -0.625985 ]
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
         env.render()
