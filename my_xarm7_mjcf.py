@@ -2,7 +2,6 @@ import numpy as np
 import sapien
 
 from mani_skill.agents.base_agent import BaseAgent, Keyframe
-import os
 from mani_skill.agents.controllers import *
 from mani_skill.agents.registration import register_agent
 from mani_skill.utils import sapien_utils
@@ -71,13 +70,13 @@ class Xarm7MJCF(BaseAgent):
         ]
 
         # Reasonable defaults
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 1e3))
-        self.arm_damping = float(os.getenv("XARM_ARM_KD", 1e2))
+        self.arm_stiffness = 1e3
+        self.arm_damping = 1e2
         self.arm_force_limit = 30
 
         # Stabilize gripper: lower gains/force than arm to avoid "explosions"
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 100.0))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 5.0))
+        self.gripper_stiffness = 100.0
+        self.gripper_damping = 5.0
         self.gripper_force_limit = 15.0
 
         super().__init__(*args, **kwargs)
