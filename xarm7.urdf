@@ -428,18 +428,20 @@
     <parent link="link7"/>
     <child link="link_eef"/>
   </joint>
+  <!--
   <joint name="gripper_fix" type="fixed">
     <parent link="link_eef"/>
     <child link="xarm_gripper_base_link"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
   </joint>
+  -->
+  <!--
   <link name="xarm_gripper_base_link">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.00065489 -0.0018497 0.048028"/>
       <mass value="0.54156"/>
       <inertia ixx="0.00047106" ixy="3.9292E-07" ixz="2.6537E-06" iyy="0.00033072" iyz="-1.0975E-05" izz="0.00025642"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
@@ -453,8 +455,9 @@
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
+  -->
+  <!--
   <link name="left_outer_knuckle">
     <inertial>
       <origin rpy="0 0 0" xyz="2.9948E-14 0.021559 0.015181"/>
@@ -475,6 +478,8 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
+  -->
+  <!--
   <joint name="drive_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035 0.059098"/>
     <parent link="xarm_gripper_base_link"/>
@@ -482,6 +487,8 @@
     <axis xyz="1 0 0"/>
     <limit effort="50" lower="0" upper="0.85" velocity="2"/>
   </joint>
+  -->
+  <!--
   <link name="left_finger">
     <inertial>
       <origin rpy="0 0 0" xyz="-2.4536E-14 -0.016413 0.029258"/>
@@ -502,6 +509,8 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
+  -->
+  <!--
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
     <parent link="left_outer_knuckle"/>
@@ -510,6 +519,8 @@
     <limit effort="50" lower="0" upper="0.85" velocity="2"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
+  -->
+  <!--
   <link name="left_inner_knuckle">
     <inertial>
       <origin rpy="0 0 0" xyz="1.86600784687907E-06 0.0220467847633621 0.0261334672830885"/>
@@ -530,6 +541,8 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
+  -->
+  <!--
   <joint name="left_inner_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.02 0.074098"/>
     <parent link="xarm_gripper_base_link"/>
@@ -538,6 +551,8 @@
     <limit effort="50" lower="0" upper="0.85" velocity="2"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
+  -->
+  <!--
   <link name="right_outer_knuckle">
     <inertial>
       <origin rpy="0 0 0" xyz="-3.1669E-14 -0.021559 0.015181"/>
@@ -558,6 +573,8 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
+  -->
+  <!--
   <joint name="right_outer_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035 0.059098"/>
     <parent link="xarm_gripper_base_link"/>
@@ -566,6 +583,8 @@
     <limit effort="50" lower="0" upper="0.85" velocity="2"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
+  -->
+  <!--
   <link name="right_finger">
     <inertial>
       <origin rpy="0 0 0" xyz="2.5618E-14 0.016413 0.029258"/>
@@ -586,6 +605,8 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
+  -->
+  <!--
   <joint name="right_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035465 0.042039"/>
     <parent link="right_outer_knuckle"/>
@@ -594,6 +615,8 @@
     <limit effort="50" lower="0" upper="0.85" velocity="2"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
+  -->
+  <!--
   <link name="right_inner_knuckle">
     <inertial>
       <origin rpy="0 0 0" xyz="1.866E-06 -0.022047 0.026133"/>
@@ -614,6 +637,8 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
+  -->
+  <!--
   <joint name="right_inner_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.02 0.074098"/>
     <parent link="xarm_gripper_base_link"/>
@@ -622,12 +647,16 @@
     <limit effort="50" lower="0" upper="0.85" velocity="2"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
-  <link name="link_tcp"/>
+  -->
+  <!-- <link name="link_tcp"/> -->
+  <!--
   <joint name="joint_tcp" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 0.172"/>
     <parent link="xarm_gripper_base_link"/>
     <child link="link_tcp"/>
   </joint>
+  -->
+  <!--
   <transmission name="drive_joint_trans">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="drive_joint">
@@ -638,5 +667,6 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  -->
   <!-- Insert at the end of xarm_device_macro.xacro -->
 </robot>
