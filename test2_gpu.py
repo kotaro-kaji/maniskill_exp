@@ -22,23 +22,27 @@ def main():
 
     obs, _ = env.reset(seed=0)
     done = False
+
+    # Keep arm still (zeros) and smoothly open/close the gripper with small deltas.
+    # Action space is normalized [-1, 1] for pd_joint_delta_pos, so choose a small step.
+    step_norm = 0.2  # ~0.01 rad delta per step for gripper (maps to ~0.01 with [-0.05,0.05])
+    direction = 1.0  # + open, - close
+    gripper_min, gripper_max = 0.0, 0.6
+
     while not done:
-        # Example 1: random valid action
-        # action = env.action_space.sample()
+        # Read current gripper driver joint position to flip direction at bounds
+        drv = env.unwrapped.agent.robot.joints_map["left_driver_joint"].qpos
+        # drv is a tensor of shape (num_envs,), take the first
+        cur = float(drv[0].detach().cpu())
+        if cur >= gripper_max - 1e-3:
+            direction = -1.0
+        elif cur <= gripper_min + 1e-3:
+            direction = 1.0
 
-        # Example 2: manual action vector (must be a numpy array)
-        action = np.array([
-            0.9079149,
-            0.7303872,
-            -0.9322209,
-            0.9849459,
-            -0.10654075,
-            0.3548803,
-            -0.02951217,
-            -0.625985,
-        ], dtype=np.float32)
+        action = np.zeros(8, dtype=np.float32)
+        action[-1] = direction * step_norm  # only gripper moves; arm deltas are zero
 
-        # Clip to valid bounds (similar to PPO script)
+        # Clip to valid bounds (normalized [-1,1])
         low, high = env.single_action_space.low, env.single_action_space.high
         action = np.clip(action, low, high)
 
