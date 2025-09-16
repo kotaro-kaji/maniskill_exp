@@ -60,12 +60,16 @@ class Xarm7MJCF(BaseAgent):
         ]
 
         # MJCF joint names for the gripper
-        self.gripper_joint_names = [
+        # Actively control only the driver joints (1-DOF via mimic)
+        self.gripper_active_joint_names = [
             "left_driver_joint",
-            "left_inner_knuckle_joint",
-            "left_finger_joint",
             "right_driver_joint",
+        ]
+        # Other gripper joints are passive
+        self.gripper_passive_joint_names = [
+            "left_inner_knuckle_joint",
             "right_inner_knuckle_joint",
+            "left_finger_joint",
             "right_finger_joint",
         ]
 
@@ -78,6 +82,7 @@ class Xarm7MJCF(BaseAgent):
         self.gripper_stiffness = 300.0
         self.gripper_damping = 20.0
         self.gripper_force_limit = 25.0
+        self.gripper_friction = 0.5
 
         super().__init__(*args, **kwargs)
 
@@ -112,49 +117,56 @@ class Xarm7MJCF(BaseAgent):
             use_delta=True,
         )
 
-        # Treat the gripper as a 1-DOF driver using mimic: map all other joints to left_driver_joint
+        # 1-DOF mimic on driver joints (left mimics right)
         gripper_mimic_map = {
-            "left_inner_knuckle_joint": {"joint": "left_driver_joint"},
-            "left_finger_joint": {"joint": "left_driver_joint"},
-            "right_driver_joint": {"joint": "left_driver_joint"},
-            "right_inner_knuckle_joint": {"joint": "left_driver_joint"},
-            "right_finger_joint": {"joint": "left_driver_joint"},
+            "left_driver_joint": {"joint": "right_driver_joint", "multiplier": 1.0, "offset": 0.0},
         }
         # Gripper is a single-DOF (driver) like RoboManip: 0.0〜0.85[rad]
         # Normalize action to this range to mirror RoboManipのctrlrange挙動
         gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
-            self.gripper_joint_names,
+            self.gripper_active_joint_names,
             0.0,
             0.85,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
+            friction=self.gripper_friction,
             normalize_action=True,
             interpolate=True,
         )
         gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
 
         gripper_pd_joint_delta_pos_mimic = PDJointPosMimicControllerConfig(
-            self.gripper_joint_names,
+            self.gripper_active_joint_names,
             -0.02,
             0.02,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
+            friction=self.gripper_friction,
             use_delta=True,
             interpolate=True,
         )
         gripper_pd_joint_delta_pos_mimic.mimic = gripper_mimic_map
 
+        # Passive gripper joints (not directly controlled)
+        gripper_passive = PassiveControllerConfig(
+            joint_names=self.gripper_passive_joint_names,
+            damping=0.0,
+            friction=0.0,
+        )
+
         controller_configs = dict(
             pd_joint_pos=dict(
                 arm=arm_pd_joint_pos,
-                gripper=gripper_pd_joint_pos_mimic,
+                gripper_active=gripper_pd_joint_pos_mimic,
+                gripper_passive=gripper_passive,
                 #balance_passive_force=False,
             ),
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
-                gripper=gripper_pd_joint_delta_pos_mimic,
+                gripper_active=gripper_pd_joint_delta_pos_mimic,
+                gripper_passive=gripper_passive,
                 #balance_passive_force=False,
             ),
         )
