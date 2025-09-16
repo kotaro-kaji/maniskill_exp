@@ -6,7 +6,14 @@ from typing import List, Optional
 import gymnasium as gym
 import mani_skill.envs  # registers built-in envs
 import my_xarm7  # registers custom robot (legacy)
-import my_xarm7_mjcf  # registers my_xarm7_mjcf
+import my_xarm7_mjcf  # registers my_xarm7_mjcf (baseline)
+# Optional variants for quick A/B testing
+try:
+    import my_xarm7_mjcf_1  # registers my_xarm7_mjcf_1 (safe)
+    import my_xarm7_mjcf_2  # registers my_xarm7_mjcf_2 (balanced)
+    import my_xarm7_mjcf_3  # registers my_xarm7_mjcf_3 (responsive)
+except Exception:
+    pass
 import task_pushcube  # registers MyPushCube-v1
 import numpy as np
 
@@ -118,11 +125,15 @@ def _write_joint_state(path: str, joint_names: List[str], qpos: np.ndarray):
 
 
 def main():
+    # Choose robot uid via env var or default
+    robot_uid = os.environ.get("ROBOT_UID", "my_xarm7_mjcf")
+    print(f"Using robot_uids='{robot_uid}' (set ROBOT_UID to override)")
+
     env = gym.make(
         "MyPushCube-v1",
         obs_mode="state",
         control_mode="pd_joint_pos",  # absolute joint position control
-        robot_uids="my_xarm7_mjcf",
+        robot_uids=robot_uid,
         render_mode="human",
         sim_backend="gpu",
         render_backend="gpu",
@@ -240,4 +251,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
