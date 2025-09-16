@@ -163,12 +163,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link1.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint1" type="revolute">
     <origin rpy="0 0 0" xyz="0 0 0.267"/>
@@ -191,12 +193,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link2.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint2" type="revolute">
     <origin rpy="-1.5708 0 0" xyz="0 0 0"/>
@@ -219,12 +223,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link3.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint3" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0 -0.293 0"/>
@@ -247,12 +253,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link4.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint4" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0.0525 0 0"/>
@@ -275,12 +283,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link5.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint5" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0.0775 -0.3425 0"/>
@@ -303,12 +313,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/xarm7/visual/link6.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint6" type="revolute">
     <origin rpy="1.5708 0 0" xyz="0 0 0"/>
@@ -331,12 +343,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/end_tool/collision/end_tool.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="joint7" type="revolute">
     <origin rpy="-1.5708 0 0" xyz="0.076 0.097 0"/>
@@ -439,7 +453,6 @@
       <mass value="0.54156"/>
       <inertia ixx="0.00047106" ixy="3.9292E-07" ixz="2.6537E-06" iyy="0.00033072" iyz="-1.0975E-05" izz="0.00025642"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
@@ -447,6 +460,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
@@ -461,7 +475,6 @@
       <mass value="0.033618"/>
       <inertia ixx="1.9111E-05" ixy="-1.8803E-17" ixz="-1.1002E-17" iyy="6.6256E-06" iyz="-7.3008E-06" izz="1.3185E-05"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_outer_knuckle.stl"/>
@@ -469,6 +482,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_outer_knuckle.stl"/>
@@ -490,7 +504,6 @@
       <mass value="0.048304"/>
       <inertia ixx="1.7493E-05" ixy="-4.2156E-19" ixz="6.9164E-18" iyy="1.7225E-05" iyz="4.6433E-06" izz="5.1466E-06"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
@@ -498,6 +511,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
@@ -520,7 +534,6 @@
       <mass value="0.0230125781256706"/>
       <inertia ixx="6.09490024271906E-06" ixy="6.06651326160071E-11" ixz="7.19102670500635E-11" iyy="6.01955084375188E-06" iyz="-2.75316812991721E-06" izz="5.07862004479903E-06"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_inner_knuckle.stl"/>
@@ -528,6 +541,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_inner_knuckle.stl"/>
@@ -550,7 +564,6 @@
       <mass value="0.033618"/>
       <inertia ixx="1.9111E-05" ixy="-1.8789E-17" ixz="1.0986E-17" iyy="6.6256E-06" iyz="7.3008E-06" izz="1.3185E-05"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_outer_knuckle.stl"/>
@@ -558,6 +571,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_outer_knuckle.stl"/>
@@ -580,7 +594,6 @@
       <mass value="0.048304"/>
       <inertia ixx="1.7493E-05" ixy="-5.0014E-19" ixz="-7.5079E-18" iyy="1.7225E-05" iyz="-4.6435E-06" izz="5.1466E-06"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
@@ -588,6 +601,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
@@ -610,7 +624,6 @@
       <mass value="0.023013"/>
       <inertia ixx="6.0949E-06" ixy="-6.0665E-11" ixz="7.191E-11" iyy="6.0197E-06" iyz="2.7531E-06" izz="5.0784E-06"/>
     </inertial>
-    <!--
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_inner_knuckle.stl"/>
@@ -618,6 +631,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_inner_knuckle.stl"/>
