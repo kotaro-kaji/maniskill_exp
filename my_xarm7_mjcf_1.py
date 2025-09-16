@@ -28,13 +28,13 @@ class Xarm7MJCFv1(BaseAgent):
             0.0,
             1.0471976,
             -1.5707964,
-            # Gripper slightly open (all 6 gripper joints same)
-            0.04,
-            0.04,
-            0.04,
-            0.04,
-            0.04,
-            0.04,
+            # Gripper: align with my_xarm7_mjcf baseline
+            0.045355614,
+            0.045355614,
+            0.045355614,
+            0.045355614,
+            0.045355614,
+            0.045355614,
         ],
         dtype=np.float32,
     )
@@ -150,4 +150,3 @@ class Xarm7MJCFv1(BaseAgent):
                 pd_joint_delta_pos=dict(arm=arm_pd_joint_delta_pos, gripper=gripper_delta),
             )
         )
-
