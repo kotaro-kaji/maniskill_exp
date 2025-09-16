@@ -2,15 +2,14 @@ import gymnasium as gym
 import mani_skill.envs  # registers built-in envs
 import my_xarm7  # registers your custom robot
 import task_pushcube  # registers MyPushCube-v1 from your file
-import my_xarm7_mjcf
 
 
 def main():
     env = gym.make(
-        "MyPushCube-v1",
+        "PushCube-v1",
         obs_mode="state",
         control_mode="pd_joint_delta_pos",
-        robot_uids="my_xarm7_mjcf",
+        robot_uids="xarm6_robotiq",
         render_mode="human",
         sim_backend="gpu",
         render_backend="gpu",

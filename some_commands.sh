@@ -32,6 +32,11 @@ python ppo_xarm7.py \
 # 確認コマンド
 python ppo_xarm7.py --env_id MyPushCube-v1 --seed 0 --num_envs 64 --num-steps 4 --update_epochs 2 --num_minibatches 8 --total_timesteps 256 --exp-name "smoke-ppo-xarm7-pushcube"
 >>>>>>> a0a10f6 (not big change)
+python ppo_xarm7_mjcf.py --env_id MyPushCube-v1 --seed 0 --num
+_envs 64 --num-steps 4 --update_epochs 2 --num_minibatches 8 --total_timesteps 256 --exp-name "smoke-ppo-xarm7-pushcube"
 
 # ガチの学習
 python ppo_xarm7.py --env_id MyPushCube-v1 --seed 42 --num_envs 1024 --num-steps 8 --update_epochs 8 --num_minibatches 32 --total_timesteps 50_000_000 --num_eval_envs 16 --control-mode pd_joint_delta_pos --exp-name "ppo-MyPushCube-v1-xarm7-42"
+
+# ガチの学習
+python ppo_xarm7_mjcf.py --env_id MyPushCube-v1 --seed 42 --num_envs 1024 --num-steps 8 --update_epochs 8 --num_minibatches 32 --total_timesteps 50_000_000 --num_eval_envs 16 --control-mode pd_joint_delta_pos --exp-name "ppo-MyPushCube-v1-xarm7-42"
