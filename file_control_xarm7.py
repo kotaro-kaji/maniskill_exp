@@ -141,6 +141,14 @@ def main():
 
     print("Observation space:", env.observation_space)
     print("Action space:", env.action_space)
+    try:
+        ctrl = env.unwrapped.agent.controller
+        print("Controller:", ctrl)
+        if hasattr(ctrl, "action_mapping"):
+            print("Action mapping:", ctrl.action_mapping)
+        print("Single action space:", env.single_action_space)
+    except Exception:
+        pass
 
     obs, _ = env.reset(seed=0)
 
