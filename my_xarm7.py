@@ -71,9 +71,9 @@ class Xarm7(BaseAgent):
         self.arm_damping = float(os.getenv("XARM_ARM_KD", 10))
         self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 10))
         # Gripper (driver + mimics)
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 20))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 10))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 10))
+        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 0.1))
+        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 1))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.1))
 
         super().__init__(*args, **kwargs)
 
