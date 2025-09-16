@@ -11,7 +11,7 @@ def main():
         "MyPushCube-v1",
         obs_mode="state",
         control_mode="pd_joint_delta_pos",
-        robot_uids="my_xarm7_mjcf",
+        robot_uids="my_xarm7",
         render_mode="human",
         sim_backend="gpu",
         render_backend="gpu",
