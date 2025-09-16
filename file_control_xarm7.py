@@ -150,7 +150,7 @@ def main():
     action_dim = env.single_action_space.shape[0]
     print(f"Action dim: {action_dim}")
 
-    # For my_xarm7*_ (URDF/MJCF) with pd_joint_pos: 7 arm DOF (abs rad) + 1 gripper (normalized)
+    # For my_xarm7_mjcf with pd_joint_pos: 7 arm DOF (abs rad) + 1 gripper (normalized)
     arm_joint_names = [
         "joint1",
         "joint2",
@@ -179,12 +179,6 @@ def main():
         arm_limits = np.asarray(arm_limits)
     except Exception:
         arm_limits = None
-
-    # Determine a gripper status joint name for logging/output depending on robot
-    if robot_uid.startswith("my_xarm7") and not robot_uid.startswith("my_xarm7_mjcf"):
-        gripper_status_joint = "drive_joint"  # URDF variant
-    else:
-        gripper_status_joint = "left_driver_joint"  # MJCF variant
 
     # Initialize current target from current joints to keep robot still
     # We extract current arm joint positions (7) and set gripper target to 0.0 (neutral)
@@ -225,8 +219,8 @@ def main():
             # Always get joint states (arm + gripper driver) for user reference
             try:
                 qpos_full = robot.get_qpos()[0].detach().cpu().numpy()
-                # Build ordered names for export: 7 arm + gripper driver joint
-                joint_names_out = arm_joint_names + [gripper_status_joint]
+                # Build ordered names for export: 7 arm + left_driver_joint (gripper)
+                joint_names_out = arm_joint_names + ["left_driver_joint"]
                 indices = [
                     int(robot.joints_map[n].active_index[0]) for n in joint_names_out
                 ]
