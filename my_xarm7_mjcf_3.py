@@ -113,11 +113,11 @@ class Xarm7MJCFv3(BaseAgent):
             "right_finger_joint": {"joint": "left_driver_joint"},
         }
 
-        # Invert mapping so action +1 -> q=0 (closed), -1 -> q=0.85 (open)
+        # Normalized mapping: -1 -> 0.0 (open), +1 -> 0.85 (close)
         gripper_abs = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            0.85,
             0.0,
+            0.85,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
