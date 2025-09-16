@@ -75,9 +75,9 @@ class Xarm7MJCF(BaseAgent):
         self.arm_force_limit = 30
 
         # Stabilize gripper: lower gains/force than arm to avoid "explosions"
-        self.gripper_stiffness = 300.0
-        self.gripper_damping = 20.0
-        self.gripper_force_limit = 25.0
+        self.gripper_stiffness = 100.0
+        self.gripper_damping = 5.0
+        self.gripper_force_limit = 15.0
 
         super().__init__(*args, **kwargs)
 
