@@ -147,12 +147,12 @@ class Xarm7MJCF(BaseAgent):
             pd_joint_pos=dict(
                 arm=arm_pd_joint_pos,
                 gripper=gripper_pd_joint_pos_mimic,
-                balance_passive_force=False,
+                #balance_passive_force=False,
             ),
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
                 gripper=gripper_pd_joint_delta_pos_mimic,
-                balance_passive_force=False,
+                #balance_passive_force=False,
             ),
         )
         return deepcopy_dict(controller_configs)
