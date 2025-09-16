@@ -74,9 +74,10 @@ class Xarm7MJCF(BaseAgent):
         self.arm_damping = 1e2
         self.arm_force_limit = 30
 
-        self.gripper_stiffness = 1e3
-        self.gripper_damping = 1e2
-        self.gripper_force_limit = 100
+        # Stabilize gripper: lower gains/force than arm to avoid "explosions"
+        self.gripper_stiffness = 300.0
+        self.gripper_damping = 20.0
+        self.gripper_force_limit = 25.0
 
         super().__init__(*args, **kwargs)
 
@@ -129,17 +130,19 @@ class Xarm7MJCF(BaseAgent):
             self.gripper_damping,
             self.gripper_force_limit,
             normalize_action=True,
+            interpolate=True,
         )
         gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
 
         gripper_pd_joint_delta_pos_mimic = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            -0.05,
-            0.05,
+            -0.02,
+            0.02,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
             use_delta=True,
+            interpolate=True,
         )
         gripper_pd_joint_delta_pos_mimic.mimic = gripper_mimic_map
 
