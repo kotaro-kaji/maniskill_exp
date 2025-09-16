@@ -40,8 +40,9 @@ class Xarm7MJCF(BaseAgent):
     # Define an additional keyframe with the gripper closed
     _closed_qpos = init_qpos.copy()
     # Note: For this MJCF, larger angles close the gripper fingers.
-    # Use a conservative close value within our controller upper bound (0.6).
-    _closed_qpos[-6:] = 0.5
+    # RoboManipBaselinesではグリッパの実効レンジは約0.0〜0.85[rad]。
+    # 観測では0.8をスケーリング基準にしているため、クローズは0.8に合わせる。
+    _closed_qpos[-6:] = 0.8
     keyframes = dict(
         home=Keyframe(qpos=init_qpos.copy(), pose=sapien.Pose([0, 0, 0])),
         grip_close=Keyframe(qpos=_closed_qpos, pose=sapien.Pose([0, 0, 0])),
@@ -118,16 +119,16 @@ class Xarm7MJCF(BaseAgent):
             "right_inner_knuckle_joint": {"joint": "left_driver_joint"},
             "right_finger_joint": {"joint": "left_driver_joint"},
         }
-        # Limit how wide the gripper can command-open
-        # Reduce upper bound from ~0.85 to 0.6 to avoid over-opening
+        # Gripper is a single-DOF (driver) like RoboManip: 0.0〜0.85[rad]
+        # Normalize action to this range to mirror RoboManipのctrlrange挙動
         gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
             0.0,
-            0.6,
+            0.85,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            normalize_action=False,
+            normalize_action=True,
         )
         gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
 

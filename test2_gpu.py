@@ -25,9 +25,10 @@ def main():
 
     # Keep arm still (zeros) and smoothly open/close the gripper with small deltas.
     # Action space is normalized [-1, 1] for pd_joint_delta_pos, so choose a small step.
-    step_norm = 0.2  # ~0.01 rad delta per step for gripper (maps to ~0.01 with [-0.05,0.05])
+    step_norm = 0.2  # normalized delta; maps to ~0.01 rad with [-0.05,0.05]
     direction = 1.0  # + open, - close
-    gripper_min, gripper_max = 0.0, 0.6
+    # RoboManipBaselines準拠のレンジ（実効関節角）: 約0.0〜0.85 [rad]
+    gripper_min, gripper_max = 0.0, 0.85
 
     while not done:
         # Read current gripper driver joint position to flip direction at bounds
