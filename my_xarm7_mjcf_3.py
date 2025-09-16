@@ -28,12 +28,12 @@ class Xarm7MJCFv3(BaseAgent):
             0.0,
             1.0471976,
             -1.5707964,
-            0.045,
-            0.045,
-            0.045,
-            0.045,
-            0.045,
-            0.045,
+            0.045355614,
+            0.045355614,
+            0.045355614,
+            0.045355614,
+            0.045355614,
+            0.045355614,
         ],
         dtype=np.float32,
     )
@@ -147,4 +147,3 @@ class Xarm7MJCFv3(BaseAgent):
                 pd_joint_delta_pos=dict(arm=arm_pd_joint_delta_pos, gripper=gripper_delta),
             )
         )
-
