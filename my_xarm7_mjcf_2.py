@@ -64,15 +64,15 @@ class Xarm7MJCFv2(BaseAgent):
             "right_finger_joint",
         ]
 
-        self.arm_stiffness = 1200.0
-        self.arm_damping = 100.0
-        self.arm_force_limit = 35.0
+        # Match baseline my_xarm7_mjcf (arm)
+        self.arm_stiffness = 1e3
+        self.arm_damping = 1e2
+        self.arm_force_limit = 30.0
 
-        # Balanced
-        self.gripper_stiffness = 600.0
-        self.gripper_damping = 50.0
-        self.gripper_force_limit = 20.0
-        self.gripper_friction = 0.5
+        # Match baseline my_xarm7_mjcf (gripper)
+        self.gripper_stiffness = 100.0
+        self.gripper_damping = 5.0
+        self.gripper_force_limit = 15.0
 
         super().__init__(*args, **kwargs)
 
@@ -94,17 +94,15 @@ class Xarm7MJCFv2(BaseAgent):
             self.arm_damping,
             self.arm_force_limit,
             normalize_action=False,
-            interpolate=True,
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            -0.08,
-            0.08,
+            -0.1,
+            0.1,
             self.arm_stiffness,
             self.arm_damping,
             self.arm_force_limit,
             use_delta=True,
-            interpolate=True,
         )
 
         mimic_map = {
@@ -122,7 +120,6 @@ class Xarm7MJCFv2(BaseAgent):
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            friction=self.gripper_friction,
             normalize_action=True,
             interpolate=True,
         )
@@ -130,12 +127,11 @@ class Xarm7MJCFv2(BaseAgent):
 
         gripper_delta = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            -0.02,
-            0.02,
+            -0.01,
+            0.01,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            friction=self.gripper_friction,
             use_delta=True,
             interpolate=True,
         )
