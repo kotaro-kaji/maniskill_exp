@@ -65,16 +65,15 @@ class Xarm7MJCFv1(BaseAgent):
             "right_finger_joint",
         ]
 
-        # Arm (keep moderate)
-        self.arm_stiffness = 1000.0
-        self.arm_damping = 100.0
+        # Arm (match baseline my_xarm7_mjcf)
+        self.arm_stiffness = 1e3
+        self.arm_damping = 1e2
         self.arm_force_limit = 30.0
 
-        # Gripper: very conservative (safe)
-        self.gripper_stiffness = 200.0
-        self.gripper_damping = 30.0
-        self.gripper_force_limit = 10.0
-        self.gripper_friction = 0.5
+        # Gripper (match baseline my_xarm7_mjcf)
+        self.gripper_stiffness = 100.0
+        self.gripper_damping = 5.0
+        self.gripper_force_limit = 15.0
 
         super().__init__(*args, **kwargs)
 
@@ -96,17 +95,15 @@ class Xarm7MJCFv1(BaseAgent):
             self.arm_damping,
             self.arm_force_limit,
             normalize_action=False,
-            interpolate=True,
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            -0.05,
-            0.05,
+            -0.1,
+            0.1,
             self.arm_stiffness,
             self.arm_damping,
             self.arm_force_limit,
             use_delta=True,
-            interpolate=True,
         )
 
         # Single-DOF via mimic: all follow left_driver_joint
@@ -121,11 +118,10 @@ class Xarm7MJCFv1(BaseAgent):
         gripper_abs = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
             0.0,
-            0.8,
+            0.85,
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            friction=self.gripper_friction,
             normalize_action=True,  # [-1,1] -> [0,0.8]
             interpolate=True,
         )
@@ -138,7 +134,6 @@ class Xarm7MJCFv1(BaseAgent):
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
-            friction=self.gripper_friction,
             use_delta=True,
             interpolate=True,
         )
