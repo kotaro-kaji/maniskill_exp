@@ -61,7 +61,7 @@ def _write_control_file_template(
             f"# Gripper (normalized): set in [-1, 1]  -> mapped to [{gripper_range[0]:.2f}, {gripper_range[1]:.2f}] rad"
         )
     else:
-        lines.append("# Gripper (normalized): set in [-1, 1]")
+        lines.append("# Gripper (absolute): set radians directly (e.g., 0.0 open, 0.85 close)")
     lines.append("#")
     lines.append("# Tips:")
     lines.append("# - Save the file to apply new targets. The script polls this file.")
@@ -198,15 +198,18 @@ def main():
         # Fallback to zeros if mapping fails
         current_arm = np.zeros(7, dtype=np.float32)
 
-    # Start with a neutral gripper command (normalized)
+    # Start with a neutral gripper command (normalized by default)
     current_gripper = np.array([0.0], dtype=np.float32)
     current_action = np.concatenate([current_arm, current_gripper], axis=0)
 
     # Create control file template for the user
-    gr_range = [0.0, 0.85]
-    _write_control_file_template(
-        CONTROL_FILE, arm_joint_names, arm_limits, gr_range, current_action
-    )
+    # Determine gripper UI hint by robot uid
+    if robot_uid == "my_xarm7_mjcf_3":
+        # v3 experimental: absolute radians for gripper
+        gr_range = None
+    else:
+        gr_range = [0.0, 0.85]
+    _write_control_file_template(CONTROL_FILE, arm_joint_names, arm_limits, gr_range, current_action)
     print(f"Wrote control template to '{CONTROL_FILE}'. Edit and save to command.")
 
     # Main loop: run forever until user stops (Ctrl+C)
@@ -231,11 +234,27 @@ def main():
                 pass
 
             # Check for new control values
-            new_action = _read_control_file(CONTROL_FILE, action_dim)
+            new_action = _read_control_file(CONTROL_FILE, 8)
             if new_action is not None:
-                # Clip to action space bounds for safety
-                new_action = np.clip(new_action, action_low, action_high)
-                current_action = new_action.astype(np.float32)
+                # We always parse as [7 arm abs, 1 gripper]. Map into flat action
+                # according to the underlying controller's action mapping to avoid
+                # relying on controller order.
+                try:
+                    mapping = env.unwrapped.agent.controller.action_mapping
+                    arm_start, arm_end = mapping.get("arm", (0, 7))
+                    grip_start, grip_end = mapping.get("gripper", (arm_end, arm_end + 1))
+                    flat = np.zeros_like(action_low, dtype=np.float32)
+                    # Arm absolute positions
+                    flat[arm_start:arm_end] = new_action[:7]
+                    # Gripper value
+                    flat[grip_start:grip_end] = new_action[7]
+                    # Clip to action space bounds for safety
+                    flat = np.clip(flat, action_low, action_high)
+                    current_action = flat.astype(np.float32)
+                except Exception:
+                    # Fallback: assume concatenated [arm(7), gripper(1)] ordering
+                    flat = np.clip(new_action, action_low, action_high)
+                    current_action = flat.astype(np.float32)
 
             # Step with current action; no termination handling (user stops manually)
             obs, reward, terminated, truncated, info = env.step(current_action)
