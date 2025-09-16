@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import sapien
 
@@ -64,14 +65,15 @@ class Xarm7(BaseAgent):
             "right_finger_joint",
         ]
 
-        # PD parameters (reasonable defaults)
-        self.arm_stiffness = 1e3
-        self.arm_damping = 1e2
-        self.arm_force_limit = 30
-
-        self.gripper_stiffness = 1e3
-        self.gripper_damping = 1e2
-        self.gripper_force_limit = 100
+        # PD parameters (defaults) — overridable via env vars for quick tuning
+        # Arm
+        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 20))
+        self.arm_damping = float(os.getenv("XARM_ARM_KD", 10))
+        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 10))
+        # Gripper (driver + mimics)
+        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 20))
+        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 10))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 10))
 
         super().__init__(*args, **kwargs)
 
