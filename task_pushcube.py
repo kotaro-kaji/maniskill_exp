@@ -216,6 +216,14 @@ class MyPushCubeEnv(BaseEnv):
         #   and the z reward becomes more important as the robot gets closer to the goal.
         reward += place_reward * z_reward * reached
 
+        # Encourage gentle closing of the gripper; 0 rad=open, 0.85 rad=closed.
+        drive_joint = self.agent.robot.joints_map.get("drive_joint")
+        if drive_joint is not None and drive_joint.active_index is not None:
+            drive_idx = int(drive_joint.active_index)
+            drive_qpos = self.agent.robot.get_qpos()[..., drive_idx]
+            grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
+            reward += 0.05 * grip_closure
+
         # assign rewards to parallel environments that achieved success to the maximum of 3.
         reward[info["success"]] = 4
         return reward
