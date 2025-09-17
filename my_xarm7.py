@@ -29,7 +29,7 @@ class Xarm7(BaseAgent):
             1.0471976,
             -1.5707964,
             # Gripper DOFs (6):
-            0.045355614,  # drive_joint
+            0.045355614,  # drive_joint (0 rad = fully open, 0.85 rad = fully closed)
             0.045355614,  # left_inner_knuckle_joint
             0.045355614,  # right_outer_knuckle_joint
             0.045355614,  # right_inner_knuckle_joint
