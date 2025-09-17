@@ -13,7 +13,6 @@ python -m mani_skill.trajectory.replay_trajectory --traj_path path/to/trajectory
 
 
 
-<<<<<<< HEAD
 # 確認コマンド (CPU backend で安定性チェック)
 python ppo_xarm7.py \
   --env_id MyPushCube-v1 \
@@ -31,7 +30,7 @@ python ppo_xarm7.py \
 =======
 # 確認コマンド
 python ppo_xarm7.py --env_id MyPushCube-v1 --seed 0 --num_envs 64 --num-steps 4 --update_epochs 2 --num_minibatches 8 --total_timesteps 256 --exp-name "smoke-ppo-xarm7-pushcube"
->>>>>>> a0a10f6 (not big change)
+
 python ppo_xarm7_mjcf.py --env_id MyPushCube-v1 --seed 0 --num
 _envs 64 --num-steps 4 --update_epochs 2 --num_minibatches 8 --total_timesteps 256 --exp-name "smoke-ppo-xarm7-pushcube"
 
