@@ -126,7 +126,7 @@ def _write_joint_state(path: str, joint_names: List[str], qpos: np.ndarray):
 
 def main():
     # Choose robot uid via env var or default
-    robot_uid = os.environ.get("ROBOT_UID", "my_xarm7_mjcf")
+    robot_uid = os.environ.get("ROBOT_UID", "my_xarm7")
     print(f"Using robot_uids='{robot_uid}' (set ROBOT_UID to override)")
 
     env = gym.make(
