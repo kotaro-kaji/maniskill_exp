@@ -1,0 +1,26 @@
+# XArm7 file control (pd_joint_delta_pos)
+# Edit the last line with 8 numbers then save. The robot applies the delta once per control step.
+# Format: 7 ARM joint DELTAS [rad], then 1 GRIPPER delta (rad).
+# Positive deltas increase joint angles; negative deltas decrease them.
+#
+# Arm joint delta limits (rad/step):
+#   0:    joint1  min=-1.0000  max= 1.0000
+#   1:    joint2  min=-1.0000  max= 1.0000
+#   2:    joint3  min=-1.0000  max= 1.0000
+#   3:    joint4  min=-1.0000  max= 1.0000
+#   4:    joint5  min=-1.0000  max= 1.0000
+#   5:    joint6  min=-1.0000  max= 1.0000
+#   6:    joint7  min=-1.0000  max= 1.0000
+#
+# Gripper delta range: set in [-1.0000, 1.0000] rad
+# The drive joint mimics to all fingers; positive values open, negative close.
+#
+# Tips:
+# - Deltas accumulate each control step. After applying, set values back to 0 to hold pose.
+# - The script polls this file continuously; invalid lines are ignored.
+# - Stop the script with Ctrl+C in the terminal.
+#
+# Current delta command (used if the edited line is invalid):
+# 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000
+# --- Edit the line below: ---
+0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
