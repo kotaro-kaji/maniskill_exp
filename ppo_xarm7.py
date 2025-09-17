@@ -47,6 +47,8 @@ class Args:
     """if toggled, only runs evaluation with the given model checkpoint and saves the evaluation trajectories"""
     checkpoint: Optional[str] = None
     """path to a pretrained checkpoint file to start evaluation/training from"""
+    print_eval_actions: bool = False
+    """if toggled, prints the actions issued during evaluation"""
 
     # Algorithm specific arguments
     env_id: str = "MyPushCube-v1"
@@ -282,9 +284,12 @@ if __name__ == "__main__":
             eval_obs, _ = eval_envs.reset()
             eval_metrics = defaultdict(list)
             num_episodes = 0
-            for _ in range(args.num_eval_steps):
+            for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
-                    eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(agent.get_action(eval_obs, deterministic=True))
+                    eval_action = agent.get_action(eval_obs, deterministic=True)
+                    if args.print_eval_actions:
+                        print(f"[eval] step={eval_step} actions={eval_action.detach().cpu().numpy()}")
+                    eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(eval_action)
                     if "final_info" in eval_infos:
                         mask = eval_infos["_final_info"]
                         num_episodes += mask.sum()
