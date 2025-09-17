@@ -138,10 +138,11 @@ class MyPushCubeEnv(BaseEnv):
             # use the TableSceneBuilder to init all objects in that scene builder
             self.table_scene.initialize(env_idx)
 
-            # here is randomization code that randomizes the x, y position 
-            # of the cube we are pushing in the range [-0.1, -0.1] to [0.1, 0.1]
+            # Randomize cube position closer to the robot side of the table
             p = torch.zeros((b, 3))
-            p[..., :2] = torch.rand((b, 2)) * 0.2 - 0.1
+            # Bias cube spawn closer to the robot base (robot sits around x = -0.6)
+            p[..., 0] = torch.rand((b,)) * 0.1 - 0.35  # x in [-0.35, -0.25]
+            p[..., 1] = torch.rand((b,)) * 0.1 - 0.05  # y in [-0.05, 0.05]
             p[..., 2] = self.cube_half_size
             q = [1, 0, 0, 0]
             obj_pose = Pose.create_from_pq(p=p, q=q)
