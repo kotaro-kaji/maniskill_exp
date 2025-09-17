@@ -219,7 +219,7 @@ class MyPushCubeEnv(BaseEnv):
         # Encourage gentle closing of the gripper; 0 rad=open, 0.85 rad=closed.
         drive_joint = self.agent.robot.joints_map.get("drive_joint")
         if drive_joint is not None and drive_joint.active_index is not None:
-            drive_idx = int(drive_joint.active_index)
+            drive_idx = int(drive_joint.active_index.squeeze().item())
             drive_qpos = self.agent.robot.get_qpos()[..., drive_idx]
             grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
             reward += 0.05 * grip_closure
