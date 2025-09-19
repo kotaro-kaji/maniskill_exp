@@ -227,7 +227,7 @@ class MyPushCubeEnv(BaseEnv):
         if drive_joint is not None and drive_joint.active_index is not None:
             drive_qpos = drive_joint.qpos
             grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
-            reward += 0.05 * grip_closure
+            reward += 0.5 * grip_closure
 
         # assign rewards to parallel environments that achieved success to the maximum of 3.
         reward[info["success"]] = 4
