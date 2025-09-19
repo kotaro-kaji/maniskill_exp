@@ -24,7 +24,7 @@ class MySimpleReachEnv(BaseEnv):
 
     def __init__(self, *args, robot_uids="my_xarm7", target_position=None, **kwargs):
         if target_position is None:
-            self._default_target_position = [0.35, 0.0, 0.25]
+            self._default_target_position = [0.15, 0.0, 0.25]
         else:
             self._default_target_position = [float(x) for x in target_position]
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
