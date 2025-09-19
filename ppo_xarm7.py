@@ -48,7 +48,7 @@ class Args:
     """if toggled, only runs evaluation with the given model checkpoint and saves the evaluation trajectories"""
     checkpoint: Optional[str] = None
     """path to a pretrained checkpoint file to start evaluation/training from"""
-    print_eval_actions: bool = False
+    print_eval_actions: bool = True
     """if toggled, prints the actions issued during evaluation"""
 
     # Algorithm specific arguments
