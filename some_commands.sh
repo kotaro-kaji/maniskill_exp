@@ -45,5 +45,10 @@ python ppo_xarm7.py --env_id MyPushCube-v1 --seed 42 --num_envs 1024 --num-steps
 python ppo_xarm7.py --env_id="MyPushCube-v1" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32 \
   --total_timesteps=25_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 
+
+python ppo_xarm7.py --env_id="MySimpleReach-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32 \
+  --total_timesteps=25_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 
+
 # ガチの学習
 python ppo_xarm7_mjcf.py --env_id MyPushCube-v1 --seed 42 --num_envs 1024 --num-steps 8 --update_epochs 8 --num_minibatches 32 --total_timesteps 50_000_000 --num_eval_envs 16 --control-mode pd_joint_delta_pos --exp-name "ppo-MyPushCube-v1-xarm7-42"
