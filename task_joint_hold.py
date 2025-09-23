@@ -9,9 +9,8 @@ from mani_skill.utils import sapien_utils
 from mani_skill.utils.registration import register_env
 
 from my_xarm7 import Xarm7
-import my_xarm7_mjcf
-from xarm7_table_scene_builder import Xarm7TableSceneBuilder
-
+import robotagents.my_xarm7_mjcf
+from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
