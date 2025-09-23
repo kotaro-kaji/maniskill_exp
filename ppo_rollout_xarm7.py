@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import random
+import csv
+import json
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import gymnasium as gym
 import mani_skill.envs  # noqa: F401
@@ -16,6 +18,24 @@ from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
 from ppo_xarm7 import Agent
+
+
+CSV_LOG_FILENAME = "rollout_log.csv"
+INFO_LOG_FILENAME = "rollout_info.jsonl"
+
+
+def _to_serializable(obj: Any):
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().cpu().tolist()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (float, int, str, bool)) or obj is None:
+        return obj
+    if isinstance(obj, dict):
+        return {key: _to_serializable(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_serializable(value) for value in obj]
+    return repr(obj)
 
 
 @dataclass
@@ -103,6 +123,17 @@ def run_rollout(args: RolloutArgs) -> None:
 
     eval_envs = _build_env(args)
 
+    csv_path = os.path.abspath(CSV_LOG_FILENAME)
+    csv_file = open(csv_path, "w", newline="")
+    csv_writer = csv.DictWriter(
+        csv_file,
+        fieldnames=["step", "env_index", "observation", "action", "clipped_action"],
+    )
+    csv_writer.writeheader()
+
+    info_path = os.path.abspath(INFO_LOG_FILENAME)
+    info_file = open(info_path, "w")
+
     agent = Agent(eval_envs).to(device)
     state_dict = torch.load(args.checkpoint, map_location=device)
     agent.load_state_dict(state_dict)
@@ -121,8 +152,24 @@ def run_rollout(args: RolloutArgs) -> None:
         if args.print_actions:
             print(f"step={step} action={action.detach().cpu().numpy()}")
         clipped_action = torch.clamp(action, action_low, action_high)
+        obs_cpu = obs.detach().cpu()
+        action_cpu = action.detach().cpu()
+        clipped_cpu = clipped_action.detach().cpu()
+        for env_index in range(args.num_eval_envs):
+            csv_writer.writerow(
+                {
+                    "step": step,
+                    "env_index": env_index,
+                    "observation": json.dumps(obs_cpu[env_index].tolist()),
+                    "action": json.dumps(action_cpu[env_index].tolist()),
+                    "clipped_action": json.dumps(clipped_cpu[env_index].tolist()),
+                }
+            )
         obs, reward, terminations, truncations, info = eval_envs.step(clipped_action)
         obs = obs.to(device)
+
+        payload = {"step": step, "info": _to_serializable(info)}
+        info_file.write(json.dumps(payload) + "\n")
 
         if "final_info" in info:
             mask = info["_final_info"]
@@ -130,6 +177,9 @@ def run_rollout(args: RolloutArgs) -> None:
                 metrics[key].append(value[mask])
 
     eval_envs.close()
+
+    csv_file.close()
+    info_file.close()
 
     if metrics:
         print("Rollout metrics:")
