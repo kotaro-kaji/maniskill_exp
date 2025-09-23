@@ -1,0 +1,75 @@
+<mujoco model="hsr_config">
+  <compiler angle="radian" autolimits="true" meshdir="../../assets/meshes"/>
+
+  <option integrator="implicitfast"/>
+
+  <default>
+    <default class="hsr">
+      <position dampratio="1" inheritrange="1"/>
+      <default class="visual">
+        <geom contype="0" conaffinity="0"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <mesh name="base" file="hsr/base_v2/base.stl" />
+    <mesh name="laser" file="hsr/sensors/laser.stl" />
+    <mesh name="bumper" file="hsr/base_v2/bumper.stl" />
+    <mesh name="torso" file="hsr/torso_v0/torso.stl" />
+    <mesh name="head_pan" file="hsr/head_v1/head_pan.stl" />
+    <mesh name="head" file="hsr/head_v1/head.stl" />
+    <mesh name="tablet" file="hsr/head_v1/tablet.stl" />
+    <mesh name="xtion" file="hsr/sensors/xtion.stl" />
+    <mesh name="shoulder" file="hsr/arm_v0/shoulder.stl" />
+    <mesh name="arm_flex" file="hsr/arm_v0/arm_flex.stl" />
+    <mesh name="arm_roll" file="hsr/arm_v0/arm_roll.stl" />
+    <mesh name="wrist_roll" file="hsr/wrist_v0/wrist_roll.stl" />
+    <mesh name="palm" file="hsr/hand_v0/palm.stl" />
+    <mesh name="l_proximal" file="hsr/hand_v0/l_proximal.stl" />
+    <mesh name="l_distal" file="hsr/hand_v0/l_distal.stl" />
+    <mesh name="r_proximal" file="hsr/hand_v0/r_proximal.stl" />
+    <mesh name="r_distal" file="hsr/hand_v0/r_distal.stl" />
+
+    <material name="hsr_white" rgba="1.0 1.0 1.0 1" />
+    <material name="hsr_black" rgba="0.3 0.3 0.3 1" />
+  </asset>
+
+  <actuator>
+    <velocity name="mobile_x_joint" joint="mobile_x_joint" ctrlrange="-1 1" kv="1000"/>
+    <velocity name="mobile_y_joint" joint="mobile_y_joint" ctrlrange="-1 1" kv="1000"/>
+    <velocity name="mobile_theta_joint" joint="mobile_theta_joint" ctrlrange="-1 1" kv="1000"/>
+    <position class="hsr" kp="2000" name="arm_lift_joint" joint="arm_lift_joint"/>
+    <position class="hsr" kp="100" name="arm_flex_joint" joint="arm_flex_joint"/>
+    <position class="hsr" kp="10" name="arm_roll_joint" joint="arm_roll_joint"/>
+    <position class="hsr" kp="100" name="wrist_flex_joint" joint="wrist_flex_joint"/>
+    <position class="hsr" kp="10" name="wrist_roll_joint" joint="wrist_roll_joint"/>
+    <position class="hsr" kp="10" name="hand_motor_joint" joint="hand_motor_joint"/>
+  </actuator>
+
+  <sensor>
+    <force name="force_sensor" site="force_sensor"/>
+    <torque name="torque_sensor" site="force_sensor"/>
+  </sensor>
+
+  <equality>
+    <!-- TODO: Disable torso_lift_joint because mimic joint is not supported in the pinocchio library. This will be resolved when you can install pinocchio version 3.5.0 with pip. -->
+    <!-- <joint joint1="arm_lift_joint" joint2="torso_lift_joint" -->
+    <!--        polycoef="0.0 2.0 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/> -->
+    <joint joint1="hand_motor_joint" joint2="hand_l_proximal_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="hand_motor_joint" joint2="hand_r_proximal_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+  </equality>
+
+  <contact>
+    <exclude body1="base_link" body2="torso_lift_link"/>
+    <exclude body1="base_link" body2="arm_lift_link"/>
+    <exclude body1="base_link" body2="arm_flex_link"/>
+    <exclude body1="torso_lift_link" body2="arm_lift_link"/>
+    <exclude body1="arm_lift_link" body2="arm_flex_link"/>
+  </contact>
+</mujoco>
