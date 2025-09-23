@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Murooka"
+  given-names: "Masaki"
+  orcid: "https://orcid.org/0000-0002-1258-0431"
+- family-names: "Motoda"
+  given-names: "Tomohiro"
+  orcid: "https://orcid.org/0000-0003-3339-6147"
+- family-names: "Nakajo"
+  given-names: "Ryoichi"
+  orcid: ""
+title: "RoboManipBaselines"
+version: 1.0.0
+date-released: 2024-12-03
+url: "https://github.com/isri-aist/RoboManipBaselines"

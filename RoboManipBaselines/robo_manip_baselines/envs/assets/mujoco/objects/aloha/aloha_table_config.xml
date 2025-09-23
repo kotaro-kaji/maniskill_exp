@@ -1,0 +1,29 @@
+<mujoco model="aloha_table_config">
+  <asset>
+    <!-- table extrusions and frame -->
+    <mesh file="aloha/extrusion_2040_880.stl"/>
+    <mesh file="aloha/extrusion_150.stl"/>
+    <mesh file="aloha/corner_bracket.stl"/>
+    <mesh file="aloha/extrusion_1220.stl"/>
+    <mesh file="aloha/extrusion_1000.stl"/>
+    <mesh file="aloha/angled_extrusion.stl"/>
+    <mesh file="aloha/extrusion_600.stl"/>
+    <mesh file="aloha/overhead_mount.stl"/>
+    <mesh file="aloha/extrusion_2040_1000.stl"/>
+    <mesh file="aloha/wormseye_mount.stl"/>
+
+    <!-- Table dimensions (length x width x height in meters): 1.21x0.76x0.75 -->
+    <mesh file="aloha/tablelegs.obj"/>
+    <mesh file="aloha/tabletop.obj"/>
+
+    <texture type="2d" file="aloha/small_meta_table_diffuse.png"/>
+    <material name="table" texture="small_meta_table_diffuse"/>
+    <material name="metal" rgba="0.517 0.529 0.537 1"/>
+  </asset>
+
+  <default>
+    <default class="frame">
+      <geom group="1" type="mesh" material="black"/>
+    </default>
+  </default>
+</mujoco>

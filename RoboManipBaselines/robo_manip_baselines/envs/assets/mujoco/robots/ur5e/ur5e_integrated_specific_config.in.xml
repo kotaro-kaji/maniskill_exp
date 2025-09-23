@@ -1,0 +1,47 @@
+<mujoco model="ur5e_integrated_specific_config">
+  <compiler angle="radian" meshdir="../../assets/meshes" autolimits="true"/>
+
+  <actuator>
+    <general class="size3" name="{PREFIX}shoulder_pan" joint="{PREFIX}shoulder_pan_joint"/>
+    <general class="size3" name="{PREFIX}shoulder_lift" joint="{PREFIX}shoulder_lift_joint"/>
+    <general class="size3_limited" name="{PREFIX}elbow" joint="{PREFIX}elbow_joint"/>
+    <general class="size1" name="{PREFIX}wrist_1" joint="{PREFIX}wrist_1_joint"/>
+    <general class="size1" name="{PREFIX}wrist_2" joint="{PREFIX}wrist_2_joint"/>
+    <general class="size1" name="{PREFIX}wrist_3" joint="{PREFIX}wrist_3_joint"/>
+
+    <!-- gripper: robotiq_2f85 -->
+    <general class="2f85" name="{PREFIX}fingers_actuator" tendon="{PREFIX}split" forcerange="-5 5" ctrlrange="0 255"
+             gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
+  </actuator>
+
+  <sensor>
+    <force name="{PREFIX}force_sensor" site="{PREFIX}force_sensor"/>
+    <torque name="{PREFIX}torque_sensor" site="{PREFIX}force_sensor"/>
+  </sensor>
+
+  <!-- gripper: robotiq_2f85 -->
+  <contact>
+    <exclude body1="{PREFIX}gripper_base" body2="{PREFIX}left_driver"/>
+    <exclude body1="{PREFIX}gripper_base" body2="{PREFIX}right_driver"/>
+    <exclude body1="{PREFIX}gripper_base" body2="{PREFIX}left_spring_link"/>
+    <exclude body1="{PREFIX}gripper_base" body2="{PREFIX}right_spring_link"/>
+    <exclude body1="{PREFIX}right_coupler" body2="{PREFIX}right_follower"/>
+    <exclude body1="{PREFIX}left_coupler" body2="{PREFIX}left_follower"/>
+  </contact>
+
+  <tendon>
+    <fixed name="{PREFIX}split">
+      <joint joint="{PREFIX}right_driver_joint" coef="0.5"/>
+      <joint joint="{PREFIX}left_driver_joint" coef="0.5"/>
+    </fixed>
+  </tendon>
+
+  <equality>
+    <connect body1="{PREFIX}right_follower" body2="{PREFIX}right_coupler" anchor="0 0 0"
+             solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <connect body1="{PREFIX}left_follower" body2="{PREFIX}left_coupler" anchor="0 0 0"
+             solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="{PREFIX}right_driver_joint" joint2="{PREFIX}left_driver_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+  </equality>
+</mujoco>

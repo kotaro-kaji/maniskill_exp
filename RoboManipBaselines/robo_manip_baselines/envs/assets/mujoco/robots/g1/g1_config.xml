@@ -1,0 +1,157 @@
+<mujoco model="g1_config">
+  <compiler angle="radian" meshdir="../../assets/meshes" autolimits="true"/>
+
+  <asset>
+    <material name="black" rgba="0.2 0.2 0.2 1"/>
+    <material name="metal" rgba="0.7 0.7 0.7 1"/>
+
+    <mesh file="g1/pelvis.STL"/>
+    <mesh file="g1/pelvis_contour_link.STL"/>
+    <mesh file="g1/left_hip_pitch_link.STL"/>
+    <mesh file="g1/left_hip_roll_link.STL"/>
+    <mesh file="g1/left_hip_yaw_link.STL"/>
+    <mesh file="g1/left_knee_link.STL"/>
+    <mesh file="g1/left_ankle_pitch_link.STL"/>
+    <mesh file="g1/left_ankle_roll_link.STL"/>
+    <mesh file="g1/right_hip_pitch_link.STL"/>
+    <mesh file="g1/right_hip_roll_link.STL"/>
+    <mesh file="g1/right_hip_yaw_link.STL"/>
+    <mesh file="g1/right_knee_link.STL"/>
+    <mesh file="g1/right_ankle_pitch_link.STL"/>
+    <mesh file="g1/right_ankle_roll_link.STL"/>
+    <mesh name="waist_yaw_link" file="g1/waist_yaw_link_rev_1_0.STL"/>
+    <mesh name="waist_roll_link" file="g1/waist_roll_link_rev_1_0.STL"/>
+    <mesh name="torso_link" file="g1/torso_link_rev_1_0.STL"/>
+    <mesh file="g1/logo_link.STL"/>
+    <mesh file="g1/head_link.STL"/>
+    <mesh file="g1/left_shoulder_pitch_link.STL"/>
+    <mesh file="g1/left_shoulder_roll_link.STL"/>
+    <mesh file="g1/left_shoulder_yaw_link.STL"/>
+    <mesh file="g1/left_elbow_link.STL"/>
+    <mesh file="g1/left_wrist_roll_link.STL"/>
+    <mesh name="left_wrist_pitch_link" file="g1/left_wrist_pitch_link.STL"/>
+    <mesh file="g1/left_wrist_yaw_link.STL"/>
+    <mesh file="g1/left_hand_palm_link.STL"/>
+    <mesh file="g1/left_hand_thumb_0_link.STL"/>
+    <mesh file="g1/left_hand_thumb_1_link.STL"/>
+    <mesh file="g1/left_hand_thumb_2_link.STL"/>
+    <mesh file="g1/left_hand_middle_0_link.STL"/>
+    <mesh file="g1/left_hand_middle_1_link.STL"/>
+    <mesh file="g1/left_hand_index_0_link.STL"/>
+    <mesh file="g1/left_hand_index_1_link.STL"/>
+    <mesh file="g1/right_shoulder_pitch_link.STL"/>
+    <mesh file="g1/right_shoulder_roll_link.STL"/>
+    <mesh file="g1/right_shoulder_yaw_link.STL"/>
+    <mesh file="g1/right_elbow_link.STL"/>
+    <mesh file="g1/right_wrist_roll_link.STL"/>
+    <mesh file="g1/right_wrist_pitch_link.STL"/>
+    <mesh file="g1/right_wrist_yaw_link.STL"/>
+    <mesh file="g1/right_hand_palm_link.STL"/>
+    <mesh file="g1/right_hand_thumb_0_link.STL"/>
+    <mesh file="g1/right_hand_thumb_1_link.STL"/>
+    <mesh file="g1/right_hand_thumb_2_link.STL"/>
+    <mesh file="g1/right_hand_middle_0_link.STL"/>
+    <mesh file="g1/right_hand_middle_1_link.STL"/>
+    <mesh file="g1/right_hand_index_0_link.STL"/>
+    <mesh file="g1/right_hand_index_1_link.STL"/>
+  </asset>
+
+  <default>
+    <default class="g1">
+      <site rgba="1 0 0 1" size="0.01" group="5"/>
+      <joint armature="0.01" frictionloss="0.3"/>
+      <position kp="500" dampratio="1" inheritrange="1"/>
+      <default class="visual">
+        <geom group="2" type="mesh" contype="0" conaffinity="0" density="0" material="metal"/>
+      </default>
+      <default class="collision">
+        <geom group="3" type="mesh"/>
+        <default class="foot">
+          <geom type="sphere" size="0.005" priority="1" friction="0.6" condim="3"/>
+        </default>
+      </default>
+    </default>
+  </default>
+
+  <actuator>
+    <position class="g1" name="left_hip_pitch_joint" joint="left_hip_pitch_joint"/>
+    <position class="g1" name="left_hip_roll_joint" joint="left_hip_roll_joint"/>
+    <position class="g1" name="left_hip_yaw_joint" joint="left_hip_yaw_joint"/>
+    <position class="g1" name="left_knee_joint" joint="left_knee_joint"/>
+    <position class="g1" name="left_ankle_pitch_joint" joint="left_ankle_pitch_joint"/>
+    <position class="g1" name="left_ankle_roll_joint" joint="left_ankle_roll_joint"/>
+
+    <position class="g1" name="right_hip_pitch_joint" joint="right_hip_pitch_joint"/>
+    <position class="g1" name="right_hip_roll_joint" joint="right_hip_roll_joint"/>
+    <position class="g1" name="right_hip_yaw_joint" joint="right_hip_yaw_joint"/>
+    <position class="g1" name="right_knee_joint" joint="right_knee_joint"/>
+    <position class="g1" name="right_ankle_pitch_joint" joint="right_ankle_pitch_joint"/>
+    <position class="g1" name="right_ankle_roll_joint" joint="right_ankle_roll_joint"/>
+
+    <position class="g1" name="waist_yaw_joint" joint="waist_yaw_joint"/>
+    <position class="g1" name="waist_roll_joint" joint="waist_roll_joint"/>
+    <position class="g1" name="waist_pitch_joint" joint="waist_pitch_joint"/>
+
+    <position class="g1" name="left_shoulder_pitch_joint" joint="left_shoulder_pitch_joint"/>
+    <position class="g1" name="left_shoulder_roll_joint" joint="left_shoulder_roll_joint"/>
+    <position class="g1" name="left_shoulder_yaw_joint" joint="left_shoulder_yaw_joint"/>
+    <position class="g1" name="left_elbow_joint" joint="left_elbow_joint"/>
+    <position class="g1" name="left_wrist_roll_joint" joint="left_wrist_roll_joint"/>
+    <position class="g1" name="left_wrist_pitch_joint" joint="left_wrist_pitch_joint"/>
+    <position class="g1" name="left_wrist_yaw_joint" joint="left_wrist_yaw_joint"/>
+    <!-- <position class="g1" name="left_hand_thumb_0_joint" joint="left_hand_thumb_0_joint"/> -->
+    <!-- <position class="g1" name="left_hand_thumb_1_joint" joint="left_hand_thumb_1_joint"/> -->
+    <!-- <position class="g1" name="left_hand_thumb_2_joint" joint="left_hand_thumb_2_joint"/> -->
+    <position class="g1" name="left_hand_middle_0_joint" joint="left_hand_middle_0_joint"/>
+    <!-- <position class="g1" name="left_hand_middle_1_joint" joint="left_hand_middle_1_joint"/> -->
+    <!-- <position class="g1" name="left_hand_index_0_joint" joint="left_hand_index_0_joint"/> -->
+    <!-- <position class="g1" name="left_hand_index_1_joint" joint="left_hand_index_1_joint"/> -->
+
+    <position class="g1" name="right_shoulder_pitch_joint" joint="right_shoulder_pitch_joint"/>
+    <position class="g1" name="right_shoulder_roll_joint" joint="right_shoulder_roll_joint"/>
+    <position class="g1" name="right_shoulder_yaw_joint" joint="right_shoulder_yaw_joint"/>
+    <position class="g1" name="right_elbow_joint" joint="right_elbow_joint"/>
+    <position class="g1" name="right_wrist_roll_joint" joint="right_wrist_roll_joint"/>
+    <position class="g1" name="right_wrist_pitch_joint" joint="right_wrist_pitch_joint"/>
+    <position class="g1" name="right_wrist_yaw_joint" joint="right_wrist_yaw_joint"/>
+    <!-- <position class="g1" name="right_hand_thumb_0_joint" joint="right_hand_thumb_0_joint"/> -->
+    <!-- <position class="g1" name="right_hand_thumb_1_joint" joint="right_hand_thumb_1_joint"/> -->
+    <!-- <position class="g1" name="right_hand_thumb_2_joint" joint="right_hand_thumb_2_joint"/> -->
+    <position class="g1" name="right_hand_middle_0_joint" joint="right_hand_middle_0_joint"/>
+    <!-- <position class="g1" name="right_hand_middle_1_joint" joint="right_hand_middle_1_joint"/> -->
+    <!-- <position class="g1" name="right_hand_index_0_joint" joint="right_hand_index_0_joint"/> -->
+    <!-- <position class="g1" name="right_hand_index_1_joint" joint="right_hand_index_1_joint"/> -->
+  </actuator>
+
+  <sensor>
+    <gyro name="imu-torso-angular-velocity" site="imu_in_torso" noise="5e-4" cutoff="34.9"/>
+    <accelerometer name="imu-torso-linear-acceleration" site="imu_in_torso" noise="1e-2" cutoff="157"/>
+    <gyro name="imu-pelvis-angular-velocity" site="imu_in_pelvis" noise="5e-4" cutoff="34.9"/>
+    <accelerometer name="imu-pelvis-linear-acceleration" site="imu_in_pelvis" noise="1e-2" cutoff="157"/>
+  </sensor>
+
+  <equality>
+    <!-- left gripper -->
+    <joint joint1="left_hand_middle_0_joint" joint2="left_hand_thumb_1_joint"
+           polycoef="-0.5 -1.5 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="left_hand_middle_0_joint" joint2="left_hand_thumb_2_joint"
+           polycoef="0 -1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="left_hand_middle_0_joint" joint2="left_hand_middle_1_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="left_hand_middle_0_joint" joint2="left_hand_index_0_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="left_hand_middle_0_joint" joint2="left_hand_index_1_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <!-- right gripper -->
+    <joint joint1="right_hand_middle_0_joint" joint2="right_hand_thumb_1_joint"
+           polycoef="0.5 -1.5 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="right_hand_middle_0_joint" joint2="right_hand_thumb_2_joint"
+           polycoef="0 -1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="right_hand_middle_0_joint" joint2="right_hand_middle_1_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="right_hand_middle_0_joint" joint2="right_hand_index_0_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    <joint joint1="right_hand_middle_0_joint" joint2="right_hand_index_1_joint"
+           polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+  </equality>
+</mujoco>

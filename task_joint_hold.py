@@ -11,6 +11,7 @@ from mani_skill.utils.registration import register_env
 from my_xarm7 import Xarm7
 import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
+from scenebuilders.xarm7_joint_hold_scene_builder import Xarm7JointHoldSceneBuilder
 
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
@@ -37,7 +38,7 @@ class MyJointHoldEnv(BaseEnv):
         )
 
     def _load_scene(self, options: dict):
-        self.table_scene = Xarm7TableSceneBuilder(env=self)
+        self.table_scene: Xarm7TableSceneBuilder = Xarm7JointHoldSceneBuilder(env=self)
         self.table_scene.build()
 
     def _clear(self):
@@ -63,6 +64,8 @@ class MyJointHoldEnv(BaseEnv):
                 target = torch.as_tensor(target_override, dtype=torch.float32, device=self.device)
             elif self._configured_target_qpos is not None:
                 target = torch.tensor(self._configured_target_qpos, dtype=torch.float32, device=self.device)
+            elif hasattr(self.table_scene, "initial_qpos") and self.table_scene.initial_qpos is not None:
+                target = self.table_scene.initial_qpos.to(self.device).clone()
             else:
                 home_keyframe = self.agent.keyframes.get("home")
                 if home_keyframe is not None and home_keyframe.qpos is not None:
