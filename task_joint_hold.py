@@ -13,6 +13,25 @@ import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 from scenebuilders.xarm7_joint_hold_scene_builder import Xarm7JointHoldSceneBuilder
 
+HOME_TARGET_QPOS = torch.tensor(
+    [
+        0.0,
+        0.0,
+        0.0,
+        1.0471976,
+        0.0,
+        1.0471976,
+        -1.5707964,
+        0.85,
+        0.85,
+        0.85,
+        0.85,
+        0.85,
+        0.85,
+    ],
+    dtype=torch.float32,
+)
+
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7", "my_xarm7_mjcf"]
@@ -64,14 +83,8 @@ class MyJointHoldEnv(BaseEnv):
                 target = torch.as_tensor(target_override, dtype=torch.float32, device=self.device)
             elif self._configured_target_qpos is not None:
                 target = torch.tensor(self._configured_target_qpos, dtype=torch.float32, device=self.device)
-            elif hasattr(self.table_scene, "initial_qpos") and self.table_scene.initial_qpos is not None:
-                target = self.table_scene.initial_qpos.to(self.device).clone()
             else:
-                home_keyframe = self.agent.keyframes.get("home")
-                if home_keyframe is not None and home_keyframe.qpos is not None:
-                    target = torch.as_tensor(home_keyframe.qpos, dtype=torch.float32, device=self.device)
-                else:
-                    target = self.agent.robot.get_qpos().to(self.device)
+                target = HOME_TARGET_QPOS.to(self.device)
 
             if target.ndim == 1:
                 target = target.unsqueeze(0)
