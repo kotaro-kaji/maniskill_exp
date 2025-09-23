@@ -104,9 +104,10 @@ class MyJointHoldEnv(BaseEnv):
         }
 
     def _get_obs_extra(self, info: Dict):
-        obs = dict(joint_pos=self.agent.robot.get_qpos())
+        current_qpos = self._get_current_qpos()
+        obs = dict(joint_pos=current_qpos)
         if hasattr(self, "target_qpos"):
-            obs.update(target_qpos=self.target_qpos)
+            obs.update(target_qpos=self._get_aligned_target_qpos(current_qpos.shape[0]))
         return obs
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
