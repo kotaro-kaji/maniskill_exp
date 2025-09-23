@@ -125,6 +125,9 @@ class Xarm7(BaseAgent):
     
     @property
     def _controller_configs(self):
+
+
+        #以下のように制限を設けましたが、controllerの制限ではあまり意味がなく、実質的にはURDFの関節角度制限のほうがずっと支配的です。reset条件に、関節角度のはみ出しを設けたり、URDFそのものを書き換えるほうがずっと現実的だと思います。
         arm_joint_lower = np.array(
         [
             -2 * np.pi,
