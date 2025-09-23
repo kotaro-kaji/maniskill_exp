@@ -13,7 +13,7 @@ from mani_skill.utils.structs.types import Array
 
 from my_xarm7 import Xarm7
 import my_xarm7_mjcf
-from xarm7_table_scene_builder import Xarm7TableSceneBuilder
+from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 
 
 @register_env("MySimpleReach-v0", max_episode_steps=50)
