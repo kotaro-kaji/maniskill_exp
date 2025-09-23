@@ -122,13 +122,39 @@ class Xarm7(BaseAgent):
     def tcp_pos(self):
         return self.tcp_pose.p
 
+    
     @property
     def _controller_configs(self):
+        arm_joint_lower = np.array(
+        [
+            -2 * np.pi,
+            np.deg2rad(-118),
+            -2 * np.pi,
+            np.deg2rad(-11),
+            -2 * np.pi,
+            np.deg2rad(-97),
+            -2 * np.pi,
+        ],
+        dtype=np.float32,
+        )
+        arm_joint_upper = np.array(
+            [
+                2 * np.pi,
+                np.deg2rad(120),
+                2 * np.pi,
+                np.deg2rad(225),
+                2 * np.pi,
+                np.pi,
+                2 * np.pi,
+            ],
+            dtype=np.float32,
+        )
+
         # Arm controllers
         arm_pd_joint_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            None,
-            None,
+            arm_joint_lower,
+            arm_joint_upper,
             self.arm_stiffness,
             self.arm_damping,
             self.arm_force_limit,
