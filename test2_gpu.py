@@ -1,14 +1,15 @@
 import gymnasium as gym
 import mani_skill.envs  # registers built-in envs
 import my_xarm7  # registers your custom robot
-import task_pushcube  # registers MyPushCube-v1 from your file
+import task_pushcube_beatiful  # registers MyPushCube-v1 from your file
 import my_xarm7_mjcf
+import task_joint_hold
 import numpy as np
 
 
 def main():
     env = gym.make(
-        "MyPushCube-v1",
+        "MyJointHold-v0",
         obs_mode="state",
         control_mode="pd_joint_delta_pos",
         robot_uids="my_xarm7",
