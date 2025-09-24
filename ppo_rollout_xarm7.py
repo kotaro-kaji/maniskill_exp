@@ -154,8 +154,13 @@ def run_rollout(args: RolloutArgs) -> None:
     normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
 
     controller = eval_envs.base_env.agent.controller
-    physical_low = controller.action_space_low.to(device)
-    physical_high = controller.action_space_high.to(device)
+    has_physical_bounds = hasattr(controller, "action_space_low")
+    if has_physical_bounds:
+        physical_low = controller.action_space_low.to(device)
+        physical_high = controller.action_space_high.to(device)
+    else:
+        physical_low = normalized_low
+        physical_high = normalized_high
 
     metrics = defaultdict(list)
     for step in range(args.num_eval_steps):
@@ -164,9 +169,12 @@ def run_rollout(args: RolloutArgs) -> None:
         if args.print_actions:
             print(f"step={step} action={action.detach().cpu().numpy()}")
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
-        physical_action = gym_utils.clip_and_scale_action(
-            clipped_action, physical_low, physical_high
-        )
+        if has_physical_bounds:
+            physical_action = gym_utils.clip_and_scale_action(
+                clipped_action, physical_low, physical_high
+            )
+        else:
+            physical_action = clipped_action
         obs_cpu = obs.detach().cpu()
         action_cpu = action.detach().cpu()
         clipped_cpu = clipped_action.detach().cpu()
