@@ -225,11 +225,13 @@ def run_rollout(args: RolloutArgs) -> None:
         print("No completed episodes during rollout.")
 
 
-if __name__ == "__main__":
-    run_rollout(tyro.cli(RolloutArgs))
 def gripper_q_maniskill_to_robomanip(q_maniskill: torch.Tensor) -> torch.Tensor:
     return q_maniskill * (-1000.0) + 840.0
 
 
 def gripper_q_robomanip_to_maniskill(q_robomanip: torch.Tensor) -> torch.Tensor:
     return (q_robomanip - 840.0) / (-1000.0)
+
+if __name__ == "__main__":
+    run_rollout(tyro.cli(RolloutArgs))
+
