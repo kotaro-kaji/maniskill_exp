@@ -175,6 +175,10 @@ def run_rollout(args: RolloutArgs) -> None:
             )
         else:
             physical_action = clipped_action
+
+        if physical_action.shape[-1] > 0:
+            gripper_q = physical_action[..., -1]
+            physical_action[..., -1] = gripper_q_maniskill_to_robomanip(gripper_q)
         obs_cpu = obs.detach().cpu()
         action_cpu = action.detach().cpu()
         clipped_cpu = clipped_action.detach().cpu()
@@ -221,3 +225,9 @@ def run_rollout(args: RolloutArgs) -> None:
 
 if __name__ == "__main__":
     run_rollout(tyro.cli(RolloutArgs))
+def gripper_q_maniskill_to_robomanip(q_maniskill: torch.Tensor) -> torch.Tensor:
+    return q_maniskill * (-1000.0) + 840.0
+
+
+def gripper_q_robomanip_to_maniskill(q_robomanip: torch.Tensor) -> torch.Tensor:
+    return (q_robomanip - 840.0) / (-1000.0)
