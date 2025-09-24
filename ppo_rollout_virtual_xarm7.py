@@ -40,31 +40,31 @@ PRINT_JSON = False
 CONVERT_GRIPPER = True
 MAX_ROWS = None  # set to an int to process fewer rows
 
-# Action-space bounds (pd_joint_pos controller for my_xarm7).
+# Physical delta bounds (pd_joint_delta_pos controller for my_xarm7).
 # Order: joint1, joint2, joint3, joint4, joint5, joint6, joint7, drive_joint
-_ACTION_LOW = torch.tensor(
+_DELTA_PHYSICAL_LOW = torch.tensor(
     [
-        -6.2831853,
-        -2.059,
-        -6.2831853,
-        -0.19198,
-        -6.2831853,
-        -1.69297,
-        -6.2831853,
-        0.05,
+        -0.1,
+        -0.1,
+        -0.1,
+        -0.1,
+        -0.1,
+        -0.1,
+        -0.1,
+        -0.1,
     ],
     dtype=torch.float32,
 )
-_ACTION_HIGH = torch.tensor(
+_DELTA_PHYSICAL_HIGH = torch.tensor(
     [
-        6.2831853,
-        2.0944,
-        6.2831853,
-        3.927,
-        6.2831853,
-        3.1415927,
-        6.2831853,
-        0.84,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
     ],
     dtype=torch.float32,
 )
@@ -72,9 +72,6 @@ _ACTION_HIGH = torch.tensor(
 
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() and USE_CUDA else "cpu")
-    normalized_low = _ACTION_LOW.to(device)
-    normalized_high = _ACTION_HIGH.to(device)
-
     # Read CSV rows and parse observations
     observations: List[List[float]] = []
 
@@ -106,10 +103,15 @@ def main() -> None:
     agent.load_state_dict(state_dict)
     agent.eval()
 
-    if action_dim != len(_ACTION_LOW):
+    normalized_low = torch.full((action_dim,), -1.0, device=device)
+    normalized_high = torch.full((action_dim,), 1.0, device=device)
+
+    if action_dim != len(_DELTA_PHYSICAL_LOW):
         raise ValueError(
-            f"Checkpoint action dim {action_dim} does not match hard-coded bounds {len(_ACTION_LOW)}"
+            f"Checkpoint action dim {action_dim} does not match hard-coded bounds {len(_DELTA_PHYSICAL_LOW)}"
         )
+    physical_low = _DELTA_PHYSICAL_LOW.to(device)
+    physical_high = _DELTA_PHYSICAL_HIGH.to(device)
 
     for step_idx, obs_values in enumerate(observations):
         obs_tensor = torch.tensor(obs_values, dtype=torch.float32, device=device).unsqueeze(0)
@@ -117,29 +119,27 @@ def main() -> None:
             action = agent.get_action(obs_tensor, deterministic=DETERMINISTIC_POLICY)
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
 
-        physical_action = clipped_action.clone()
+        # Map normalized delta action back to physical delta range and recover absolute joint targets.
+        scale = (clipped_action - normalized_low) / (normalized_high - normalized_low)
+        denormalized_delta = physical_low + scale * (physical_high - physical_low)
+        current_joint_pos = obs_tensor[..., : action_dim]
+        direct_joint_command = current_joint_pos + denormalized_delta
 
-        if CONVERT_GRIPPER and physical_action.shape[-1] > 0:
-            gripper_q = physical_action[..., -1]
-            physical_action = physical_action.clone()
-            physical_action[..., -1] = gripper_q_maniskill_to_robomanip(gripper_q)
+        if CONVERT_GRIPPER and direct_joint_command.shape[-1] > 0:
+            gripper_q = direct_joint_command[..., -1]
+            direct_joint_command = direct_joint_command.clone()
+            direct_joint_command[..., -1] = gripper_q_maniskill_to_robomanip(gripper_q)
 
-        action_np = action.squeeze(0).cpu().numpy().tolist()
-        clipped_np = clipped_action.squeeze(0).cpu().numpy().tolist()
-        physical_np = physical_action.squeeze(0).cpu().numpy().tolist()
+        direct_joint_np = direct_joint_command.squeeze(0).cpu().numpy().tolist()
 
         if PRINT_JSON:
             payload = {
                 "step": step_idx,
-                "action": action_np,
-                "clipped_action": clipped_np,
-                "physical_action": physical_np,
+                "direct_joint_command": direct_joint_np,
             }
             print(json.dumps(payload))
         else:
-            print(
-                f"step={step_idx} action={action_np} clipped_action={clipped_np} physical_action={physical_np}"
-            )
+            print(f"step={step_idx} direct_joint_command={direct_joint_np}")
 
 
 if __name__ == "__main__":
