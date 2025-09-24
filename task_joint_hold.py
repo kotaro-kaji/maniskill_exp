@@ -32,6 +32,9 @@ HOME_TARGET_QPOS = torch.tensor(
     dtype=torch.float32,
 )
 
+VELOCITY_PENALTY_THRESHOLD = 0.05
+VELOCITY_PENALTY_SCALE = 20.0
+
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7_over", "my_xarm7_mjcf"]
@@ -106,6 +109,12 @@ class MyJointHoldEnv(BaseEnv):
             qpos = qpos.unsqueeze(0)
         return qpos
 
+    def _get_current_qvel(self) -> torch.Tensor:
+        qvel = self.agent.robot.get_qvel()
+        if qvel.ndim == 1:
+            qvel = qvel.unsqueeze(0)
+        return qvel
+
     def evaluate(self):
         current_qpos = self._get_current_qpos()
         target_qpos = self._get_aligned_target_qpos(len(current_qpos))
@@ -139,6 +148,18 @@ class MyJointHoldEnv(BaseEnv):
         reward = holding_reward
         if "success" in info:
             reward = reward + info["success"].to(reward.dtype)
+
+        if hasattr(self.agent, "_obs_joint_indices"):
+            qvel = self._get_current_qvel()
+            idx = self.agent._obs_joint_indices.to(device=qvel.device, dtype=torch.long)
+            dim = qvel.dim() - 1
+            observed_qvel = qvel.index_select(dim, idx)
+        else:
+            observed_qvel = self._get_current_qvel()
+        speed = torch.linalg.norm(observed_qvel, dim=1)
+        excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
+        velocity_penalty = torch.expm1(excess_speed * VELOCITY_PENALTY_SCALE)
+        reward = reward - velocity_penalty
         return reward
 
     def compute_normalized_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
