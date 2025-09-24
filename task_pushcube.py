@@ -1,7 +1,7 @@
 import sapien
 from mani_skill.utils import sapien_utils, common
 from mani_skill.envs.sapien_env import BaseEnv
-from xarm7_table_scene_builder import Xarm7TableSceneBuilder
+from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 from mani_skill.utils.registration import register_env
 
 from mani_skill.utils.structs.pose import Pose
