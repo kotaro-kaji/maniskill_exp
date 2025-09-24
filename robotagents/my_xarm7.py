@@ -127,8 +127,8 @@ class Xarm7(BaseAgent):
         # Arm controllers
         arm_pd_joint_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            None,
-            None,
+            -0.15,
+            0.15,
             self.arm_stiffness,
             self.arm_damping,
             self.arm_force_limit,
@@ -136,8 +136,8 @@ class Xarm7(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            -0.6,
-            0.6,
+            -0.1,
+            0.1,
             self.arm_stiffness,
             self.arm_damping,
             self.arm_force_limit,
