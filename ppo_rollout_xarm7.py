@@ -176,6 +176,8 @@ def run_rollout(args: RolloutArgs) -> None:
         else:
             physical_action = clipped_action
 
+        physical_action = physical_action.clone()
+
         if physical_action.shape[-1] > 0:
             gripper_q = physical_action[..., -1]
             physical_action[..., -1] = gripper_q_maniskill_to_robomanip(gripper_q)
