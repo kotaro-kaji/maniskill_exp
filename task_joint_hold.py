@@ -32,9 +32,12 @@ HOME_TARGET_QPOS = torch.tensor(
     dtype=torch.float32,
 )
 
-VELOCITY_PENALTY_THRESHOLD = 0.05
-VELOCITY_PENALTY_SCALE = 20.0
-VELOCITY_PENALTY_EXP_MAX = 20.0
+#許容速度
+VELOCITY_PENALTY_THRESHOLD = 0.45
+#超過時のペナルティの鋭さ
+VELOCITY_PENALTY_SCALE = 0.035
+#ペナルティの最大値
+VELOCITY_PENALTY_EXP_MAX = 1.5
 
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
