@@ -13,6 +13,7 @@ import mani_skill.envs  # noqa: F401
 import numpy as np
 import torch
 import tyro
+from mani_skill.utils import gym_utils
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -127,7 +128,14 @@ def run_rollout(args: RolloutArgs) -> None:
     csv_file = open(csv_path, "w", newline="")
     csv_writer = csv.DictWriter(
         csv_file,
-        fieldnames=["step", "env_index", "observation", "action", "clipped_action"],
+        fieldnames=[
+            "step",
+            "env_index",
+            "observation",
+            "action",
+            "clipped_action",
+            "physical_action",
+        ],
     )
     csv_writer.writeheader()
 
@@ -142,8 +150,12 @@ def run_rollout(args: RolloutArgs) -> None:
     obs, _ = eval_envs.reset(seed=args.seed)
     obs = obs.to(device)
 
-    action_low = torch.from_numpy(eval_envs.single_action_space.low).to(device)
-    action_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
+    normalized_low = torch.from_numpy(eval_envs.single_action_space.low).to(device)
+    normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
+
+    controller = eval_envs.base_env.agent.controller
+    physical_low = controller.action_space_low.to(device)
+    physical_high = controller.action_space_high.to(device)
 
     metrics = defaultdict(list)
     for step in range(args.num_eval_steps):
@@ -151,10 +163,14 @@ def run_rollout(args: RolloutArgs) -> None:
             action = agent.get_action(obs, deterministic=args.deterministic_policy)
         if args.print_actions:
             print(f"step={step} action={action.detach().cpu().numpy()}")
-        clipped_action = torch.clamp(action, action_low, action_high)
+        clipped_action = torch.clamp(action, normalized_low, normalized_high)
+        physical_action = gym_utils.clip_and_scale_action(
+            clipped_action, physical_low, physical_high
+        )
         obs_cpu = obs.detach().cpu()
         action_cpu = action.detach().cpu()
         clipped_cpu = clipped_action.detach().cpu()
+        physical_cpu = physical_action.detach().cpu()
         for env_index in range(args.num_eval_envs):
             csv_writer.writerow(
                 {
@@ -163,6 +179,9 @@ def run_rollout(args: RolloutArgs) -> None:
                     "observation": json.dumps(obs_cpu[env_index].tolist()),
                     "action": json.dumps(action_cpu[env_index].tolist()),
                     "clipped_action": json.dumps(clipped_cpu[env_index].tolist()),
+                    "physical_action": json.dumps(
+                        physical_cpu[env_index].tolist()
+                    ),
                 }
             )
         obs, reward, terminations, truncations, info = eval_envs.step(clipped_action)
