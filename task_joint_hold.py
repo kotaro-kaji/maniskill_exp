@@ -34,6 +34,7 @@ HOME_TARGET_QPOS = torch.tensor(
 
 VELOCITY_PENALTY_THRESHOLD = 0.05
 VELOCITY_PENALTY_SCALE = 20.0
+VELOCITY_PENALTY_EXP_MAX = 20.0
 
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
@@ -158,7 +159,10 @@ class MyJointHoldEnv(BaseEnv):
             observed_qvel = self._get_current_qvel()
         speed = torch.linalg.norm(observed_qvel, dim=1)
         excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
-        velocity_penalty = torch.expm1(excess_speed * VELOCITY_PENALTY_SCALE)
+        exponent = torch.clamp(
+            excess_speed * VELOCITY_PENALTY_SCALE, max=VELOCITY_PENALTY_EXP_MAX
+        )
+        velocity_penalty = torch.expm1(exponent)
         reward = reward - velocity_penalty
         return reward
 
