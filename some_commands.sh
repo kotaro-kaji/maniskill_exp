@@ -64,3 +64,7 @@ python ppo_xarm7_mjcf.py --env_id MyPushCube-v1 --seed 42 --num_envs 1024 --num-
 python ppo_rollout_xarm7.py --env_id MySimpleReach-v0 --checkpoint runs/MySimpleReach-v0__ppo_xarm7__1__1758253720/ckpt_226.pt
 python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758616214/ckpt_51.pt
 python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_pos --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758686002/ckpt_51.pt 
+
+
+#仮想的なrolloutのみ
+python ppo_rollout_virtual_xarm7.py --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758689027/ckpt_76.pt --control-mode pd_joint_pos
