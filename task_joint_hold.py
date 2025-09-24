@@ -8,7 +8,7 @@ from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.registration import register_env
 
-from my_xarm7 import Xarm7
+from my_xarm7_over import Xarm7ReducedProprio
 import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 from scenebuilders.xarm7_joint_hold_scene_builder import Xarm7JointHoldSceneBuilder
@@ -34,11 +34,11 @@ HOME_TARGET_QPOS = torch.tensor(
 
 @register_env("MyJointHold-v0", max_episode_steps=50)
 class MyJointHoldEnv(BaseEnv):
-    SUPPORTED_ROBOTS = ["my_xarm7", "my_xarm7_mjcf"]
-    agent: Xarm7
+    SUPPORTED_ROBOTS = ["my_xarm7_over", "my_xarm7_mjcf"]
+    agent: Xarm7ReducedProprio
     joint_tolerance = 0.05
 
-    def __init__(self, *args, robot_uids="my_xarm7", target_qpos=None, **kwargs):
+    def __init__(self, *args, robot_uids="my_xarm7_over", target_qpos=None, **kwargs):
         if target_qpos is None:
             self._configured_target_qpos = None
         else:
@@ -118,9 +118,15 @@ class MyJointHoldEnv(BaseEnv):
 
     def _get_obs_extra(self, info: Dict):
         current_qpos = self._get_current_qpos()
-        obs = dict(joint_pos=current_qpos)
+        obs: Dict[str, torch.Tensor] = dict()
         if hasattr(self, "target_qpos"):
-            obs.update(target_qpos=self._get_aligned_target_qpos(current_qpos.shape[0]))
+            target_qpos = self._get_aligned_target_qpos(current_qpos.shape[0])
+            obs_indices = getattr(self.agent, "_obs_joint_indices", None)
+            if obs_indices is not None:
+                index_tensor = obs_indices.to(device=target_qpos.device, dtype=torch.long)
+                dim = target_qpos.dim() - 1
+                target_qpos = target_qpos.index_select(dim, index_tensor)
+            obs["target_qpos"] = target_qpos
         return obs
 
     reward_length_scale = 1.0
