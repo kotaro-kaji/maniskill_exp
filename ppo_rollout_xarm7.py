@@ -134,7 +134,7 @@ def run_rollout(args: RolloutArgs) -> None:
             "observation",
             "action",
             "clipped_action",
-            "physical_action",
+            "direct_joint_command",
         ],
     )
     csv_writer.writeheader()
@@ -170,21 +170,25 @@ def run_rollout(args: RolloutArgs) -> None:
             print(f"step={step} action={action.detach().cpu().numpy()}")
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
         if has_physical_bounds:
-            physical_action = gym_utils.clip_and_scale_action(
+            denormalized_delta = gym_utils.clip_and_scale_action(
                 clipped_action, physical_low, physical_high
             )
         else:
-            physical_action = clipped_action
+            denormalized_delta = clipped_action
 
-        physical_action = physical_action.clone()
+        # The first 8 entries of the observation correspond to joint angles.
+        current_joint_pos = obs[..., : denormalized_delta.shape[-1]]
+        direct_joint_command = current_joint_pos + denormalized_delta
 
-        if physical_action.shape[-1] > 0:
-            gripper_q = physical_action[..., -1]
-            physical_action[..., -1] = gripper_q_maniskill_to_robomanip(gripper_q)
+        direct_joint_command = direct_joint_command.clone()
+
+        if direct_joint_command.shape[-1] > 0:
+            gripper_q = direct_joint_command[..., -1]
+            direct_joint_command[..., -1] = gripper_q_maniskill_to_robomanip(gripper_q)
         obs_cpu = obs.detach().cpu()
         action_cpu = action.detach().cpu()
         clipped_cpu = clipped_action.detach().cpu()
-        physical_cpu = physical_action.detach().cpu()
+        direct_joint_command_cpu = direct_joint_command.detach().cpu()
         for env_index in range(args.num_eval_envs):
             csv_writer.writerow(
                 {
@@ -193,8 +197,8 @@ def run_rollout(args: RolloutArgs) -> None:
                     "observation": json.dumps(obs_cpu[env_index].tolist()),
                     "action": json.dumps(action_cpu[env_index].tolist()),
                     "clipped_action": json.dumps(clipped_cpu[env_index].tolist()),
-                    "physical_action": json.dumps(
-                        physical_cpu[env_index].tolist()
+                    "direct_joint_command": json.dumps(
+                        direct_joint_command_cpu[env_index].tolist()
                     ),
                 }
             )
@@ -234,4 +238,3 @@ def gripper_q_robomanip_to_maniskill(q_robomanip: torch.Tensor) -> torch.Tensor:
 
 if __name__ == "__main__":
     run_rollout(tyro.cli(RolloutArgs))
-
