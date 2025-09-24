@@ -74,8 +74,6 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() and USE_CUDA else "cpu")
     normalized_low = _ACTION_LOW.to(device)
     normalized_high = _ACTION_HIGH.to(device)
-    physical_low = _ACTION_LOW.to(device)
-    physical_high = _ACTION_HIGH.to(device)
 
     # Read CSV rows and parse observations
     observations: List[List[float]] = []
@@ -119,9 +117,7 @@ def main() -> None:
             action = agent.get_action(obs_tensor, deterministic=DETERMINISTIC_POLICY)
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
 
-        center = 0.5 * (physical_high + physical_low)
-        half_range = 0.5 * (physical_high - physical_low)
-        physical_action = center + half_range * clipped_action
+        physical_action = clipped_action.clone()
 
         if CONVERT_GRIPPER and physical_action.shape[-1] > 0:
             gripper_q = physical_action[..., -1]
