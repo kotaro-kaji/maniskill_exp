@@ -194,6 +194,13 @@ def run_rollout(args: RolloutArgs) -> None:
         physical_low = normalized_low
         physical_high = normalized_high
 
+    print(
+        "physical_low=",
+        physical_low.detach().cpu().tolist(),
+        "physical_high=",
+        physical_high.detach().cpu().tolist(),
+    )
+
     metrics = defaultdict(list)
     for step in range(args.num_eval_steps):
         with torch.no_grad():
