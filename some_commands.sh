@@ -55,16 +55,11 @@ python ppo_xarm7.py --env_id="MyJointHold-v0" \
   --total_timesteps=25_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 
 
 
-# 長時間の学習
-python ppo_xarm7_mjcf.py --env_id MyPushCube-v1 --seed 42 --num_envs 1024 --num-steps 8 --update_epochs 8 --num_minibatches 32 --total_timesteps 50_000_000 --num_eval_envs 16 --control-mode pd_joint_delta_pos --exp-name "ppo-MyPushCube-v1-xarm7-42"
-
-
-
 #rolloutのみ
 python ppo_rollout_xarm7.py --env_id MySimpleReach-v0 --checkpoint runs/MySimpleReach-v0__ppo_xarm7__1__1758253720/ckpt_226.pt
 python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758616214/ckpt_51.pt
-python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_pos --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758686002/ckpt_51.pt 
+python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_delta_pos --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758774351/ckpt_26.pt
 
 
 #仮想的なrolloutのみ
-python ppo_rollout_virtual_xarm7.py --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758689027/ckpt_76.pt --control-mode pd_joint_pos
+python ppo_rollout_virtual_xarm7.py --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758689027/ckpt_76.pt --control-mode pd_joint_delta_pos
