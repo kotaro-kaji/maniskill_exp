@@ -182,6 +182,18 @@ def run_rollout(args: RolloutArgs) -> None:
     normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
 
     controller = eval_envs.base_env.agent.controller
+    arm_controller = controller.controllers.get("arm") if hasattr(controller, "controllers") else None
+    if arm_controller is not None:
+        print(
+            "arm config lower/upper:",
+            getattr(arm_controller.config, "lower", None),
+            getattr(arm_controller.config, "upper", None),
+        )
+        orig_space = getattr(arm_controller, "_original_single_action_space", None)
+        if orig_space is not None:
+            print("arm _original_single_action_space.low:", orig_space.low)
+            print("arm _original_single_action_space.high:", orig_space.high)
+
     physical_low, physical_high = _get_physical_bounds(controller)
     if physical_low is not None and physical_high is not None:
         physical_low = torch.as_tensor(
