@@ -18,6 +18,34 @@ from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
+def _get_physical_bounds(controller) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """Extract physical action bounds for a (possibly composite) controller."""
+
+    if hasattr(controller, "action_space_low") and hasattr(controller, "action_space_high"):
+        return controller.action_space_low, controller.action_space_high
+
+    if hasattr(controller, "controllers"):
+        lows = []
+        highs = []
+        for sub in controller.controllers.values():
+            sub_low, sub_high = _get_physical_bounds(sub)
+            if sub_low is None or sub_high is None:
+                return None, None
+            lows.append(sub_low)
+            highs.append(sub_high)
+        if lows and highs:
+            return torch.cat([torch.as_tensor(low) for low in lows], dim=-1), torch.cat(
+                [torch.as_tensor(high) for high in highs], dim=-1
+            )
+
+    # Fall back to the controller's (un-normalized) action space.
+    space = getattr(controller, "_original_single_action_space", None)
+    if space is None:
+        space = getattr(controller, "single_action_space", None)
+    if isinstance(space, gym.spaces.Box):
+        return torch.as_tensor(space.low), torch.as_tensor(space.high)
+
+    return None, None
 from ppo_xarm7 import Agent
 from task_joint_hold import MyJointHoldEnv
 
@@ -154,10 +182,14 @@ def run_rollout(args: RolloutArgs) -> None:
     normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
 
     controller = eval_envs.base_env.agent.controller
-    has_physical_bounds = hasattr(controller, "action_space_low")
-    if has_physical_bounds:
-        physical_low = controller.action_space_low.to(device)
-        physical_high = controller.action_space_high.to(device)
+    physical_low, physical_high = _get_physical_bounds(controller)
+    if physical_low is not None and physical_high is not None:
+        physical_low = torch.as_tensor(
+            physical_low, device=device, dtype=normalized_low.dtype
+        )
+        physical_high = torch.as_tensor(
+            physical_high, device=device, dtype=normalized_high.dtype
+        )
     else:
         physical_low = normalized_low
         physical_high = normalized_high
@@ -169,12 +201,9 @@ def run_rollout(args: RolloutArgs) -> None:
         if args.print_actions:
             print(f"step={step} action={action.detach().cpu().numpy()}")
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
-        if has_physical_bounds:
-            denormalized_delta = gym_utils.clip_and_scale_action(
-                clipped_action, physical_low, physical_high
-            )
-        else:
-            denormalized_delta = clipped_action
+        denormalized_delta = gym_utils.clip_and_scale_action(
+            clipped_action, physical_low, physical_high
+        )
 
         # The first 8 entries of the observation correspond to joint angles.
         current_joint_pos = obs[..., : denormalized_delta.shape[-1]]
