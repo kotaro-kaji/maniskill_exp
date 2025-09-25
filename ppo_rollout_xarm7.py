@@ -181,37 +181,10 @@ def run_rollout(args: RolloutArgs) -> None:
     normalized_low = torch.from_numpy(eval_envs.single_action_space.low).to(device)
     normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
 
-    controller = eval_envs.base_env.agent.controller
-    arm_controller = controller.controllers.get("arm") if hasattr(controller, "controllers") else None
-    if arm_controller is not None:
-        print(
-            "arm config lower/upper:",
-            getattr(arm_controller.config, "lower", None),
-            getattr(arm_controller.config, "upper", None),
-        )
-        orig_space = getattr(arm_controller, "_original_single_action_space", None)
-        if orig_space is not None:
-            print("arm _original_single_action_space.low:", orig_space.low)
-            print("arm _original_single_action_space.high:", orig_space.high)
-
-    physical_low, physical_high = _get_physical_bounds(controller)
-    if physical_low is not None and physical_high is not None:
-        physical_low = torch.as_tensor(
-            physical_low, device=device, dtype=normalized_low.dtype
-        )
-        physical_high = torch.as_tensor(
-            physical_high, device=device, dtype=normalized_high.dtype
-        )
-    else:
-        physical_low = normalized_low
-        physical_high = normalized_high
-
-    print(
-        "physical_low=",
-        physical_low.detach().cpu().tolist(),
-        "physical_high=",
-        physical_high.detach().cpu().tolist(),
-    )
+    # Use fixed delta bounds for all joints (7 arm DOFs + 1 gripper DOF).
+    delta_limit = 0.1
+    physical_low = torch.full_like(normalized_low, -delta_limit)
+    physical_high = torch.full_like(normalized_high, delta_limit)
 
     metrics = defaultdict(list)
     for step in range(args.num_eval_steps):
