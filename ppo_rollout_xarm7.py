@@ -18,6 +18,7 @@ from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
+#　どこにも使われていない、99%削除していい関数。
 def _get_physical_bounds(controller) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
     """Extract physical action bounds for a (possibly composite) controller."""
 
@@ -48,6 +49,39 @@ def _get_physical_bounds(controller) -> tuple[Optional[torch.Tensor], Optional[t
     return None, None
 from ppo_xarm7 import Agent
 from task_joint_hold import MyJointHoldEnv
+
+# Absolute joint limits for the 7 arm joints plus the gripper drive joint. Arm
+# limits come from the URDF (mirroring the values ManiSkill loads), while the
+# gripper bounds follow the URDF drive joint range (0.05–0.84 rad). The mimic
+# joints inherit the drive joint limit through the controller, so only the
+# single drive DOF needs to be included here.
+JOINT_POSITION_LOW = torch.tensor(
+    [
+        -6.283185307179586,  # joint1
+        -2.059,  # joint2
+        -6.283185307179586,  # joint3
+        -0.19198,  # joint4
+        -6.283185307179586,  # joint5
+        -1.69297,  # joint6
+        -6.283185307179586,  # joint7
+        0.05,  # drive_joint (gripper)
+    ],
+    dtype=torch.float32,
+)
+
+JOINT_POSITION_HIGH = torch.tensor(
+    [
+        6.283185307179586,  # joint1
+        2.0944,  # joint2
+        6.283185307179586,  # joint3
+        3.927,  # joint4
+        6.283185307179586,  # joint5
+        3.141592653589793,  # joint6
+        6.283185307179586,  # joint7
+        0.84,  # drive_joint (gripper)
+    ],
+    dtype=torch.float32,
+)
 
 CSV_LOG_FILENAME = "rollout_log.csv"
 INFO_LOG_FILENAME = "rollout_info.jsonl"
@@ -186,6 +220,9 @@ def run_rollout(args: RolloutArgs) -> None:
     physical_low = torch.full_like(normalized_low, -delta_limit)
     physical_high = torch.full_like(normalized_high, delta_limit)
 
+    joint_position_low = JOINT_POSITION_LOW.to(device=device, dtype=obs.dtype)
+    joint_position_high = JOINT_POSITION_HIGH.to(device=device, dtype=obs.dtype)
+
     metrics = defaultdict(list)
     for step in range(args.num_eval_steps):
         with torch.no_grad():
@@ -201,7 +238,9 @@ def run_rollout(args: RolloutArgs) -> None:
         current_joint_pos = obs[..., : denormalized_delta.shape[-1]]
         direct_joint_command = current_joint_pos + denormalized_delta
 
-        direct_joint_command = direct_joint_command.clone()
+        direct_joint_command = torch.max(
+            torch.min(direct_joint_command, joint_position_high), joint_position_low
+        ).clone()
 
         if direct_joint_command.shape[-1] > 0:
             gripper_q = direct_joint_command[..., -1]
