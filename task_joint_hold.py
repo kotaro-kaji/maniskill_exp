@@ -8,7 +8,7 @@ from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.registration import register_env
 
-from my_xarm7_over import Xarm7ReducedProprio
+from robotagents.my_xarm7_over import Xarm7ReducedProprio
 import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 from scenebuilders.xarm7_joint_hold_scene_builder import Xarm7JointHoldSceneBuilder
