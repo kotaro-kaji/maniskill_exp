@@ -67,13 +67,13 @@ class Xarm7(BaseAgent):
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 20))
-        self.arm_damping = float(os.getenv("XARM_ARM_KD", 10))
+        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 200))
+        self.arm_damping = float(os.getenv("XARM_ARM_KD", 100))
         self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 100))
         # Gripper (driver + mimics)
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 2))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 1))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.5)) #when it's bigger than 1.0, the robot arm goes out of control.
+        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1.5))
+        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 0.8))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.2)) #when it's bigger than 1.0, the robot arm goes out of control.
 
         super().__init__(*args, **kwargs)
 
@@ -124,11 +124,39 @@ class Xarm7(BaseAgent):
 
     @property
     def _controller_configs(self):
+
+        #以下のように制限を設けましたが、controllerの制限ではあまり意味がなく、実質的にはURDFの関節角度制限のほうがずっと支配的です。reset条件に、関節角度のはみ出しを設けたり、URDFそのものを書き換えるほうがずっと現実的だと思います。
+        arm_joint_lower = np.array(
+        [
+            -2 * np.pi,
+            np.deg2rad(-118),
+            -2 * np.pi,
+            np.deg2rad(-11),
+            -2 * np.pi,
+            np.deg2rad(-97),
+            -2 * np.pi,
+        ],
+        dtype=np.float32,
+        )
+        arm_joint_upper = np.array(
+            [
+                2 * np.pi,
+                np.deg2rad(120),
+                2 * np.pi,
+                np.deg2rad(225),
+                2 * np.pi,
+                np.pi,
+                2 * np.pi,
+            ],
+            dtype=np.float32,
+        )
+
+
         # Arm controllers
         arm_pd_joint_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = None, 
-            upper = None,
+            lower = arm_joint_lower, 
+            upper = arm_joint_upper,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,
