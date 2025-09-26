@@ -11,8 +11,7 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.structs.types import Array
 
-from my_xarm7 import Xarm7
-import my_xarm7_mjcf
+from robotagents.my_xarm7 import Xarm7
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 
 
