@@ -3,7 +3,7 @@ import torch
 from mani_skill.agents.registration import register_agent
 from mani_skill.agents.utils import get_active_joint_indices
 
-from my_xarm7 import Xarm7
+from .my_xarm7 import Xarm7
 
 
 @register_agent()
