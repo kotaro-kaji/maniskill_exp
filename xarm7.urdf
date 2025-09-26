@@ -501,7 +501,7 @@
     <parent link="xarm_gripper_base_link"/>
     <child link="left_outer_knuckle"/>
     <axis xyz="1 0 0"/>
-    <limit effort="50" lower="0.05" upper="0.84" velocity="2"/>
+    <limit effort="50" lower="0" upper="0.85" velocity="2"/>
   </joint>
   <link name="left_finger">
     <inertial>

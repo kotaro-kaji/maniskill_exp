@@ -5,15 +5,10 @@ from typing import List, Optional
 
 import gymnasium as gym
 import mani_skill.envs  # registers built-in envs
-import my_xarm7  # registers custom robot (legacy)
+import robotagents.my_xarm7  # registers custom robot (legacy)
 import my_xarm7_mjcf  # registers my_xarm7_mjcf (baseline)
 # Optional variants for quick A/B testing
-try:
-    import my_xarm7_mjcf_1  # registers my_xarm7_mjcf_1 (safe)
-    import my_xarm7_mjcf_2  # registers my_xarm7_mjcf_2 (balanced)
-    import my_xarm7_mjcf_3  # registers my_xarm7_mjcf_3 (responsive)
-except Exception:
-    pass
+
 import task_pushcube  # registers MyPushCube-v1
 import numpy as np
 
