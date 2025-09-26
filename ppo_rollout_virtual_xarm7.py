@@ -10,6 +10,40 @@ import torch
 from ppo_xarm7 import Agent
 
 
+# Absolute joint limits for the 7 arm joints plus the gripper drive joint.
+# Arm limits mirror the URDF bounds ManiSkill uses, and the drive joint range
+# follows the URDF gripper specification (0.05–0.84 rad). Mimic joints inherit
+# the drive joint's limit through the controller so the single drive DOF is
+# sufficient here.
+JOINT_POSITION_LOW = torch.tensor(
+    [
+        -6.283185307179586,  # joint1
+        -2.059,  # joint2
+        -6.283185307179586,  # joint3
+        -0.19198,  # joint4
+        -6.283185307179586,  # joint5
+        -1.69297,  # joint6
+        -6.283185307179586,  # joint7
+        0.05,  # drive_joint (gripper)
+    ],
+    dtype=torch.float32,
+)
+
+JOINT_POSITION_HIGH = torch.tensor(
+    [
+        6.283185307179586,  # joint1
+        2.0944,  # joint2
+        6.283185307179586,  # joint3
+        3.927,  # joint4
+        6.283185307179586,  # joint5
+        3.141592653589793,  # joint6
+        6.283185307179586,  # joint7
+        0.84,  # drive_joint (gripper)
+    ],
+    dtype=torch.float32,
+)
+
+
 class _DummySpace:
     def __init__(self, shape: Sequence[int]):
         self.shape = tuple(shape)
@@ -112,6 +146,8 @@ def main() -> None:
         )
     physical_low = _DELTA_PHYSICAL_LOW.to(device)
     physical_high = _DELTA_PHYSICAL_HIGH.to(device)
+    joint_position_low = JOINT_POSITION_LOW.to(device=device)
+    joint_position_high = JOINT_POSITION_HIGH.to(device=device)
 
     for step_idx, obs_values in enumerate(observations):
         obs_tensor = torch.tensor(obs_values, dtype=torch.float32, device=device).unsqueeze(0)
@@ -124,6 +160,10 @@ def main() -> None:
         denormalized_delta = physical_low + scale * (physical_high - physical_low)
         current_joint_pos = obs_tensor[..., : action_dim]
         direct_joint_command = current_joint_pos + denormalized_delta
+
+        direct_joint_command = torch.max(
+            torch.min(direct_joint_command, joint_position_high), joint_position_low
+        )
 
         if CONVERT_GRIPPER and direct_joint_command.shape[-1] > 0:
             gripper_q = direct_joint_command[..., -1]
