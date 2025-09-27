@@ -67,8 +67,8 @@ class Xarm7(BaseAgent):
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 200))
-        self.arm_damping = float(os.getenv("XARM_ARM_KD", 100))
+        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 1500))
+        self.arm_damping = float(os.getenv("XARM_ARM_KD", 110))
         self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 100))
         # Gripper (driver + mimics)
         self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1.5))
@@ -164,8 +164,8 @@ class Xarm7(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = -0.1,
-            upper = 0.1,
+            lower = -0.2,
+            upper = 0.2,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,
