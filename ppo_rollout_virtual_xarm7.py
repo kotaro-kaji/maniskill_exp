@@ -69,7 +69,7 @@ def gripper_q_robomanip_to_maniskill(q_robomanip: torch.Tensor) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # Configuration (edit as needed)
 # ---------------------------------------------------------------------------
-CHECKPOINT_PATH = "runs/MyJointHold-v0__ppo_xarm7__1__1758689027/ckpt_76.pt"
+CHECKPOINT_PATH = "runs/MyJointHold-v0__ppo_xarm7__1__1758957634/ckpt_76.pt"
 CSV_PATH = "rollout_log_for_input.csv"
 USE_CUDA = True
 DETERMINISTIC_POLICY = True
