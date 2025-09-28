@@ -17,6 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 # ManiSkill specific imports
 import mani_skill.envs
 from mani_skill.utils import gym_utils
+from mani_skill.utils.structs.types import SimConfig
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -24,6 +25,11 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from task_pushcube_beatiful import MyPushCubeEnv
 from task_joint_hold import MyJointHoldEnv
 import task_simple
+
+
+#デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
+SIM_FREQUENCY_HZ = 250
+CONTROL_FREQUENCY_HZ = 50
 
 
 @dataclass
@@ -201,7 +207,12 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    env_kwargs = dict(obs_mode="state", render_mode="rgb_array", sim_backend=args.sim_backend)
+    env_kwargs = dict(
+        obs_mode="state",
+        render_mode="rgb_array",
+        sim_backend=args.sim_backend,
+        sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
+    )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
