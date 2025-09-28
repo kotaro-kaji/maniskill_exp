@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import statistics
+import sys
 import time
 from typing import List, Sequence
 
@@ -128,8 +129,9 @@ def main() -> None:
 
     obs_dim = len(observations[0])
 
+    checkpoint_path = sys.argv[1] if len(sys.argv) > 1 else CHECKPOINT_PATH
     # Load checkpoint to extract action dimension before constructing agent
-    state_dict = torch.load(CHECKPOINT_PATH, map_location=device)
+    state_dict = torch.load(checkpoint_path, map_location=device)
     if "actor_logstd" not in state_dict:
         raise KeyError("Checkpoint missing 'actor_logstd' parameter")
     action_dim = int(state_dict["actor_logstd"].shape[-1])
