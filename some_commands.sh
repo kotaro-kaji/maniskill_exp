@@ -62,4 +62,4 @@ python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_delt
 
 
 #仮想的なrolloutのみ
-python ppo_rollout_virtual_xarm7.py --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758779077/ckpt_176.pt --control-mode pd_joint_delta_pos
+python ppo_rollout_virtual_xarm7.py --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1758957634/ckpt_76.pt --control-mode pd_joint_delta_pos
