@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import os
+import statistics
+import time
 from typing import List, Sequence
 
 import torch
@@ -149,10 +151,17 @@ def main() -> None:
     joint_position_low = JOINT_POSITION_LOW.to(device=device)
     joint_position_high = JOINT_POSITION_HIGH.to(device=device)
 
+    inference_durations: List[float] = []
     for step_idx, obs_values in enumerate(observations):
         obs_tensor = torch.tensor(obs_values, dtype=torch.float32, device=device).unsqueeze(0)
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        start_time = time.perf_counter()
         with torch.no_grad():
             action = agent.get_action(obs_tensor, deterministic=DETERMINISTIC_POLICY)
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        inference_durations.append(time.perf_counter() - start_time)
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
 
         # Map normalized delta action back to physical delta range and recover absolute joint targets.
@@ -180,6 +189,31 @@ def main() -> None:
             print(json.dumps(payload))
         else:
             print(f"step={step_idx} direct_joint_command={direct_joint_np}")
+
+    if inference_durations:
+        mean_duration = statistics.fmean(inference_durations)
+        if len(inference_durations) >= 2:
+            variance = statistics.pvariance(inference_durations)
+            quartiles = statistics.quantiles(
+                inference_durations, n=4, method="inclusive"
+            )
+        else:
+            variance = 0.0
+            quartiles = [inference_durations[0]] * 3
+        min_duration = min(inference_durations)
+        max_duration = max(inference_durations)
+        median_duration = statistics.median(inference_durations)
+        print(
+            "inference_timing_seconds "
+            f"mean={mean_duration:.6f} "
+            f"variance={variance:.6f} "
+            f"min={min_duration:.6f} "
+            f"max={max_duration:.6f} "
+            f"median={median_duration:.6f} "
+            f"q1={quartiles[0]:.6f} "
+            f"q2={quartiles[1]:.6f} "
+            f"q3={quartiles[2]:.6f}"
+        )
 
 
 if __name__ == "__main__":
