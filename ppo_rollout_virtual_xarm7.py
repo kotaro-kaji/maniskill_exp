@@ -6,7 +6,7 @@ import os
 import statistics
 import sys
 import time
-from typing import List, Sequence
+from typing import Iterable, List, Sequence
 
 import torch
 
@@ -107,6 +107,35 @@ _DELTA_PHYSICAL_HIGH = torch.tensor(
 )
 
 
+def _print_duration_stats(label: str, durations: Iterable[float]) -> None:
+    durations = list(durations)
+    if not durations:
+        return
+
+    mean_duration = statistics.fmean(durations)
+    if len(durations) >= 2:
+        variance = statistics.pvariance(durations)
+        quartiles = statistics.quantiles(durations, n=4, method="inclusive")
+    else:
+        variance = 0.0
+        quartiles = [durations[0]] * 3
+
+    min_duration = min(durations)
+    max_duration = max(durations)
+    median_duration = statistics.median(durations)
+    print(
+        f"{label} "
+        f"mean={mean_duration:.6f} "
+        f"variance={variance:.6f} "
+        f"min={min_duration:.6f} "
+        f"max={max_duration:.6f} "
+        f"median={median_duration:.6f} "
+        f"q1={quartiles[0]:.6f} "
+        f"q2={quartiles[1]:.6f} "
+        f"q3={quartiles[2]:.6f}"
+    )
+
+
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() and USE_CUDA else "cpu")
     # Read CSV rows and parse observations
@@ -154,7 +183,12 @@ def main() -> None:
     joint_position_high = JOINT_POSITION_HIGH.to(device=device)
 
     inference_durations: List[float] = []
+    pipeline_durations: List[float] = []
     for step_idx, obs_values in enumerate(observations):
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        pipeline_start = time.perf_counter()
+
         obs_tensor = torch.tensor(obs_values, dtype=torch.float32, device=device).unsqueeze(0)
         if device.type == "cuda":
             torch.cuda.synchronize(device)
@@ -192,30 +226,12 @@ def main() -> None:
         else:
             print(f"step={step_idx} direct_joint_command={direct_joint_np}")
 
-    if inference_durations:
-        mean_duration = statistics.fmean(inference_durations)
-        if len(inference_durations) >= 2:
-            variance = statistics.pvariance(inference_durations)
-            quartiles = statistics.quantiles(
-                inference_durations, n=4, method="inclusive"
-            )
-        else:
-            variance = 0.0
-            quartiles = [inference_durations[0]] * 3
-        min_duration = min(inference_durations)
-        max_duration = max(inference_durations)
-        median_duration = statistics.median(inference_durations)
-        print(
-            "inference_timing_seconds "
-            f"mean={mean_duration:.6f} "
-            f"variance={variance:.6f} "
-            f"min={min_duration:.6f} "
-            f"max={max_duration:.6f} "
-            f"median={median_duration:.6f} "
-            f"q1={quartiles[0]:.6f} "
-            f"q2={quartiles[1]:.6f} "
-            f"q3={quartiles[2]:.6f}"
-        )
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        pipeline_durations.append(time.perf_counter() - pipeline_start)
+
+    _print_duration_stats("inference_timing_seconds", inference_durations)
+    _print_duration_stats("pipeline_timing_seconds", pipeline_durations)
 
 
 if __name__ == "__main__":
