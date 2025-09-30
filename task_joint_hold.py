@@ -39,7 +39,7 @@ VELOCITY_PENALTY_SCALE = 0.035
 #ペナルティの最大値
 VELOCITY_PENALTY_EXP_MAX = 1.5
 
-@register_env("MyJointHold-v0", max_episode_steps=50)
+@register_env("MyJointHold-v0", max_episode_steps=100)
 class MyJointHoldEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7_over", "my_xarm7_mjcf"]
     agent: Xarm7ReducedProprio
