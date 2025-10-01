@@ -6,7 +6,7 @@ import sapien.render
 from mani_skill.utils.scene_builder.table.scene_builder import TableSceneBuilder
 
 
-PEDESTAL_HEIGHT = 0.036
+PEDESTAL_HEIGHT = 0.085344
 PEDESTAL_HALF_EXTENT_X = 0.09
 ROBOT_BASE_X_OFFSET = -0.615
 
