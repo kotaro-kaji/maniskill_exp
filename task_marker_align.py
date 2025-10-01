@@ -108,6 +108,20 @@ class MyEEAlignMarkerEnv(BaseEnv):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
             marker_pose = self._resolve_marker_pose(len(env_idx), options)
+            if (
+                self._configured_marker_pose is None
+                and (options is None or options.get("marker_pose") is None)
+            ):
+                batch_size = len(env_idx)
+                rand_x = torch.rand((batch_size,), device=self.device) * 0.1 - 0.35
+                rand_y = torch.rand((batch_size,), device=self.device) * 0.1 - 0.05
+                rand_z = torch.full(
+                    (batch_size,),
+                    DEFAULT_MARKER_POSITION[2],
+                    device=self.device,
+                )
+                randomized_positions = torch.stack((rand_x, rand_y, rand_z), dim=-1)
+                marker_pose.p = randomized_positions
             self.marker.set_pose(marker_pose)
 
     def _resolve_marker_pose(self, batch_size: int, options: Optional[dict]) -> Pose:
