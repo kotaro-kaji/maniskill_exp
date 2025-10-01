@@ -1,8 +1,14 @@
 import numpy as np
 import torch
 import sapien
+import sapien.render
 
 from mani_skill.utils.scene_builder.table.scene_builder import TableSceneBuilder
+
+
+PEDESTAL_HEIGHT = 0.036
+PEDESTAL_HALF_EXTENT_X = 0.09
+ROBOT_BASE_X_OFFSET = -0.615
 
 
 class Xarm7TableSceneBuilder(TableSceneBuilder):
@@ -11,6 +17,29 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
     Reuses ManiSkill's TableSceneBuilder for geometry/ground, and only
     customizes the robot initialization for the custom agent uid "my_xarm7".
     """
+
+    def build(self):
+        super().build()
+
+        pedestal_half_size = (
+            PEDESTAL_HALF_EXTENT_X,
+            self.table_width / 2,
+            PEDESTAL_HEIGHT / 2,
+        )
+
+        builder = self.scene.create_actor_builder()
+        builder.add_box_collision(half_size=pedestal_half_size)
+        builder.add_box_visual(
+            half_size=pedestal_half_size,
+            material=sapien.render.RenderMaterial(
+                base_color=[0.75, 0.75, 0.8, 1.0],
+                metallic=0.9,
+                roughness=0.3,
+            ),
+        )
+        builder.initial_pose = sapien.Pose(p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT / 2])
+        self.robot_pedestal = builder.build_static(name="robot_pedestal")
+        self.scene_objects.append(self.robot_pedestal)
 
     def initialize(self, env_idx: torch.Tensor):
         # Let the base class place the table and ground consistently
@@ -32,7 +61,9 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
                 qpos = home_qpos
             # Reset agent state with exact qpos and place base behind the table
             self.env.agent.reset(qpos)
-            self.env.agent.robot.set_pose(sapien.Pose([-0.615, 0, 0]))
+            self.env.agent.robot.set_pose(
+                sapien.Pose([ROBOT_BASE_X_OFFSET, 0, PEDESTAL_HEIGHT])
+            )
         except Exception:
             # If no keyframe is defined, fall back to base behavior
             pass
