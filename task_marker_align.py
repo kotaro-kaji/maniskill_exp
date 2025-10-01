@@ -158,10 +158,21 @@ class MyEEAlignMarkerEnv(BaseEnv):
 
     def _marker_frame_axes(self):
         marker_pose = self._get_marker_pose_on_device()
-        transform = marker_pose.to_transformation_matrix()
-        rotation = transform[..., :3, :3]
-        x_axis = rotation[..., :, 0]
-        y_axis = rotation[..., :, 1]
+        quat = marker_pose.q
+        quat_norm = torch.linalg.norm(quat, dim=-1, keepdim=True)
+        safe_quat = quat / torch.clamp(quat_norm, min=1e-6)
+        if torch.any(torch.lt(quat_norm, 1e-6)):
+            identity = torch.tensor(
+                [1.0, 0.0, 0.0, 0.0],
+                dtype=safe_quat.dtype,
+                device=safe_quat.device,
+            )
+            mask = torch.lt(quat_norm.squeeze(-1), 1e-6)
+            safe_quat[mask] = identity
+        rot_pose = Pose.create_from_pq(q=safe_quat, device=safe_quat.device)
+        rotation_matrix = rot_pose.to_transformation_matrix()[..., :3, :3]
+        x_axis = rotation_matrix[..., :, 0]
+        y_axis = rotation_matrix[..., :, 1]
         normal = F.normalize(torch.cross(x_axis, y_axis, dim=-1), dim=-1, eps=1e-6)
         return marker_pose, x_axis, y_axis, normal
 
