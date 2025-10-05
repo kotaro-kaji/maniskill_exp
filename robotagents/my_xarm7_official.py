@@ -50,14 +50,11 @@ class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
     """Configuration for the SDK-inspired joint delta controller."""
 
     max_joint_speed: Union[float, Sequence[float]] = math.pi  # rad/s cap (≈180°/s)
-    min_joint_speed: Union[float, Sequence[float]] = 1e-4
     max_joint_acc: Union[float, Sequence[float]] = 20.0  # rad/s^2 cap from SDK
     positional_gain: Union[float, Sequence[float]] = 6.0
     integral_gain: Union[float, Sequence[float]] = 0.0
     velocity_damping: Union[float, Sequence[float]] = 1.5
     integral_clamp: Union[float, Sequence[float]] = 0.0
-    error_tolerance: float = math.radians(0.01)
-    velocity_tolerance: float = math.radians(0.02)
     controller_cls = None  # populated after class declaration
 
 
@@ -99,9 +96,6 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._max_speed = _to_tensor_parameter(
             self.config.max_joint_speed, dof, self.device
         )
-        self._min_speed = _to_tensor_parameter(
-            self.config.min_joint_speed, dof, self.device
-        )
         self._max_acc = _to_tensor_parameter(
             self.config.max_joint_acc, dof, self.device
         )
@@ -116,12 +110,6 @@ class XArmSDKJointDeltaController(PDJointPosController):
         )
         self._integral_limit = _to_tensor_parameter(
             self.config.integral_clamp, dof, self.device
-        )
-        self._error_tol = torch.full(
-            (dof,), float(self.config.error_tolerance), device=self.device
-        )
-        self._velocity_tol = torch.full(
-            (dof,), float(self.config.velocity_tolerance), device=self.device
         )
 
         # Action bounds (delta joint limits)
@@ -210,46 +198,7 @@ class XArmSDKJointDeltaController(PDJointPosController):
             self._max_speed,
         )
 
-        abs_vel = self._servo_velocity.abs()
-        close_to_goal = (error.abs() <= self._error_tol) & (
-            abs_vel <= self._velocity_tol
-        )
-        below_min = (abs_vel < self._min_speed) & (~close_to_goal)
-        # Stick to the minimum servo velocity when travelling, stop once both
-        # error and speed are within SDK tolerances.
-        self._servo_velocity = torch.where(
-            close_to_goal,
-            torch.zeros_like(self._servo_velocity),
-            torch.where(
-                below_min,
-                torch.sign(self._servo_velocity) * self._min_speed,
-                self._servo_velocity,
-            ),
-        )
-
         self._servo_target = self._servo_target + self._servo_velocity * dt
-
-        overshoot_pos = (self._servo_velocity > 0) & (
-            self._servo_target >= self._commanded_target
-        )
-        overshoot_neg = (self._servo_velocity < 0) & (
-            self._servo_target <= self._commanded_target
-        )
-        overshoot_mask = overshoot_pos | overshoot_neg
-        if overshoot_mask.any():
-            self._servo_target = torch.where(
-                overshoot_mask, self._commanded_target, self._servo_target
-            )
-            self._servo_velocity = torch.where(
-                overshoot_mask,
-                torch.zeros_like(self._servo_velocity),
-                self._servo_velocity,
-            )
-            self._integral_error = torch.where(
-                overshoot_mask,
-                torch.zeros_like(self._integral_error),
-                self._integral_error,
-            )
 
         self._servo_target = torch.minimum(
             torch.maximum(self._servo_target, self._joint_lower), self._joint_upper
@@ -326,9 +275,6 @@ class Xarm7Official(Xarm7):
             integral_clamp=0.0,
             max_joint_speed=math.pi,
             max_joint_acc=20.0,
-            min_joint_speed=1e-4,
-            error_tolerance=math.radians(0.01),
-            velocity_tolerance=math.radians(0.02),
         )
 
         gripper_cfg = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
