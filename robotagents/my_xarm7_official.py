@@ -52,6 +52,8 @@ class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
 
     max_joint_speed: Union[float, Sequence[float]] = math.pi  # rad/s cap (≈180°/s)
     max_joint_acc: Union[float, Sequence[float]] = 20.0  # rad/s^2 cap from SDK
+    positional_gain: Union[float, Sequence[float]] = 6.0
+    velocity_damping: Union[float, Sequence[float]] = 1.5
     controller_cls = None  # populated after class declaration
 
 
@@ -94,6 +96,12 @@ class XArmSDKJointDeltaController(PDJointPosController):
         )
         self._max_acc = _to_tensor_parameter(
             self.config.max_joint_acc, dof, self.device
+        )
+        self._pos_gain = _to_tensor_parameter(
+            self.config.positional_gain, dof, self.device
+        )
+        self._vel_damp = _to_tensor_parameter(
+            self.config.velocity_damping, dof, self.device
         )
 
         # Action bounds (delta joint limits)
@@ -140,22 +148,20 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._commanded_target = commanded.clone()
 
         dt = self._control_dt
-        remaining = self._commanded_target - self._servo_target
-        desired_velocity = remaining / dt
-        desired_velocity = torch.clamp(desired_velocity, -self._max_speed, self._max_speed)
+        error = self._commanded_target - self._servo_target
+        desired_acc = self._pos_gain * error - self._vel_damp * self._servo_velocity
+        desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
 
-        accel_limit = self._max_acc * dt
-        velocity_change = torch.clamp(
-            desired_velocity - self._servo_velocity,
-            -accel_limit,
-            accel_limit,
+        self._servo_velocity = torch.clamp(
+            self._servo_velocity + desired_acc * dt,
+            -self._max_speed,
+            self._max_speed,
         )
-        self._servo_velocity = self._servo_velocity + velocity_change
 
         new_target = self._servo_target + self._servo_velocity * dt
 
-        overshoot_pos = (remaining > 0) & (new_target > self._commanded_target)
-        overshoot_neg = (remaining < 0) & (new_target < self._commanded_target)
+        overshoot_pos = (error > 0) & (new_target > self._commanded_target)
+        overshoot_neg = (error < 0) & (new_target < self._commanded_target)
         overshoot_mask = overshoot_pos | overshoot_neg
         if overshoot_mask.any():
             new_target = torch.where(overshoot_mask, self._commanded_target, new_target)
@@ -219,6 +225,8 @@ class Xarm7Official(Xarm7):
             use_delta=True,
             use_target=True,
             normalize_action=False,
+            positional_gain=hardware_p / 150.0,
+            velocity_damping=np.maximum(hardware_d / 5.0, 0.05),
             max_joint_speed=math.pi,
             max_joint_acc=20.0,
         )
