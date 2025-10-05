@@ -12,6 +12,7 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 
 from robotagents.my_xarm7_official import Xarm7Official
+import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_joint_hold_scene_builder import (
     Xarm7JointHoldSceneBuilder,
 )
@@ -20,6 +21,10 @@ from scenebuilders.xarm7_joint_hold_scene_builder import (
 MARKER_NORMAL_OFFSET = 0.2
 ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
+
+VELOCITY_PENALTY_THRESHOLD = 0.45
+VELOCITY_PENALTY_SCALE = 0.135
+VELOCITY_PENALTY_EXP_MAX = 30.0
 
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
@@ -33,7 +38,7 @@ MARKER_GREEN_Z_OFFSET = MARKER_BASE_HALF_SIZE[2] + MARKER_GREEN_HALF_SIZE[2]
 
 @register_env("MyEEAlignMarker-v0", max_episode_steps=100)
 class MyEEAlignMarkerEnv(BaseEnv):
-    SUPPORTED_ROBOTS = ["my_xarm7_official"]
+    SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_over", "my_xarm7_mjcf"]
     agent: Xarm7Official
 
     def __init__(
@@ -278,10 +283,21 @@ class MyEEAlignMarkerEnv(BaseEnv):
         rotation_matrix = marker_pose_base.to_transformation_matrix()[..., :3, :3]
         x_axis = rotation_matrix[..., :, 0]
         y_axis = rotation_matrix[..., :, 1]
+        # Position plus first two axes of marker frame in base coordinates
         marker_obs = torch.cat([marker_pose_base.p, x_axis, y_axis], dim=-1)
         return {
             "marker_pose": marker_obs,
         }
+
+    def _get_observed_qvel(self) -> torch.Tensor:
+        qvel = self.agent.robot.get_qvel()
+        if qvel.ndim == 1:
+            qvel = qvel.unsqueeze(0)
+        if hasattr(self.agent, "_obs_joint_indices"):
+            idx = self.agent._obs_joint_indices.to(device=qvel.device, dtype=torch.long)
+            dim = qvel.dim() - 1
+            qvel = qvel.index_select(dim, idx)
+        return qvel
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
         marker_pose, _, _, normal = self._marker_frame_axes()
@@ -295,6 +311,15 @@ class MyEEAlignMarkerEnv(BaseEnv):
         reward = alignment_reward
         if "success" in info:
             reward = reward + info["success"].to(reward.dtype)
+
+        observed_qvel = self._get_observed_qvel()
+        speed = torch.linalg.norm(observed_qvel, dim=1)
+        excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
+        exponent = torch.clamp(
+            excess_speed * VELOCITY_PENALTY_SCALE, max=VELOCITY_PENALTY_EXP_MAX
+        )
+        velocity_penalty = torch.expm1(exponent)
+        reward = reward - velocity_penalty
         return reward
 
     def compute_normalized_dense_reward(
