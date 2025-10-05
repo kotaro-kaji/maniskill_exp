@@ -16,7 +16,7 @@ from mani_skill.agents.registration import register_agent
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 from mani_skill.utils.structs.pose import Pose
 
-from mani_skill.utils.common import deepcopy_dict
+from mani_skill.agents.controllers import deepcopy_dict
 
 from .my_xarm7 import Xarm7
 
