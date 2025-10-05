@@ -24,7 +24,7 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
 from task_pushcube_beatiful import MyPushCubeEnv
 from task_joint_hold import MyJointHoldEnv
-from task_marker_align import MyEEAlignMarkerEnv
+from task_marker_align_official import MyEEAlignMarkerEnv
 import task_simple
 
 
