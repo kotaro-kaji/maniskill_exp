@@ -1,452 +1,346 @@
-"""xArm7 agent with a force controller that mirrors the official xArm Python SDK API."""
+"""xArm7 controller variant that mirrors the behaviour of the official SDK.
+
+The new controller keeps the 7-DoF joint delta interface used by the
+`my_xarm7` agent while emulating the firmware-level smoothing in
+`set_servo_angle_j`: we integrate per-joint PID loops with the same
+velocity/acceleration clamps and goal tolerances that the real robot enforces.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import copy
+import math
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional, Type
+from typing import Sequence, Union
 
 import numpy as np
 import torch
-from gymnasium import spaces
-import re
 
-from mani_skill import format_path
-from mani_skill.agents.controllers.base_controller import BaseController, ControllerConfig
+from mani_skill.agents.controllers import (
+    PDJointPosController,
+    PDJointPosControllerConfig,
+    deepcopy_dict,
+)
 from mani_skill.agents.registration import register_agent
-from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
-from mani_skill.utils.structs.pose import Pose
-
-from mani_skill.agents.controllers import deepcopy_dict
+from mani_skill.utils.structs.types import Array
 
 from .my_xarm7 import Xarm7
 
 
-_PID_RANGES = dict(kp=(0.0, 0.05), ki=(0.0, 0.0005), kd=(0.0, 0.05), xe_limit=(0.0, 200.0))
-_FORCE_REF_LIMIT = np.array([150.0, 150.0, 200.0, 4.0, 4.0, 4.0], dtype=np.float32)
-_DEFAULT_XE_LIMIT = np.array([200.0, 200.0, 200.0, 0.35, 0.35, 0.35], dtype=np.float32)
-_MM_TO_M = 1.0 / 1000.0
-_JOINT_DELTA_LIMIT = 0.1
+def _to_tensor_parameter(
+    value: Union[float, Sequence[float], np.ndarray],
+    dof: int,
+    device,
+) -> torch.Tensor:
+    """Utility to broadcast scalar/sequence parameters to ``(1, dof)`` tensors."""
+
+    if value is None:
+        raise ValueError("Expected a numeric value, got None")
+    arr = np.asarray(value, dtype=np.float32)
+    if arr.ndim == 0:
+        arr = np.full(dof, arr, dtype=np.float32)
+    elif arr.size != dof:
+        arr = np.broadcast_to(arr, (dof,)).astype(np.float32)
+    return torch.from_numpy(arr).to(device=device)
 
 
 @dataclass
-class XArmForceControllerConfig(ControllerConfig):
-    """Configuration for the xArm force controller."""
+class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
+    """Configuration for the SDK-inspired joint delta controller."""
 
-    ee_link: str
-    urdf_path: str
-    tcp_offset: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
-    default_coord: int = 1
-    default_c_axis: Sequence[int] = (0, 0, 1, 0, 0, 0)
-    default_force_ref: Sequence[float] = (0.0, 0.0, 5.0, 0.0, 0.0, 0.0)
-    default_kp: Sequence[float] = (0.005, 0.005, 0.005, 0.05, 0.05, 0.05)
-    default_ki: Sequence[float] = (0.00005, 0.00005, 0.00005, 0.00005, 0.00005, 0.00005)
-    default_kd: Sequence[float] = (0.05, 0.05, 0.05, 0.05, 0.05, 0.05)
-    default_xe_limit: Sequence[float] = tuple(_DEFAULT_XE_LIMIT.tolist())
-    stiffness: float = 800.0
-    damping: float = 40.0
-    force_limit: float = 120.0
-    action_updates_reference: bool = False
-    controller_cls: Optional[Type[BaseController]] = None
+    max_joint_speed: Union[float, Sequence[float]] = math.pi  # rad/s cap (≈180°/s)
+    min_joint_speed: Union[float, Sequence[float]] = 1e-4
+    max_joint_acc: Union[float, Sequence[float]] = 20.0  # rad/s^2 cap from SDK
+    positional_gain: Union[float, Sequence[float]] = 6.0
+    integral_gain: Union[float, Sequence[float]] = 0.0
+    velocity_damping: Union[float, Sequence[float]] = 1.5
+    integral_clamp: Union[float, Sequence[float]] = 0.25
+    error_tolerance: float = math.radians(0.01)
+    velocity_tolerance: float = math.radians(0.02)
+    controller_cls = None  # populated after class declaration
 
 
-class XArmForceController(BaseController):
-    """Task-space force controller that follows the official xArm force-control semantics."""
+class XArmSDKJointDeltaController(PDJointPosController):
+    """Delta-angle controller that mimics xArm's ``set_servo_angle_j`` pathing.
 
-    config: XArmForceControllerConfig
-    sets_target_qpos = True
-    sets_target_qvel = False
+    We run a per-joint PID filter with SDK-matched velocity/acceleration
+    clamps, goal tolerances, and soft minimum velocities. The output of this
+    filter is forwarded to the regular ManiSkill PD drives, so the arm still
+    benefits from the platform's stiffness/damping configuration.
+    """
 
-    def __init__(self, config, articulation, control_freq, sim_freq=None, scene=None):
-        self._sensor_enabled = False
-        self._mode = 0
-        self._bias_tool: Optional[torch.Tensor] = None
-        self._limits = torch.zeros(6)
-        self._qlimits = None
-        self._tcp_offset: Optional[Pose] = None
-        self._pk_chain = None
-        self._pk_joint_names: list[str] = []
-        self._pk_articulation_indices: list[Optional[int]] = []
-        super().__init__(config, articulation, control_freq, sim_freq=sim_freq, scene=scene)
-        self._setup_tcp()
-        self._setup_kinematics()
-        self._setup_limits()
-        self.reset()
+    config: "XArmSDKJointDeltaControllerConfig"
 
-    # ------------------------------------------------------------------
-    # Controller initialization helpers
-    # ------------------------------------------------------------------
-    def _setup_tcp(self):
-        self.ee_link = self.articulation.links_map[self.config.ee_link]
-        offset = torch.tensor(self.config.tcp_offset, dtype=torch.float32, device=self.device)
-        p = offset[:3].unsqueeze(0)
-        q = offset[3:].unsqueeze(0)
-        self._tcp_offset = Pose.create_from_pq(p=p, q=q)
+    def __init__(
+        self,
+        config: XArmSDKJointDeltaControllerConfig,
+        articulation,
+        control_freq: int,
+        sim_freq: int = None,
+        scene=None,
+    ):
+        super().__init__(config, articulation, control_freq, sim_freq, scene)
+        self._sim_dt = float(self.articulation.px.timestep)
+        self._control_dt = self._sim_dt * self._sim_steps
+        dof = len(self.joints)
 
-    def _setup_kinematics(self):
-        try:
-            import pytorch_kinematics as pk
-        except Exception as exc:  # pragma: no cover
-            raise ImportError(
-                "pytorch_kinematics_ms is required for the xArm force controller"
-            ) from exc
-        urdf_path = format_path(self.config.urdf_path)
-        with open(urdf_path, "rb") as fh:
-            urdf_bytes = fh.read()
-        urdf_text = urdf_bytes.decode("utf-8")
-        urdf_text = re.sub(r"<transmission[\s\S]*?</transmission>", "", urdf_text)
-        self._pk_chain = pk.build_serial_chain_from_urdf(
-            urdf_text.encode("utf-8"), end_link_name=self.config.ee_link
-        ).to(dtype=torch.float32, device=self.device)
-        self._pk_joint_names = list(self._pk_chain.get_joint_parameter_names())
-        self._pk_articulation_indices = []
-        for name in self._pk_joint_names:
-            joint = self.articulation.joints_map.get(name)
-            if joint is None or joint.active_index is None:
-                self._pk_articulation_indices.append(None)
-            else:
-                self._pk_articulation_indices.append(int(joint.active_index[0]))
-        controlled_joint_set = set(self.config.joint_names)
-        missing = controlled_joint_set.difference(self._pk_joint_names)
-        if missing:
-            raise ValueError(
-                f"URDF kinematic chain is missing joints required for control: {sorted(missing)}"
-            )
-        self._pk_control_indices = torch.tensor(
-            [self._pk_joint_names.index(name) for name in self.config.joint_names],
-            dtype=torch.long,
-            device=self.device,
+        # Hardware joint limits (same for every env instance)
+        qlimits = (
+            self.articulation.get_qlimits()[0, self.active_joint_indices]
+            .detach()
+            .cpu()
+            .numpy()
+        )
+        self._joint_lower = torch.from_numpy(qlimits[:, 0]).to(self.device)
+        self._joint_upper = torch.from_numpy(qlimits[:, 1]).to(self.device)
+
+        # Pre-broadcasted controller parameters
+        self._max_speed = _to_tensor_parameter(
+            self.config.max_joint_speed, dof, self.device
+        )
+        self._min_speed = _to_tensor_parameter(
+            self.config.min_joint_speed, dof, self.device
+        )
+        self._max_acc = _to_tensor_parameter(
+            self.config.max_joint_acc, dof, self.device
+        )
+        self._pos_gain = _to_tensor_parameter(
+            self.config.positional_gain, dof, self.device
+        )
+        self._int_gain = _to_tensor_parameter(
+            self.config.integral_gain, dof, self.device
+        )
+        self._vel_damp = _to_tensor_parameter(
+            self.config.velocity_damping, dof, self.device
+        )
+        self._integral_limit = _to_tensor_parameter(
+            self.config.integral_clamp, dof, self.device
+        )
+        self._error_tol = torch.full(
+            (dof,), float(self.config.error_tolerance), device=self.device
+        )
+        self._velocity_tol = torch.full(
+            (dof,), float(self.config.velocity_tolerance), device=self.device
         )
 
-    def _setup_limits(self):
-        limits = self.articulation.get_qlimits()[0, self.active_joint_indices]
-        self._qlimits = limits.to(self.device)
+        # Action bounds (delta joint limits)
+        lower = self.config.lower if self.config.lower is not None else -0.1
+        upper = self.config.upper if self.config.upper is not None else 0.1
+        self._delta_lower = _to_tensor_parameter(lower, dof, self.device)
+        self._delta_upper = _to_tensor_parameter(upper, dof, self.device)
 
-    # ------------------------------------------------------------------
-    # BaseController overrides
-    # ------------------------------------------------------------------
-    def _initialize_action_space(self):
-        limit = np.asarray(_FORCE_REF_LIMIT, dtype=np.float32)
-        self.single_action_space = spaces.Box(-limit, limit, dtype=np.float32)
-
-    def set_drive_property(self):
-        stiffness = np.broadcast_to(self.config.stiffness, len(self.joints))
-        damping = np.broadcast_to(self.config.damping, len(self.joints))
-        force_limit = np.broadcast_to(self.config.force_limit, len(self.joints))
-        for i, joint in enumerate(self.joints):
-            joint.set_drive_properties(
-                stiffness[i], damping[i], force_limit=force_limit[i], mode="force"
-            )
-            joint.set_friction(0.0)
+        # Ring buffers for the servo filter
+        self._commanded_target = None
+        self._servo_target = None
+        self._servo_velocity = None
+        self._integral_error = None
 
     def reset(self):
         super().reset()
-        num_envs = self.scene.num_envs
-        device = self.device
-        def _tensor(values):
-            return torch.tensor(values, dtype=torch.float32, device=device).unsqueeze(0)
-
-        self._kp = _tensor(self.config.default_kp)
-        self._ki = _tensor(self.config.default_ki)
-        self._kd = _tensor(self.config.default_kd)
-        self._xe_limit = _tensor(self.config.default_xe_limit)
-        self._force_ref = _tensor(self.config.default_force_ref)
-        self._axis_mask = _tensor(self.config.default_c_axis)
-        self._coord = int(self.config.default_coord)
-        self._integral = torch.zeros(num_envs, 6, device=device)
-        self._prev_error = torch.zeros(num_envs, 6, device=device)
-        self._bias_tool = torch.zeros(num_envs, 6, device=device)
-        self._limits = torch.zeros(6, device=device)
-        self._force_ref = self._force_ref.repeat(num_envs, 1)
-        self._kp = self._kp.repeat(num_envs, 1)
-        self._ki = self._ki.repeat(num_envs, 1)
-        self._kd = self._kd.repeat(num_envs, 1)
-        self._xe_limit = self._xe_limit.repeat(num_envs, 1)
-        self._axis_mask = self._axis_mask.repeat(num_envs, 1)
-
-    def set_action(self, action):
-        if not self.config.action_updates_reference:
-            return
-        action = torch.as_tensor(action, dtype=torch.float32, device=self.device)
-        limit = torch.tensor(_FORCE_REF_LIMIT, dtype=torch.float32, device=self.device)
-        action = torch.clamp(action, -limit, limit)
-        if action.dim() == 1:
-            action = action.unsqueeze(0)
-        self._force_ref = action * self._axis_mask
-
-    # ------------------------------------------------------------------
-    # Public API mirroring xArm SDK
-    # ------------------------------------------------------------------
-    def set_force_parameters(self, *args, params_limit: bool = True):
-        if len(args) == 4 and isinstance(args[0], Iterable) and not isinstance(args[0], (int, float)):
-            kp, ki, kd, xe = args
-            self._apply_pid(kp, ki, kd, xe, params_limit=params_limit)
-            return 0
-        if len(args) == 4 and isinstance(args[0], int):
-            coord, c_axis, f_ref, limits = args
-            self._apply_reference(coord, c_axis, f_ref, limits, params_limit=params_limit)
-            return 0
-        if len(args) == 8 and isinstance(args[0], Iterable):
-            kp, ki, kd, xe, coord, c_axis, f_ref, limits = args
-            self._apply_pid(kp, ki, kd, xe, params_limit=params_limit)
-            self._apply_reference(coord, c_axis, f_ref, limits, params_limit=params_limit)
-            return 0
-        raise ValueError("Unsupported argument combination for set_force_parameters")
-
-    def set_sensor_enable(self, enable: int) -> int:
-        self._sensor_enabled = bool(enable)
-        if not self._sensor_enabled:
-            self._integral.zero_()
-            self._prev_error.zero_()
-        return 0
-
-    def set_sensor_mode(self, mode: int) -> int:
-        if mode not in (0, 2):
-            raise ValueError("Only modes 0 (disabled) and 2 (force) are supported")
-        self._mode = mode
-        return 0
-
-    def set_sensor_zero(self) -> int:
-        measurement = self._read_wrench(frame="tool", subtract_bias=False)
-        self._bias_tool = measurement.detach()
-        self._integral.zero_()
-        self._prev_error.zero_()
-        return 0
-
-    def get_sensor_data(self, frame: str = "tool") -> tuple[int, np.ndarray]:
-        measurement = self._read_wrench(frame=frame, subtract_bias=True)
-        data = measurement.detach().cpu().numpy()
-        return 0, data
-
-    # ------------------------------------------------------------------
-    # Internal state updates
-    # ------------------------------------------------------------------
-    def _apply_pid(self, kp, ki, kd, xe_limit, params_limit: bool = True):
-        kp = torch.tensor(list(kp), dtype=torch.float32, device=self.device)
-        ki = torch.tensor(list(ki), dtype=torch.float32, device=self.device)
-        kd = torch.tensor(list(kd), dtype=torch.float32, device=self.device)
-        xe_limit = torch.tensor(list(xe_limit), dtype=torch.float32, device=self.device)
-        self._validate_range(kp, _PID_RANGES["kp"], params_limit)
-        self._validate_range(ki, _PID_RANGES["ki"], params_limit)
-        self._validate_range(kd, _PID_RANGES["kd"], params_limit)
-        self._validate_range(xe_limit, _PID_RANGES["xe_limit"], params_limit)
-        self._kp = kp.unsqueeze(0).repeat(self.scene.num_envs, 1)
-        self._ki = ki.unsqueeze(0).repeat(self.scene.num_envs, 1)
-        self._kd = kd.unsqueeze(0).repeat(self.scene.num_envs, 1)
-        self._xe_limit = xe_limit.unsqueeze(0).repeat(self.scene.num_envs, 1)
-
-    def _apply_reference(self, coord, c_axis, f_ref, limits, params_limit: bool = True):
-        coord = int(coord)
-        axis = torch.tensor(list(c_axis), dtype=torch.float32, device=self.device)
-        ref = torch.tensor(list(f_ref), dtype=torch.float32, device=self.device)
-        self._validate_force_ref(ref, params_limit)
-        self._axis_mask = axis.unsqueeze(0).repeat(self.scene.num_envs, 1)
-        self._force_ref = (ref.unsqueeze(0) * self._axis_mask).repeat(self.scene.num_envs, 1)
-        self._coord = coord
-        if limits is not None:
-            self._limits = torch.tensor(list(limits), dtype=torch.float32, device=self.device)
-
-    def _validate_range(self, value: torch.Tensor, bounds, params_limit: bool):
-        if not params_limit:
-            return
-        low, high = bounds
-        if torch.any(value < low) or torch.any(value > high):
-            raise ValueError(f"Controller parameter out of range [{low}, {high}]")
-
-    def _validate_force_ref(self, ref: torch.Tensor, params_limit: bool):
-        if not params_limit:
-            return
-        limit = torch.tensor(_FORCE_REF_LIMIT, device=self.device)
-        if torch.any(torch.abs(ref) > limit):
-            raise ValueError("force reference exceeds firmware safe bounds")
-
-    # ------------------------------------------------------------------
-    # Sensor processing
-    # ------------------------------------------------------------------
-    def _read_wrench(self, frame: str = "tool", subtract_bias: bool = True) -> torch.Tensor:
-        world_wrench = self._compute_world_wrench()
-        tool_wrench = self._world_to_tool(world_wrench)
-        if subtract_bias:
-            tool_wrench = tool_wrench - self._bias_tool
-        if frame == "tool":
-            return tool_wrench
-        if frame == "base":
-            return self._tool_to_world(tool_wrench)
-        raise ValueError(f"Unknown frame '{frame}'")
-
-    def _compute_world_wrench(self) -> torch.Tensor:
-        num_envs = self.scene.num_envs
-        dt = float(self.scene.timestep)
-        forces = np.zeros((num_envs, 3), dtype=np.float32)
-        torques = np.zeros((num_envs, 3), dtype=np.float32)
-        if self.scene.gpu_sim_enabled:
-            contact_forces = (
-                self.articulation.get_net_contact_forces([self.ee_link.name])
-                .detach()
-                .cpu()
-                .numpy()
-            )
-            forces = contact_forces[:, 0, :]
+        if self._commanded_target is None:
+            self._commanded_target = self._target_qpos.clone()
+            self._servo_target = self._target_qpos.clone()
+            self._servo_velocity = torch.zeros_like(self._target_qpos)
+            self._integral_error = torch.zeros_like(self._target_qpos)
         else:
-            contacts = self.scene.get_contacts()
-            if len(contacts) == 0:
-                return torch.zeros(num_envs, 6, device=self.device)
-            entity_to_env = {
-                link.entity: idx for idx, link in enumerate(self.ee_link._objs)
-            }
-            tcp_pose = self.tcp_pose
-            tcp_pos = tcp_pose.p.detach().cpu().numpy()
-            for contact in contacts:
-                bodies = contact.bodies
-                for body_idx in (0, 1):
-                    entity = bodies[body_idx].entity
-                    env = entity_to_env.get(entity)
-                    if env is None:
-                        continue
-                    sign = 1.0 if body_idx == 0 else -1.0
-                    for point in contact.points:
-                        impulse = np.array(point.impulse, dtype=np.float32) * sign
-                        force = impulse / dt
-                        pos = np.array(point.position, dtype=np.float32)
-                        forces[env] += force
-                        torques[env] += np.cross(pos - tcp_pos[env], force)
-        stacked = np.concatenate([forces, torques], axis=1)
-        return torch.as_tensor(stacked, dtype=torch.float32, device=self.device)
+            mask = getattr(self.scene, "_reset_mask", None)
+            if mask is None:
+                self._commanded_target.copy_(self._target_qpos)
+                self._servo_target.copy_(self._target_qpos)
+                self._servo_velocity.zero_()
+                self._integral_error.zero_()
+            else:
+                self._commanded_target[mask] = self._target_qpos[mask]
+                self._servo_target[mask] = self._target_qpos[mask]
+                self._servo_velocity[mask] = 0.0
+                self._integral_error[mask] = 0.0
+        self.set_drive_targets(self._servo_target)
 
-    @property
-    def tcp_pose(self) -> Pose:
-        return self.ee_link.pose * self._tcp_offset
+    def set_action(self, action: Array):
+        action = self._preprocess_action(action).to(self.device)
+        self._step = 0
 
-    def _world_to_tool(self, wrench_world: torch.Tensor) -> torch.Tensor:
-        rotation = quaternion_to_matrix(self.tcp_pose.q)
-        f = torch.bmm(rotation.transpose(1, 2), wrench_world[:, :3].unsqueeze(-1)).squeeze(-1)
-        tau = torch.bmm(rotation.transpose(1, 2), wrench_world[:, 3:].unsqueeze(-1)).squeeze(-1)
-        return torch.cat([f, tau], dim=-1)
+        if self._commanded_target is None:
+            self._commanded_target = self.qpos.clone()
+            self._servo_target = self.qpos.clone()
+            self._servo_velocity = torch.zeros_like(self.qpos)
+            self._integral_error = torch.zeros_like(self.qpos)
 
-    def _tool_to_world(self, wrench_tool: torch.Tensor) -> torch.Tensor:
-        rotation = quaternion_to_matrix(self.tcp_pose.q)
-        f = torch.bmm(rotation, wrench_tool[:, :3].unsqueeze(-1)).squeeze(-1)
-        tau = torch.bmm(rotation, wrench_tool[:, 3:].unsqueeze(-1)).squeeze(-1)
-        return torch.cat([f, tau], dim=-1)
+        delta = torch.maximum(
+            torch.minimum(action, self._delta_upper), self._delta_lower
+        )
+        base = self._commanded_target if self.config.use_target else self.qpos
+        raw_target = base + delta
 
-    # ------------------------------------------------------------------
-    # Control loop
-    # ------------------------------------------------------------------
+        clamped_target = torch.minimum(
+            torch.maximum(raw_target, self._joint_lower), self._joint_upper
+        )
+        self._commanded_target = clamped_target.clone()
+        self._target_qpos = clamped_target.clone()
+
     def before_simulation_step(self):
-        if not self._sensor_enabled or self._mode != 2:
+        if self._commanded_target is None:
             return
-        dt = float(self.scene.timestep)
-        if dt <= 0:
-            return
-        measurement = self._read_wrench(
-            frame="tool" if self._coord == 1 else "base", subtract_bias=True
-        )
-        target = self._force_ref
-        error = (target - measurement) * self._axis_mask
-        self._integral = self._integral + error * dt
-        integral_limit = torch.where(
-            self._ki > 0,
-            self._xe_limit / torch.clamp(self._ki, min=torch.finfo(torch.float32).eps),
-            torch.full_like(self._xe_limit, 1e6),
-        )
-        self._integral = torch.clamp(self._integral, -integral_limit, integral_limit)
-        derivative = (error - self._prev_error) / dt
-        self._prev_error = error
-        vel = self._kp * error + self._ki * self._integral + self._kd * derivative
-        vel = torch.clamp(vel, -self._xe_limit, self._xe_limit) * self._axis_mask
-        if self._coord == 1:
-            vel_world = self._tool_to_world(vel)
-        else:
-            vel_world = vel
-        vel_world = vel_world.clone()
-        vel_world[:, :3] *= _MM_TO_M
-        jac = self._compute_spatial_jacobian()
-        if jac is None:
-            return
-        jac_pinv = torch.linalg.pinv(jac)
-        qdot = torch.bmm(jac_pinv, vel_world.unsqueeze(-1)).squeeze(-1)
-        dq = qdot * dt
-        current_qpos = self.qpos
-        qpos = current_qpos + dq
-        delta = torch.clamp(qpos - current_qpos, -_JOINT_DELTA_LIMIT, _JOINT_DELTA_LIMIT)
-        qpos = current_qpos + delta
-        lower = self._qlimits[:, 0].unsqueeze(0)
-        upper = self._qlimits[:, 1].unsqueeze(0)
-        qpos = torch.max(torch.min(qpos, upper), lower)
-        self.articulation.set_joint_drive_targets(qpos, self.joints, self.active_joint_indices)
 
-    def _compute_spatial_jacobian(self) -> Optional[torch.Tensor]:
-        if self._pk_chain is None:
-            return None
-        q_full = torch.zeros(
-            self.scene.num_envs, len(self._pk_joint_names), device=self.device
+        self._step += 1
+        dt = self._sim_dt
+
+        error = self._commanded_target - self._servo_target
+        self._integral_error = torch.clamp(
+            self._integral_error + error * dt,
+            -self._integral_limit,
+            self._integral_limit,
         )
-        qpos = self.articulation.get_qpos()
-        for idx, art_idx in enumerate(self._pk_articulation_indices):
-            if art_idx is not None:
-                q_full[:, idx] = qpos[:, art_idx]
-        jac = self._pk_chain.jacobian(q_full)
-        return jac[:, :, self._pk_control_indices]
+
+        # PID-like acceleration request (units: rad/s^2)
+        desired_acc = (
+            self._pos_gain * error
+            + self._int_gain * self._integral_error
+            - self._vel_damp * self._servo_velocity
+        )
+        desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
+
+        self._servo_velocity = torch.clamp(
+            self._servo_velocity + desired_acc * dt,
+            -self._max_speed,
+            self._max_speed,
+        )
+
+        abs_vel = self._servo_velocity.abs()
+        close_to_goal = (error.abs() <= self._error_tol) & (
+            abs_vel <= self._velocity_tol
+        )
+        below_min = (abs_vel < self._min_speed) & (~close_to_goal)
+        # Stick to the minimum servo velocity when travelling, stop once both
+        # error and speed are within SDK tolerances.
+        self._servo_velocity = torch.where(
+            close_to_goal,
+            torch.zeros_like(self._servo_velocity),
+            torch.where(
+                below_min,
+                torch.sign(self._servo_velocity) * self._min_speed,
+                self._servo_velocity,
+            ),
+        )
+
+        self._servo_target = self._servo_target + self._servo_velocity * dt
+
+        overshoot_pos = (self._servo_velocity > 0) & (
+            self._servo_target >= self._commanded_target
+        )
+        overshoot_neg = (self._servo_velocity < 0) & (
+            self._servo_target <= self._commanded_target
+        )
+        overshoot_mask = overshoot_pos | overshoot_neg
+        if overshoot_mask.any():
+            self._servo_target = torch.where(
+                overshoot_mask, self._commanded_target, self._servo_target
+            )
+            self._servo_velocity = torch.where(
+                overshoot_mask,
+                torch.zeros_like(self._servo_velocity),
+                self._servo_velocity,
+            )
+            self._integral_error = torch.where(
+                overshoot_mask,
+                torch.zeros_like(self._integral_error),
+                self._integral_error,
+            )
+
+        self._servo_target = torch.minimum(
+            torch.maximum(self._servo_target, self._joint_lower), self._joint_upper
+        )
+
+        contact_limit = (self._servo_target <= self._joint_lower + 1e-6) | (
+            self._servo_target >= self._joint_upper - 1e-6
+        )
+        if contact_limit.any():
+            self._servo_velocity = torch.where(
+                contact_limit,
+                torch.zeros_like(self._servo_velocity),
+                self._servo_velocity,
+            )
+            self._integral_error = torch.where(
+                contact_limit,
+                torch.zeros_like(self._integral_error),
+                self._integral_error,
+            )
+
+        self.set_drive_targets(self._servo_target)
+
+    def get_state(self) -> dict:
+        state = super().get_state()
+        state.update(
+            {
+                "sdk_command_qpos": self._commanded_target,
+                "sdk_servo_qpos": self._servo_target,
+                "sdk_servo_qvel": self._servo_velocity,
+            }
+        )
+        return state
+
+
+# Link the config to the controller implementation
+XArmSDKJointDeltaControllerConfig.controller_cls = XArmSDKJointDeltaController
 
 
 @register_agent()
 class Xarm7Official(Xarm7):
-    """xArm7 agent with an SDK-faithful force controller."""
+    """XArm7 variant with an SDK-faithful joint delta position controller."""
 
     uid = "my_xarm7_official"
 
-    def _make_force_controller_config(self) -> XArmForceControllerConfig:
-        return XArmForceControllerConfig(
-            joint_names=self.arm_joint_names,
-            ee_link=self.ee_link_name,
-            urdf_path=self.urdf_path,
-            tcp_offset=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+    @property
+    def _controller_configs(self):
+        base_configs = deepcopy_dict(super()._controller_configs)
+
+        # SDK-aligned per-joint gains taken from UFactory's ROS configs
+        # (scaled to radian units so that the simulated motion profile matches
+        # the embedded servo behaviour).
+        hardware_p = np.array(
+            [1200.0, 1400.0, 1200.0, 850.0, 500.0, 500.0, 300.0],
+            dtype=np.float32,
+        )
+        hardware_d = np.array(
+            [10.0, 10.0, 5.0, 5.0, 1.0, 1.0, 1.0], dtype=np.float32
+        )
+        hardware_i = np.array(
+            [5.0, 5.0, 5.0, 3.0, 3.0, 1.0, 0.05], dtype=np.float32
+        )
+
+        sdk_arm = XArmSDKJointDeltaControllerConfig(
+            self.arm_joint_names,
+            lower=-0.1,
+            upper=0.1,
             stiffness=self.arm_stiffness,
             damping=self.arm_damping,
             force_limit=self.arm_force_limit,
-            default_force_ref=(0.0, 0.0, 5.0, 0.0, 0.0, 0.0),
-            default_c_axis=(0, 0, 1, 0, 0, 0),
-            default_coord=1,
-            controller_cls=XArmForceController,
+            use_delta=True,
+            use_target=True,
+            normalize_action=False,
+            positional_gain=hardware_p / 150.0,
+            velocity_damping=np.maximum(hardware_d / 5.0, 0.05),
+            integral_gain=hardware_i / 100.0,
+            integral_clamp=np.clip(hardware_p / 6000.0, 0.02, 0.3),
+            max_joint_speed=math.pi,
+            max_joint_acc=20.0,
+            min_joint_speed=1e-4,
+            error_tolerance=math.radians(0.01),
+            velocity_tolerance=math.radians(0.02),
         )
 
-    @property
-    def _controller_configs(self):
-        parent = super()._controller_configs
-        force_cfg = dict(
-            arm=self._make_force_controller_config(),
-            gripper=parent["pd_joint_delta_pos"]["gripper"],
+        gripper_cfg = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
+
+        controller_configs = OrderedDict()
+        controller_configs["sdk_joint_delta_pos"] = dict(
+            arm=sdk_arm,
+            gripper=gripper_cfg,
+            balance_passive_force=False,
         )
-        configs = {"force_control": force_cfg}
-        configs.update(parent)
-        return deepcopy_dict(configs)
 
-    @property
-    def force_controller(self) -> XArmForceController:
-        controller = self.controllers.get("force_control")
-        if controller is None:
-            config = self._make_force_controller_config()
-            controller = config.controller_cls(
-                config, self.robot, self._control_freq, scene=self.scene
-            )
-            controller.set_drive_property()
-            self.controllers["force_control"] = controller
-        return controller
+        # Preserve access to the legacy controllers for backwards compatibility.
+        for name, cfg in base_configs.items():
+            controller_configs[name] = cfg
 
-    # ------------------------------------------------------------------
-    # SDK-compatible helper functions
-    # ------------------------------------------------------------------
-    def set_ft_sensor_force_parameters(self, *args, **kwargs):
-        return self.force_controller.set_force_parameters(*args, **kwargs)
-
-    def set_ft_sensor_enable(self, enable: int):
-        return self.force_controller.set_sensor_enable(enable)
-
-    def set_ft_sensor_zero(self):
-        return self.force_controller.set_sensor_zero()
-
-    def set_ft_sensor_mode(self, mode: int):
-        return self.force_controller.set_sensor_mode(mode)
-
-    def get_ft_sensor_data(self, frame: str = "tool"):
-        return self.force_controller.get_sensor_data(frame=frame)
+        return controller_configs
