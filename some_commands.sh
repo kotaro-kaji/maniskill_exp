@@ -57,7 +57,7 @@ python ppo_xarm7.py --env_id="MyJointHold-v0" \
 
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32 \
-  --total_timesteps=25_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 
+  --total_timesteps=25_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
 
 
 
