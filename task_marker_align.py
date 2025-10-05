@@ -109,48 +109,99 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
-            marker_pose_base = self._resolve_marker_pose(len(env_idx), options)
+            marker_pose_base = self._resolve_marker_pose(env_idx, options)
             if (
                 self._configured_marker_pose_base is None
                 and (options is None or options.get("marker_pose") is None)
             ):
-                marker_pose_base = self._randomize_marker_pose_in_base(marker_pose_base)
-            marker_pose_world = self._convert_pose_base_to_world(marker_pose_base)
+                marker_pose_base = self._randomize_marker_pose_in_base(
+                    marker_pose_base, env_idx
+                )
+            marker_pose_world = self._convert_pose_base_to_world(
+                marker_pose_base, env_idx
+            )
             self.marker.set_pose(marker_pose_world)
 
-    def _get_robot_base_pose_on_device(self) -> Pose:
+    def _get_robot_base_pose_on_device(
+        self, env_idx: Optional[torch.Tensor] = None
+    ) -> Pose:
         base_pose = self.agent.robot.pose
+        if env_idx is not None:
+            index = env_idx
+            if not isinstance(index, torch.Tensor):
+                index = torch.as_tensor(index, dtype=torch.long, device=base_pose.device)
+            else:
+                index = index.to(device=base_pose.device, dtype=torch.long)
+            base_pose = Pose.create(base_pose.raw_pose.index_select(0, index))
         if base_pose.device != self.device:
             base_pose = base_pose.to(self.device)
         return base_pose
 
-    def _convert_pose_world_to_base(self, pose_world: Pose) -> Pose:
-        base_pose = self._get_robot_base_pose_on_device()
-        return base_pose.inv() * Pose.create(pose_world, device=self.device)
+    def _convert_pose_world_to_base(
+        self, pose_world: Pose, env_idx: Optional[torch.Tensor] = None
+    ) -> Pose:
+        base_pose = self._get_robot_base_pose_on_device(env_idx)
+        pose_world = Pose.create(pose_world, device=self.device)
+        if len(pose_world) == 1 and len(base_pose) > 1:
+            pose_world = Pose.create(
+                pose_world.raw_pose.repeat(len(base_pose), 1), device=self.device
+            )
+        elif len(pose_world) != len(base_pose):
+            pose_world = Pose.create(
+                pose_world.raw_pose[: len(base_pose)], device=self.device
+            )
+        return base_pose.inv() * pose_world
 
-    def _convert_pose_base_to_world(self, pose_base: Pose) -> Pose:
-        base_pose = self._get_robot_base_pose_on_device()
-        return base_pose * Pose.create(pose_base, device=self.device)
+    def _convert_pose_base_to_world(
+        self, pose_base: Pose, env_idx: Optional[torch.Tensor] = None
+    ) -> Pose:
+        base_pose = self._get_robot_base_pose_on_device(env_idx)
+        pose_base = Pose.create(pose_base, device=self.device)
+        if len(pose_base) == 1 and len(base_pose) > 1:
+            pose_base = Pose.create(
+                pose_base.raw_pose.repeat(len(base_pose), 1), device=self.device
+            )
+        elif len(pose_base) != len(base_pose):
+            pose_base = Pose.create(
+                pose_base.raw_pose[: len(base_pose)], device=self.device
+            )
+        return base_pose * pose_base
 
-    def _default_marker_pose_in_base(self, batch_size: int) -> Pose:
+    def _default_marker_pose_in_base(self, env_idx: torch.Tensor) -> Pose:
+        batch_size = len(env_idx)
         pose_world = Pose.create(DEFAULT_MARKER_POSE, device=self.device)
         if len(pose_world) == 1 and batch_size > 1:
             pose_world = Pose.create(
                 pose_world.raw_pose.repeat(batch_size, 1), device=self.device
             )
-        return self._convert_pose_world_to_base(pose_world)
+        elif len(pose_world) > batch_size:
+            pose_world = Pose.create(
+                pose_world.raw_pose[:batch_size], device=self.device
+            )
+        return self._convert_pose_world_to_base(pose_world, env_idx)
 
-    def _resolve_marker_pose(self, batch_size: int, options: Optional[dict]) -> Pose:
+    def _resolve_marker_pose(
+        self, env_idx: torch.Tensor, options: Optional[dict]
+    ) -> Pose:
+        batch_size = len(env_idx)
         if options is not None and options.get("marker_pose") is not None:
             base_value = options["marker_pose"]
         elif self._configured_marker_pose_base is not None:
             base_value = self._configured_marker_pose_base
         else:
-            base_value = self._default_marker_pose_in_base(batch_size)
+            base_value = self._default_marker_pose_in_base(env_idx)
 
         pose = Pose.create(base_value, device=self.device)
         if len(pose) == 1 and batch_size > 1:
             pose = Pose.create(pose.raw_pose.repeat(batch_size, 1), device=self.device)
+        elif len(pose) == self.scene.num_envs and batch_size != self.scene.num_envs:
+            pose = Pose.create(
+                pose.raw_pose.index_select(
+                    0,
+                    env_idx.to(device=pose.device, dtype=torch.long),
+                ),
+                device=self.device,
+            )
         elif len(pose) != batch_size:
             if len(pose) < batch_size:
                 pose = Pose.create(
@@ -160,7 +211,9 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 pose = Pose.create(pose.raw_pose[:batch_size], device=self.device)
         return pose
 
-    def _randomize_marker_pose_in_base(self, marker_pose_base: Pose) -> Pose:
+    def _randomize_marker_pose_in_base(
+        self, marker_pose_base: Pose, env_idx: torch.Tensor
+    ) -> Pose:
         batch_size = len(marker_pose_base)
         rand_x_world = torch.rand((batch_size,), device=self.device) * 0.1 - 0.35
         rand_y_world = torch.rand((batch_size,), device=self.device) * 0.1 - 0.05
@@ -170,13 +223,13 @@ class MyEEAlignMarkerEnv(BaseEnv):
         randomized_positions_world = torch.stack(
             (rand_x_world, rand_y_world, rand_z_world), dim=-1
         )
-        marker_pose_world = self._convert_pose_base_to_world(marker_pose_base)
+        marker_pose_world = self._convert_pose_base_to_world(marker_pose_base, env_idx)
         randomized_world_pose = Pose.create_from_pq(
             p=randomized_positions_world,
             q=marker_pose_world.q,
             device=self.device,
         )
-        return self._convert_pose_world_to_base(randomized_world_pose)
+        return self._convert_pose_world_to_base(randomized_world_pose, env_idx)
 
     def _get_marker_pose_on_device(self) -> Pose:
         marker_pose = self.marker.pose
