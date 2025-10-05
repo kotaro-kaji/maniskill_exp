@@ -9,6 +9,7 @@ from typing import Optional, Type
 import numpy as np
 import torch
 from gymnasium import spaces
+import re
 
 from mani_skill import format_path
 from mani_skill.agents.controllers.base_controller import BaseController, ControllerConfig
@@ -92,8 +93,10 @@ class XArmForceController(BaseController):
         urdf_path = format_path(self.config.urdf_path)
         with open(urdf_path, "rb") as fh:
             urdf_bytes = fh.read()
+        urdf_text = urdf_bytes.decode("utf-8")
+        urdf_text = re.sub(r"<transmission[\s\S]*?</transmission>", "", urdf_text)
         self._pk_chain = pk.build_serial_chain_from_urdf(
-            urdf_bytes, end_link_name=self.config.ee_link
+            urdf_text.encode("utf-8"), end_link_name=self.config.ee_link
         ).to(dtype=torch.float32, device=self.device)
         self._pk_joint_names = list(self._pk_chain.get_joint_parameter_names())
         self._pk_articulation_indices = []
