@@ -299,7 +299,8 @@ class Xarm7Official(Xarm7):
         base_configs = deepcopy_dict(super()._controller_configs)
 
         # SDK-aligned per-joint gains taken from UFactory's ROS configs so the
-        # simulated stiffness/damping mirrors the firmware defaults.
+        # simulated response mirrors the firmware defaults. Gains are rescaled
+        # from the integer PID units used by the embedded drives to radian space.
         hardware_p = np.array(
             [1200.0, 1400.0, 1200.0, 850.0, 500.0, 500.0, 300.0],
             dtype=np.float32,
@@ -307,18 +308,20 @@ class Xarm7Official(Xarm7):
         hardware_d = np.array(
             [10.0, 10.0, 5.0, 5.0, 1.0, 1.0, 1.0], dtype=np.float32
         )
+        force_limits = np.array([50.0, 50.0, 30.0, 30.0, 30.0, 20.0, 20.0], dtype=np.float32)
+
         sdk_arm = XArmSDKJointDeltaControllerConfig(
             self.arm_joint_names,
             lower=-0.1,
             upper=0.1,
-            stiffness=hardware_p,
-            damping=hardware_d,
-            force_limit=self.arm_force_limit,
+            stiffness=self.arm_stiffness,
+            damping=self.arm_damping,
+            force_limit=force_limits,
             use_delta=True,
             use_target=True,
             normalize_action=False,
-            positional_gain=hardware_p,
-            velocity_damping=hardware_d,
+            positional_gain=hardware_p / 150.0,
+            velocity_damping=np.maximum(hardware_d / 5.0, 0.05),
             integral_gain=0.0,
             integral_clamp=0.0,
             max_joint_speed=math.pi,
