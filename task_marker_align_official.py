@@ -22,6 +22,10 @@ MARKER_NORMAL_OFFSET = 0.2
 ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
 
+VELOCITY_PENALTY_THRESHOLD = 0.45
+VELOCITY_PENALTY_SCALE = 0.115
+VELOCITY_PENALTY_EXP_MAX = 20.0
+
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_POSE = torch.cat((DEFAULT_MARKER_POSITION, DEFAULT_MARKER_ORIENTATION))
@@ -307,6 +311,15 @@ class MyEEAlignMarkerEnv(BaseEnv):
         reward = alignment_reward
         if "success" in info:
             reward = reward + info["success"].to(reward.dtype)
+
+        observed_qvel = self._get_observed_qvel()
+        speed = torch.linalg.norm(observed_qvel, dim=1)
+        excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
+        exponent = torch.clamp(
+            excess_speed * VELOCITY_PENALTY_SCALE, max=VELOCITY_PENALTY_EXP_MAX
+        )
+        velocity_penalty = torch.expm1(exponent)
+        reward = reward - velocity_penalty
 
         return reward
 
