@@ -13,7 +13,9 @@ from mani_skill.utils.structs.pose import Pose
 
 from robotagents.my_xarm7_over import Xarm7ReducedProprio
 import robotagents.my_xarm7_mjcf
-from scenebuilders.xarm7_joint_hold_scene_builder import Xarm7JointHoldSceneBuilder
+from scenebuilders.xarm7_joint_hold_scene_builder import (
+    Xarm7JointHoldSceneBuilder,
+)
 
 
 MARKER_NORMAL_OFFSET = 0.2
@@ -47,9 +49,9 @@ class MyEEAlignMarkerEnv(BaseEnv):
         **kwargs,
     ):
         if marker_pose is None:
-            self._configured_marker_pose: Optional[Pose] = None
+            self._configured_marker_pose_base: Optional[Pose] = None
         else:
-            self._configured_marker_pose = Pose.create(marker_pose)
+            self._configured_marker_pose_base = Pose.create(marker_pose)
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: dict):
@@ -107,30 +109,44 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
-            marker_pose = self._resolve_marker_pose(len(env_idx), options)
+            marker_pose_base = self._resolve_marker_pose(len(env_idx), options)
             if (
-                self._configured_marker_pose is None
+                self._configured_marker_pose_base is None
                 and (options is None or options.get("marker_pose") is None)
             ):
-                batch_size = len(env_idx)
-                rand_x = torch.rand((batch_size,), device=self.device) * 0.1 - 0.35
-                rand_y = torch.rand((batch_size,), device=self.device) * 0.1 - 0.05
-                rand_z = torch.full(
-                    (batch_size,),
-                    DEFAULT_MARKER_POSITION[2],
-                    device=self.device,
-                )
-                randomized_positions = torch.stack((rand_x, rand_y, rand_z), dim=-1)
-                marker_pose.p = randomized_positions
-            self.marker.set_pose(marker_pose)
+                marker_pose_base = self._randomize_marker_pose_in_base(marker_pose_base)
+            marker_pose_world = self._convert_pose_base_to_world(marker_pose_base)
+            self.marker.set_pose(marker_pose_world)
+
+    def _get_robot_base_pose_on_device(self) -> Pose:
+        base_pose = self.agent.robot.pose
+        if base_pose.device != self.device:
+            base_pose = base_pose.to(self.device)
+        return base_pose
+
+    def _convert_pose_world_to_base(self, pose_world: Pose) -> Pose:
+        base_pose = self._get_robot_base_pose_on_device()
+        return base_pose.inv() * Pose.create(pose_world, device=self.device)
+
+    def _convert_pose_base_to_world(self, pose_base: Pose) -> Pose:
+        base_pose = self._get_robot_base_pose_on_device()
+        return base_pose * Pose.create(pose_base, device=self.device)
+
+    def _default_marker_pose_in_base(self, batch_size: int) -> Pose:
+        pose_world = Pose.create(DEFAULT_MARKER_POSE, device=self.device)
+        if len(pose_world) == 1 and batch_size > 1:
+            pose_world = Pose.create(
+                pose_world.raw_pose.repeat(batch_size, 1), device=self.device
+            )
+        return self._convert_pose_world_to_base(pose_world)
 
     def _resolve_marker_pose(self, batch_size: int, options: Optional[dict]) -> Pose:
         if options is not None and options.get("marker_pose") is not None:
             base_value = options["marker_pose"]
-        elif self._configured_marker_pose is not None:
-            base_value = self._configured_marker_pose
+        elif self._configured_marker_pose_base is not None:
+            base_value = self._configured_marker_pose_base
         else:
-            base_value = DEFAULT_MARKER_POSE
+            base_value = self._default_marker_pose_in_base(batch_size)
 
         pose = Pose.create(base_value, device=self.device)
         if len(pose) == 1 and batch_size > 1:
@@ -144,11 +160,32 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 pose = Pose.create(pose.raw_pose[:batch_size], device=self.device)
         return pose
 
+    def _randomize_marker_pose_in_base(self, marker_pose_base: Pose) -> Pose:
+        batch_size = len(marker_pose_base)
+        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.1 - 0.35
+        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.1 - 0.05
+        rand_z_world = torch.full(
+            (batch_size,), DEFAULT_MARKER_POSITION[2], device=self.device
+        )
+        randomized_positions_world = torch.stack(
+            (rand_x_world, rand_y_world, rand_z_world), dim=-1
+        )
+        marker_pose_world = self._convert_pose_base_to_world(marker_pose_base)
+        randomized_world_pose = Pose.create_from_pq(
+            p=randomized_positions_world,
+            q=marker_pose_world.q,
+            device=self.device,
+        )
+        return self._convert_pose_world_to_base(randomized_world_pose)
+
     def _get_marker_pose_on_device(self) -> Pose:
         marker_pose = self.marker.pose
         if marker_pose.device != self.device:
             marker_pose = marker_pose.to(self.device)
         return marker_pose
+
+    def _get_marker_pose_in_base_frame(self) -> Pose:
+        return self._convert_pose_world_to_base(self._get_marker_pose_on_device())
 
     def _get_tcp_pose_on_device(self) -> Pose:
         tcp_pose = self.agent.tcp.pose
@@ -189,8 +226,12 @@ class MyEEAlignMarkerEnv(BaseEnv):
         }
 
     def _get_obs_extra(self, info: Dict):
-        marker_pose, x_axis, y_axis, _ = self._marker_frame_axes()
-        marker_obs = torch.cat([marker_pose.p, x_axis, y_axis], dim=-1)
+        marker_pose_base = self._get_marker_pose_in_base_frame()
+        rotation_matrix = marker_pose_base.to_transformation_matrix()[..., :3, :3]
+        x_axis = rotation_matrix[..., :, 0]
+        y_axis = rotation_matrix[..., :, 1]
+        # Position plus first two axes of marker frame in base coordinates
+        marker_obs = torch.cat([marker_pose_base.p, x_axis, y_axis], dim=-1)
         return {
             "marker_pose": marker_obs,
         }
