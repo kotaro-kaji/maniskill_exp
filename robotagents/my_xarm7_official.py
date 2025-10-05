@@ -2,7 +2,7 @@
 
 The new controller keeps the 7-DoF joint delta interface used by the
 `my_xarm7` agent while emulating the firmware-level smoothing in
-`set_servo_angle_j`: we integrate per-joint PID loops with the same
+`set_servo_angle_j`: we run per-joint PD filters with the same
 velocity/acceleration clamps and goal tolerances that the real robot enforces.
 """
 
@@ -55,7 +55,7 @@ class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
     positional_gain: Union[float, Sequence[float]] = 6.0
     integral_gain: Union[float, Sequence[float]] = 0.0
     velocity_damping: Union[float, Sequence[float]] = 1.5
-    integral_clamp: Union[float, Sequence[float]] = 0.25
+    integral_clamp: Union[float, Sequence[float]] = 0.0
     error_tolerance: float = math.radians(0.01)
     velocity_tolerance: float = math.radians(0.02)
     controller_cls = None  # populated after class declaration
@@ -64,10 +64,10 @@ class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
 class XArmSDKJointDeltaController(PDJointPosController):
     """Delta-angle controller that mimics xArm's ``set_servo_angle_j`` pathing.
 
-    We run a per-joint PID filter with SDK-matched velocity/acceleration
-    clamps, goal tolerances, and soft minimum velocities. The output of this
-    filter is forwarded to the regular ManiSkill PD drives, so the arm still
-    benefits from the platform's stiffness/damping configuration.
+    We run per-joint PD filters with SDK-matched velocity/acceleration clamps,
+    goal tolerances, and soft minimum velocities. The output of this filter is
+    forwarded to the regular ManiSkill PD drives, so the arm still benefits
+    from the platform's stiffness/damping configuration.
     """
 
     config: "XArmSDKJointDeltaControllerConfig"
@@ -187,13 +187,16 @@ class XArmSDKJointDeltaController(PDJointPosController):
         dt = self._sim_dt
 
         error = self._commanded_target - self._servo_target
-        self._integral_error = torch.clamp(
-            self._integral_error + error * dt,
-            -self._integral_limit,
-            self._integral_limit,
-        )
+        if torch.any(self._int_gain != 0):
+            self._integral_error = torch.clamp(
+                self._integral_error + error * dt,
+                -self._integral_limit,
+                self._integral_limit,
+            )
+        else:
+            self._integral_error.zero_()
 
-        # PID-like acceleration request (units: rad/s^2)
+        # PD acceleration request (units: rad/s^2)
         desired_acc = (
             self._pos_gain * error
             + self._int_gain * self._integral_error
@@ -295,9 +298,8 @@ class Xarm7Official(Xarm7):
     def _controller_configs(self):
         base_configs = deepcopy_dict(super()._controller_configs)
 
-        # SDK-aligned per-joint gains taken from UFactory's ROS configs
-        # (scaled to radian units so that the simulated motion profile matches
-        # the embedded servo behaviour).
+        # SDK-aligned per-joint gains taken from UFactory's ROS configs so the
+        # simulated stiffness/damping mirrors the firmware defaults.
         hardware_p = np.array(
             [1200.0, 1400.0, 1200.0, 850.0, 500.0, 500.0, 300.0],
             dtype=np.float32,
@@ -305,24 +307,20 @@ class Xarm7Official(Xarm7):
         hardware_d = np.array(
             [10.0, 10.0, 5.0, 5.0, 1.0, 1.0, 1.0], dtype=np.float32
         )
-        hardware_i = np.array(
-            [5.0, 5.0, 5.0, 3.0, 3.0, 1.0, 0.05], dtype=np.float32
-        )
-
         sdk_arm = XArmSDKJointDeltaControllerConfig(
             self.arm_joint_names,
             lower=-0.1,
             upper=0.1,
-            stiffness=self.arm_stiffness,
-            damping=self.arm_damping,
+            stiffness=hardware_p,
+            damping=hardware_d,
             force_limit=self.arm_force_limit,
             use_delta=True,
             use_target=True,
             normalize_action=False,
-            positional_gain=hardware_p / 150.0,
-            velocity_damping=np.maximum(hardware_d / 5.0, 0.05),
-            integral_gain=hardware_i / 100.0,
-            integral_clamp=np.clip(hardware_p / 6000.0, 0.02, 0.3),
+            positional_gain=hardware_p,
+            velocity_damping=hardware_d,
+            integral_gain=0.0,
+            integral_clamp=0.0,
             max_joint_speed=math.pi,
             max_joint_acc=20.0,
             min_joint_speed=1e-4,
