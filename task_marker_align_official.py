@@ -21,10 +21,6 @@ MARKER_NORMAL_OFFSET = 0.2
 ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
 
-VELOCITY_PENALTY_THRESHOLD = 0.35
-VELOCITY_PENALTY_SCALE = 0.245
-VELOCITY_PENALTY_EXP_MAX = 50.0
-
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_POSE = torch.cat((DEFAULT_MARKER_POSITION, DEFAULT_MARKER_ORIENTATION))
@@ -288,16 +284,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
             "marker_pose": marker_obs,
         }
 
-    def _get_observed_qvel(self) -> torch.Tensor:
-        qvel = self.agent.robot.get_qvel()
-        if qvel.ndim == 1:
-            qvel = qvel.unsqueeze(0)
-        if hasattr(self.agent, "_obs_joint_indices"):
-            idx = self.agent._obs_joint_indices.to(device=qvel.device, dtype=torch.long)
-            dim = qvel.dim() - 1
-            qvel = qvel.index_select(dim, idx)
-        return qvel
-
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
         marker_pose, _, _, normal = self._marker_frame_axes()
         target_point = marker_pose.p + normal * MARKER_NORMAL_OFFSET
@@ -310,15 +296,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
         reward = alignment_reward
         if "success" in info:
             reward = reward + info["success"].to(reward.dtype)
-
-        observed_qvel = self._get_observed_qvel()
-        speed = torch.linalg.norm(observed_qvel, dim=1)
-        excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
-        exponent = torch.clamp(
-            excess_speed * VELOCITY_PENALTY_SCALE, max=VELOCITY_PENALTY_EXP_MAX
-        )
-        velocity_penalty = torch.expm1(exponent)
-        reward = reward - velocity_penalty
         return reward
 
     def compute_normalized_dense_reward(

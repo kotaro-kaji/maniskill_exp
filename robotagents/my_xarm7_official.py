@@ -16,6 +16,8 @@ from mani_skill.agents.registration import register_agent
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 from mani_skill.utils.structs.pose import Pose
 
+from mani_skill.utils.common import deepcopy_dict
+
 from .my_xarm7 import Xarm7
 
 
@@ -23,6 +25,7 @@ _PID_RANGES = dict(kp=(0.0, 0.05), ki=(0.0, 0.0005), kd=(0.0, 0.05), xe_limit=(0
 _FORCE_REF_LIMIT = np.array([150.0, 150.0, 200.0, 4.0, 4.0, 4.0], dtype=np.float32)
 _DEFAULT_XE_LIMIT = np.array([200.0, 200.0, 200.0, 0.35, 0.35, 0.35], dtype=np.float32)
 _MM_TO_M = 1.0 / 1000.0
+_JOINT_DELTA_LIMIT = 0.1
 
 
 @dataclass
@@ -360,7 +363,10 @@ class XArmForceController(BaseController):
         jac_pinv = torch.linalg.pinv(jac)
         qdot = torch.bmm(jac_pinv, vel_world.unsqueeze(-1)).squeeze(-1)
         dq = qdot * dt
-        qpos = self.qpos + dq
+        current_qpos = self.qpos
+        qpos = current_qpos + dq
+        delta = torch.clamp(qpos - current_qpos, -_JOINT_DELTA_LIMIT, _JOINT_DELTA_LIMIT)
+        qpos = current_qpos + delta
         lower = self._qlimits[:, 0].unsqueeze(0)
         upper = self._qlimits[:, 1].unsqueeze(0)
         qpos = torch.max(torch.min(qpos, upper), lower)
@@ -403,7 +409,14 @@ class Xarm7Official(Xarm7):
 
     @property
     def _controller_configs(self):
-        return {"force_control": self._make_force_controller_config()}
+        parent = super()._controller_configs
+        force_cfg = dict(
+            arm=self._make_force_controller_config(),
+            gripper=parent["pd_joint_delta_pos"]["gripper"],
+        )
+        configs = {"force_control": force_cfg}
+        configs.update(parent)
+        return deepcopy_dict(configs)
 
     @property
     def force_controller(self) -> XArmForceController:
