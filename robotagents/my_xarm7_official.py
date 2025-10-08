@@ -97,6 +97,12 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._max_acc = _to_tensor_parameter(
             self.config.max_joint_acc, dof, self.device
         )
+        self._pos_gain = _to_tensor_parameter(
+            self.config.positional_gain, dof, self.device
+        )
+        self._vel_damp = _to_tensor_parameter(
+            self.config.velocity_damping, dof, self.device
+        )
 
         # Action bounds (delta joint limits)
         lower = self.config.lower if self.config.lower is not None else -0.1
