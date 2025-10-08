@@ -51,7 +51,9 @@ class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
     """Configuration for the SDK-inspired joint delta controller."""
 
     max_joint_speed: Union[float, Sequence[float]] = math.pi  # rad/s cap (≈180°/s)
-    max_joint_acc: Union[float, Sequence[float]] = 20.0  # rad/s^2 cap from SDK
+    max_joint_acc: Union[float, Sequence[float]] = 12.0  # rad/s^2 cap mirroring ROS controllers
+    integral_gain: Union[float, Sequence[float]] = 0.0
+    integral_limit: Union[float, Sequence[float]] = 1.0
     positional_gain: Union[float, Sequence[float]] = 6.0
     velocity_damping: Union[float, Sequence[float]] = 1.5
     controller_cls = None  # populated after class declaration
@@ -103,6 +105,12 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._vel_damp = _to_tensor_parameter(
             self.config.velocity_damping, dof, self.device
         )
+        self._int_gain = _to_tensor_parameter(
+            self.config.integral_gain, dof, self.device
+        )
+        self._integral_limit = _to_tensor_parameter(
+            self.config.integral_limit, dof, self.device
+        )
 
         # Action bounds (delta joint limits)
         lower = self.config.lower if self.config.lower is not None else -0.1
@@ -114,6 +122,7 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._commanded_target = None
         self._servo_target = None
         self._servo_velocity = None
+        self._servo_integral = None
         self._pos_tolerance = 1e-4
         self._vel_tolerance = 5e-4
 
@@ -123,16 +132,19 @@ class XArmSDKJointDeltaController(PDJointPosController):
             self._commanded_target = self._target_qpos.clone()
             self._servo_target = self._target_qpos.clone()
             self._servo_velocity = torch.zeros_like(self._target_qpos)
+            self._servo_integral = torch.zeros_like(self._target_qpos)
         else:
             mask = getattr(self.scene, "_reset_mask", None)
             if mask is None:
                 self._commanded_target.copy_(self._target_qpos)
                 self._servo_target.copy_(self._target_qpos)
                 self._servo_velocity.zero_()
+                self._servo_integral.zero_()
             else:
                 self._commanded_target[mask] = self._target_qpos[mask]
                 self._servo_target[mask] = self._target_qpos[mask]
                 self._servo_velocity[mask] = 0.0
+                self._servo_integral[mask] = 0.0
         self.set_drive_targets(self._servo_target)
 
     def set_action(self, action: Array):
@@ -143,6 +155,7 @@ class XArmSDKJointDeltaController(PDJointPosController):
             self._commanded_target = self.qpos.clone()
             self._servo_target = self.qpos.clone()
             self._servo_velocity = torch.zeros_like(self.qpos)
+            self._servo_integral = torch.zeros_like(self.qpos)
 
         delta = torch.clamp(action, self._delta_lower, self._delta_upper)
         base = self._commanded_target if self.config.use_target else self.qpos
@@ -155,7 +168,29 @@ class XArmSDKJointDeltaController(PDJointPosController):
             return
 
         error = self._commanded_target - self._servo_target
-        desired_acc = self._pos_gain * error - self._vel_damp * self._servo_velocity
+
+        if self._servo_integral is None:
+            self._servo_integral = torch.zeros_like(self._servo_target)
+
+        proposed_integral = self._servo_integral + error * dt
+        self._servo_integral = torch.clamp(
+            proposed_integral,
+            -self._integral_limit,
+            self._integral_limit,
+        )
+
+        # Zero integrator on axes without integral gain to avoid meaningless drift.
+        no_int = self._int_gain == 0
+        if no_int.any():
+            self._servo_integral = torch.where(
+                no_int, torch.zeros_like(self._servo_integral), self._servo_integral
+            )
+
+        desired_acc = (
+            self._pos_gain * error
+            + self._int_gain * self._servo_integral
+            - self._vel_damp * self._servo_velocity
+        )
         desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
 
         new_velocity = torch.clamp(
@@ -174,6 +209,9 @@ class XArmSDKJointDeltaController(PDJointPosController):
             new_velocity = torch.where(
                 overshoot_mask, torch.zeros_like(new_velocity), new_velocity
             )
+            self._servo_integral = torch.where(
+                overshoot_mask, torch.zeros_like(self._servo_integral), self._servo_integral
+            )
 
         new_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
 
@@ -185,6 +223,9 @@ class XArmSDKJointDeltaController(PDJointPosController):
             new_target = torch.where(settle_mask, self._commanded_target, new_target)
             new_velocity = torch.where(
                 settle_mask, torch.zeros_like(new_velocity), new_velocity
+            )
+            self._servo_integral = torch.where(
+                settle_mask, torch.zeros_like(self._servo_integral), self._servo_integral
             )
 
         self._servo_velocity = new_velocity
@@ -203,6 +244,7 @@ class XArmSDKJointDeltaController(PDJointPosController):
                 "sdk_command_qpos": self._commanded_target,
                 "sdk_servo_qpos": self._servo_target,
                 "sdk_servo_qvel": self._servo_velocity,
+                "sdk_servo_integral": self._servo_integral,
             }
         )
         return state
@@ -245,11 +287,25 @@ class Xarm7Official(Xarm7):
         )
 
         sdk_positional_gain = hardware_p.astype(np.float32)
-        sdk_velocity_damping = (2.0 * np.sqrt(sdk_positional_gain.astype(np.float64))).astype(
-            np.float32
+        sdk_integral_gain = np.array(
+            [5.0, 5.0, 5.0, 3.0, 3.0, 1.0, 0.05], dtype=np.float32
         )
+        sdk_velocity_damping = (
+            2.0 * np.sqrt(sdk_positional_gain.astype(np.float64))
+        ).astype(np.float32)
         sdk_max_speed = np.full_like(sdk_positional_gain, math.pi, dtype=np.float32)
         sdk_max_acc = np.full_like(sdk_positional_gain, 12.0, dtype=np.float32)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            raw_integral_limit = np.where(
+                sdk_integral_gain > 0,
+                sdk_max_acc / sdk_integral_gain,
+                0.0,
+            )
+        sdk_integral_limit = np.where(
+            sdk_integral_gain > 0,
+            np.clip(raw_integral_limit, 0.1, 5.0),
+            0.0,
+        ).astype(np.float32)
 
         sdk_arm = XArmSDKJointDeltaControllerConfig(
             self.arm_joint_names,
@@ -262,6 +318,8 @@ class Xarm7Official(Xarm7):
             use_target=False,
             positional_gain=sdk_positional_gain,
             velocity_damping=sdk_velocity_damping,
+            integral_gain=sdk_integral_gain,
+            integral_limit=sdk_integral_limit,
             max_joint_speed=sdk_max_speed,
             max_joint_acc=sdk_max_acc,
         )
