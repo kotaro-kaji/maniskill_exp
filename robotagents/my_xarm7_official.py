@@ -90,18 +90,12 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._joint_lower = torch.from_numpy(qlimits[:, 0]).to(self.device)
         self._joint_upper = torch.from_numpy(qlimits[:, 1]).to(self.device)
 
-        # Pre-broadcasted controller parameters
+        # Pre-broadcasted motion constraints
         self._max_speed = _to_tensor_parameter(
             self.config.max_joint_speed, dof, self.device
         )
         self._max_acc = _to_tensor_parameter(
             self.config.max_joint_acc, dof, self.device
-        )
-        self._pos_gain = _to_tensor_parameter(
-            self.config.positional_gain, dof, self.device
-        )
-        self._vel_damp = _to_tensor_parameter(
-            self.config.velocity_damping, dof, self.device
         )
 
         # Action bounds (delta joint limits)
@@ -149,56 +143,77 @@ class XArmSDKJointDeltaController(PDJointPosController):
         commanded = torch.clamp(base + delta, self._joint_lower, self._joint_upper)
         self._commanded_target = commanded.clone()
 
-        dt = self._control_dt
+    def _integrate_servo(self, dt: float):
+        if self._commanded_target is None:
+            return
+
         error = self._commanded_target - self._servo_target
-        desired_acc = self._pos_gain * error - self._vel_damp * self._servo_velocity
-        desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
 
-        new_velocity = torch.clamp(
-            self._servo_velocity + desired_acc * dt,
-            -self._max_speed,
-            self._max_speed,
+        # Snap to target when both position error and residual velocity are negligible.
+        arrived = (torch.abs(error) <= self._pos_tolerance) & (
+            torch.abs(self._servo_velocity) <= self._vel_tolerance
+        )
+        if arrived.any():
+            self._servo_target = torch.where(
+                arrived, self._commanded_target, self._servo_target
+            )
+            self._servo_velocity = torch.where(
+                arrived, torch.zeros_like(self._servo_velocity), self._servo_velocity
+            )
+            # Recompute error for the remaining joints.
+            error = self._commanded_target - self._servo_target
+
+        # Maximum admissible velocity to stop under constant deceleration.
+        abs_error = torch.abs(error)
+        max_stoppable_speed = torch.sqrt(
+            torch.clamp(2.0 * self._max_acc * abs_error, min=0.0)
+        )
+        target_speed = torch.minimum(self._max_speed, max_stoppable_speed)
+        desired_velocity = torch.sign(error) * target_speed
+
+        vel_error = desired_velocity - self._servo_velocity
+        max_vel_delta = self._max_acc * dt
+        vel_delta = torch.clamp(vel_error, -max_vel_delta, max_vel_delta)
+        self._servo_velocity = self._servo_velocity + vel_delta
+
+        # Zero out tiny velocities to avoid numerical drift.
+        self._servo_velocity = torch.where(
+            torch.abs(self._servo_velocity) <= self._vel_tolerance,
+            torch.zeros_like(self._servo_velocity),
+            self._servo_velocity,
         )
 
-        # Prevent the servo from continuing to move away once the command reverses.
-        reversing = (error * new_velocity) <= 0
-        if reversing.any():
-            new_velocity = torch.where(
-                reversing, torch.zeros_like(new_velocity), new_velocity
+        new_target = self._servo_target + self._servo_velocity * dt
+
+        # Prevent overshoot beyond the commanded waypoint.
+        overshoot_pos = (error > 0) & (new_target > self._commanded_target)
+        overshoot_neg = (error < 0) & (new_target < self._commanded_target)
+        overshoot = overshoot_pos | overshoot_neg
+        if overshoot.any():
+            new_target = torch.where(overshoot, self._commanded_target, new_target)
+            self._servo_velocity = torch.where(
+                overshoot, torch.zeros_like(self._servo_velocity), self._servo_velocity
             )
 
-        new_target = self._servo_target + new_velocity * dt
+        self._servo_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
 
-        # Clamp the internal waypoint so it never passes the commanded position.
-        error_nonnegative = error >= 0
-        new_target = torch.where(
-            error_nonnegative,
-            torch.minimum(new_target, self._commanded_target),
-            torch.maximum(new_target, self._commanded_target),
-        )
-
-        new_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
-
-        remaining_error = self._commanded_target - new_target
-        arrived = torch.abs(remaining_error) <= self._pos_tolerance
-        at_limit = (new_target <= self._joint_lower + self._pos_tolerance) | (
-            new_target >= self._joint_upper - self._pos_tolerance
-        )
-        near_still = torch.abs(new_velocity) <= self._vel_tolerance
-        # Halt residual motion once we are effectively on target or pegged at a joint limit.
-        stop_mask = arrived | at_limit | (near_still & (torch.abs(remaining_error) <= 5 * self._pos_tolerance))
-        if stop_mask.any():
-            new_velocity = torch.where(
-                stop_mask, torch.zeros_like(new_velocity), new_velocity
+        # Final snap when we hit limits or targets.
+        error = self._commanded_target - self._servo_target
+        at_lower = self._servo_target <= (self._joint_lower + self._pos_tolerance)
+        at_upper = self._servo_target >= (self._joint_upper - self._pos_tolerance)
+        stuck = (torch.abs(error) <= self._pos_tolerance) | at_lower | at_upper
+        if stuck.any():
+            self._servo_target = torch.where(
+                stuck, self._commanded_target, self._servo_target
             )
-
-        self._servo_velocity = new_velocity
-        self._servo_target = new_target
-        self._target_qpos = self._servo_target.clone()
-        self.set_drive_targets(self._servo_target)
+            self._servo_velocity = torch.where(
+                stuck, torch.zeros_like(self._servo_velocity), self._servo_velocity
+            )
 
     def before_simulation_step(self):
         if self._servo_target is not None:
+            self._integrate_servo(self._sim_dt)
+            self._target_qpos = self._servo_target.clone()
             self.set_drive_targets(self._servo_target)
 
     def get_state(self) -> dict:
