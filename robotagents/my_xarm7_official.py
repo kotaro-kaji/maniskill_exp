@@ -148,52 +148,53 @@ class XArmSDKJointDeltaController(PDJointPosController):
         base = self._commanded_target if self.config.use_target else self.qpos
         commanded = torch.clamp(base + delta, self._joint_lower, self._joint_upper)
         self._commanded_target = commanded.clone()
+        self._target_qpos = self._servo_target.clone()
 
-        dt = self._control_dt
+    def _integrate_servo(self, dt: float):
+        if self._commanded_target is None or self._servo_target is None:
+            return
+
         error = self._commanded_target - self._servo_target
         desired_acc = self._pos_gain * error - self._vel_damp * self._servo_velocity
         desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
 
-        self._servo_velocity = torch.clamp(
+        new_velocity = torch.clamp(
             self._servo_velocity + desired_acc * dt,
             -self._max_speed,
             self._max_speed,
         )
 
-        new_target = self._servo_target + self._servo_velocity * dt
+        new_target = self._servo_target + new_velocity * dt
 
         overshoot_pos = (error > 0) & (new_target > self._commanded_target)
         overshoot_neg = (error < 0) & (new_target < self._commanded_target)
         overshoot_mask = overshoot_pos | overshoot_neg
         if overshoot_mask.any():
             new_target = torch.where(overshoot_mask, self._commanded_target, new_target)
-            self._servo_velocity = torch.where(
-                overshoot_mask, torch.zeros_like(self._servo_velocity), self._servo_velocity
+            new_velocity = torch.where(
+                overshoot_mask, torch.zeros_like(new_velocity), new_velocity
             )
 
         new_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
 
         remaining_error = self._commanded_target - new_target
         arrived = torch.abs(remaining_error) <= self._pos_tolerance
-        at_limit = (new_target <= self._joint_lower + self._pos_tolerance) | (
-            new_target >= self._joint_upper - self._pos_tolerance
-        )
-        near_still = torch.abs(self._servo_velocity) <= self._vel_tolerance
-        stop_mask = arrived | at_limit | (
-            near_still & (torch.abs(remaining_error) <= 5 * self._pos_tolerance)
-        )
-        if stop_mask.any():
-            self._servo_velocity = torch.where(
-                stop_mask, torch.zeros_like(self._servo_velocity), self._servo_velocity
+        near_still = torch.abs(new_velocity) <= self._vel_tolerance
+        settle_mask = arrived & near_still
+        if settle_mask.any():
+            new_target = torch.where(settle_mask, self._commanded_target, new_target)
+            new_velocity = torch.where(
+                settle_mask, torch.zeros_like(new_velocity), new_velocity
             )
 
+        self._servo_velocity = new_velocity
         self._servo_target = new_target
         self._target_qpos = self._servo_target.clone()
         self.set_drive_targets(self._servo_target)
 
     def before_simulation_step(self):
         if self._servo_target is not None:
-            self.set_drive_targets(self._servo_target)
+            self._integrate_servo(self._sim_dt)
 
     def get_state(self) -> dict:
         state = super().get_state()
@@ -243,6 +244,13 @@ class Xarm7Official(Xarm7):
             use_delta=True
         )
 
+        sdk_positional_gain = hardware_p.astype(np.float32)
+        sdk_velocity_damping = (2.0 * np.sqrt(sdk_positional_gain.astype(np.float64))).astype(
+            np.float32
+        )
+        sdk_max_speed = np.full_like(sdk_positional_gain, math.pi, dtype=np.float32)
+        sdk_max_acc = np.full_like(sdk_positional_gain, 12.0, dtype=np.float32)
+
         sdk_arm = XArmSDKJointDeltaControllerConfig(
             self.arm_joint_names,
             lower=-0.1,
@@ -252,10 +260,10 @@ class Xarm7Official(Xarm7):
             force_limit=force_limits,
             use_delta=True,
             use_target=False,
-            positional_gain=hardware_p / 150.0,
-            velocity_damping=np.maximum(hardware_d / 5.0, 0.05),
-            max_joint_speed=math.pi,
-            max_joint_acc=20.0,
+            positional_gain=sdk_positional_gain,
+            velocity_damping=sdk_velocity_damping,
+            max_joint_speed=sdk_max_speed,
+            max_joint_acc=sdk_max_acc,
         )
 
         gripper_cfg_official = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
