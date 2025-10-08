@@ -180,7 +180,7 @@ class XArmSDKJointDeltaController(PDJointPosController):
         )
 
         # Zero integrator on axes without integral gain to avoid meaningless drift.
-        no_int = self._int_gain == 0
+        no_int = torch.abs(self._int_gain) <= 1e-6
         if no_int.any():
             self._servo_integral = torch.where(
                 no_int, torch.zeros_like(self._servo_integral), self._servo_integral
@@ -290,9 +290,7 @@ class Xarm7Official(Xarm7):
         sdk_integral_gain = np.array(
             [5.0, 5.0, 5.0, 3.0, 3.0, 1.0, 0.05], dtype=np.float32
         )
-        sdk_velocity_damping = (
-            2.0 * np.sqrt(sdk_positional_gain.astype(np.float64))
-        ).astype(np.float32)
+        sdk_velocity_damping = np.maximum(hardware_d, 0.0).astype(np.float32)
         sdk_max_speed = np.full_like(sdk_positional_gain, math.pi, dtype=np.float32)
         sdk_max_acc = np.full_like(sdk_positional_gain, 12.0, dtype=np.float32)
         with np.errstate(divide="ignore", invalid="ignore"):
