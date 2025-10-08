@@ -254,6 +254,17 @@ class Xarm7Official(Xarm7):
         )
         force_limits = np.array([50.0, 50.0, 30.0, 30.0, 30.0, 20.0, 20.0], dtype=np.float32)
 
+        official_pd_arm = PDJointPosControllerConfig(
+            self.arm_joint_names,
+            lower=-0.1,
+            upper=0.1,
+            stiffness=hardware_p,
+            damping=np.maximum(hardware_d, 0.05),
+            force_limit=force_limits,
+            use_delta=True,
+            normalize_action=False,
+        )
+
         sdk_arm = XArmSDKJointDeltaControllerConfig(
             self.arm_joint_names,
             lower=-0.1,
@@ -270,12 +281,18 @@ class Xarm7Official(Xarm7):
             max_joint_acc=20.0,
         )
 
-        gripper_cfg = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
+        gripper_cfg_official = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
+        gripper_cfg_sdk = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
 
         controller_configs = OrderedDict()
+        controller_configs["official_pd_joint_delta_pos"] = dict(
+            arm=official_pd_arm,
+            gripper=gripper_cfg_official,
+            balance_passive_force=False,
+        )
         controller_configs["sdk_joint_delta_pos"] = dict(
             arm=sdk_arm,
-            gripper=gripper_cfg,
+            gripper=gripper_cfg_sdk,
             balance_passive_force=False,
         )
 
