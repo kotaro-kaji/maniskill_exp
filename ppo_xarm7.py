@@ -83,8 +83,8 @@ class Args:
     """how often to reconfigure the environment during training"""
     eval_reconfiguration_freq: Optional[int] = 1
     """for benchmarking purposes we want to reconfigure the eval environment each reset to ensure objects are randomized in some tasks"""
-    control_mode: Optional[str] = "pd_joint_delta_pos"
-    """the control mode to use for the environment"""
+    control_mode: Optional[str] = None
+    """the control mode to use for the environment (defaults per task)"""
     anneal_lr: bool = False
     """Toggle learning rate annealing for policy and value networks"""
     gamma: float = 0.8
@@ -215,7 +215,12 @@ if __name__ == "__main__":
         sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
     )
     if args.control_mode is not None:
-        env_kwargs["control_mode"] = args.control_mode
+        control_mode = args.control_mode
+    elif args.env_id == "MyEEAlignMarker-v0":
+        control_mode = "official_pd_joint_delta_pos"
+    else:
+        control_mode = "pd_joint_delta_pos"
+    env_kwargs["control_mode"] = control_mode
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, **env_kwargs)
     if isinstance(envs.action_space, gym.spaces.Dict):
