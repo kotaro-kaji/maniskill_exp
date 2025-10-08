@@ -261,8 +261,7 @@ class Xarm7Official(Xarm7):
             stiffness=hardware_p,
             damping=np.maximum(hardware_d, 0.05),
             force_limit=force_limits,
-            use_delta=True,
-            normalize_action=False,
+            use_delta=True
         )
 
         sdk_arm = XArmSDKJointDeltaControllerConfig(
@@ -274,7 +273,6 @@ class Xarm7Official(Xarm7):
             force_limit=force_limits,
             use_delta=True,
             use_target=False,
-            normalize_action=False,
             positional_gain=hardware_p / 150.0,
             velocity_damping=np.maximum(hardware_d / 5.0, 0.05),
             max_joint_speed=math.pi,
