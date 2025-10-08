@@ -114,6 +114,8 @@ class XArmSDKJointDeltaController(PDJointPosController):
         self._commanded_target = None
         self._servo_target = None
         self._servo_velocity = None
+        self._pos_tolerance = 1e-4
+        self._vel_tolerance = 5e-4
 
     def reset(self):
         super().reset()
@@ -152,24 +154,46 @@ class XArmSDKJointDeltaController(PDJointPosController):
         desired_acc = self._pos_gain * error - self._vel_damp * self._servo_velocity
         desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
 
-        self._servo_velocity = torch.clamp(
+        new_velocity = torch.clamp(
             self._servo_velocity + desired_acc * dt,
             -self._max_speed,
             self._max_speed,
         )
 
-        new_target = self._servo_target + self._servo_velocity * dt
-
-        overshoot_pos = (error > 0) & (new_target > self._commanded_target)
-        overshoot_neg = (error < 0) & (new_target < self._commanded_target)
-        overshoot_mask = overshoot_pos | overshoot_neg
-        if overshoot_mask.any():
-            new_target = torch.where(overshoot_mask, self._commanded_target, new_target)
-            self._servo_velocity = torch.where(
-                overshoot_mask, torch.zeros_like(self._servo_velocity), self._servo_velocity
+        # Prevent the servo from continuing to move away once the command reverses.
+        reversing = (error * new_velocity) <= 0
+        if reversing.any():
+            new_velocity = torch.where(
+                reversing, torch.zeros_like(new_velocity), new_velocity
             )
 
-        self._servo_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
+        new_target = self._servo_target + new_velocity * dt
+
+        # Clamp the internal waypoint so it never passes the commanded position.
+        error_nonnegative = error >= 0
+        new_target = torch.where(
+            error_nonnegative,
+            torch.minimum(new_target, self._commanded_target),
+            torch.maximum(new_target, self._commanded_target),
+        )
+
+        new_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
+
+        remaining_error = self._commanded_target - new_target
+        arrived = torch.abs(remaining_error) <= self._pos_tolerance
+        at_limit = (new_target <= self._joint_lower + self._pos_tolerance) | (
+            new_target >= self._joint_upper - self._pos_tolerance
+        )
+        near_still = torch.abs(new_velocity) <= self._vel_tolerance
+        # Halt residual motion once we are effectively on target or pegged at a joint limit.
+        stop_mask = arrived | at_limit | (near_still & (torch.abs(remaining_error) <= 5 * self._pos_tolerance))
+        if stop_mask.any():
+            new_velocity = torch.where(
+                stop_mask, torch.zeros_like(new_velocity), new_velocity
+            )
+
+        self._servo_velocity = new_velocity
+        self._servo_target = new_target
         self._target_qpos = self._servo_target.clone()
         self.set_drive_targets(self._servo_target)
 
