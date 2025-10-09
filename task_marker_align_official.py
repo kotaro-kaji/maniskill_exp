@@ -215,8 +215,8 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self, marker_pose_base: Pose, env_idx: torch.Tensor
     ) -> Pose:
         batch_size = len(marker_pose_base)
-        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.1 - 0.35
-        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.1 - 0.05
+        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.2 - 0.35
+        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.2 - 0.1
         rand_z_world = torch.full(
             (batch_size,), DEFAULT_MARKER_POSITION[2], device=self.device
         )
@@ -230,6 +230,42 @@ class MyEEAlignMarkerEnv(BaseEnv):
             device=self.device,
         )
         return self._convert_pose_world_to_base(randomized_world_pose, env_idx)
+
+    def _set_marker_pose_world(self, pose_world: Pose, env_idx: torch.Tensor):
+        pose_world = Pose.create(pose_world, device=self.device)
+        if env_idx.ndim == 0:
+            env_idx = env_idx.unsqueeze(0)
+        env_idx = env_idx.to(device=self.device, dtype=torch.long)
+        reset_mask = getattr(self.scene, "_reset_mask", None)
+        prev_reset_mask = None
+        if reset_mask is not None:
+            prev_reset_mask = reset_mask.clone()
+            reset_mask[:] = False
+            reset_mask[env_idx] = True
+        try:
+            self.marker.set_pose(pose_world)
+            if self.scene.gpu_sim_enabled:
+                self.scene._gpu_apply_all()
+                self.scene._gpu_fetch_all()
+        finally:
+            if reset_mask is not None and prev_reset_mask is not None:
+                reset_mask.copy_(prev_reset_mask)
+
+    def _respawn_marker(self, env_idx: torch.Tensor):
+        if env_idx.numel() == 0:
+            return
+        env_idx = env_idx.to(device=self.device, dtype=torch.long)
+        marker_pose_base = self._get_marker_pose_in_base_frame()
+        selected_pose_base = Pose.create(
+            marker_pose_base.raw_pose.index_select(0, env_idx), device=self.device
+        )
+        randomized_pose_base = self._randomize_marker_pose_in_base(
+            selected_pose_base, env_idx
+        )
+        randomized_pose_world = self._convert_pose_base_to_world(
+            randomized_pose_base, env_idx
+        )
+        self._set_marker_pose_world(randomized_pose_world, env_idx)
 
     def _get_marker_pose_on_device(self) -> Pose:
         marker_pose = self.marker.pose
@@ -298,6 +334,38 @@ class MyEEAlignMarkerEnv(BaseEnv):
             dim = qvel.dim() - 1
             qvel = qvel.index_select(dim, idx)
         return qvel
+
+    def step(self, action):
+        action = self._step_action(action)
+        self._elapsed_steps += 1
+        info = self.get_info()
+        raw_obs = self.get_obs(info, unflattened=True)
+        reward = self.get_reward(obs=raw_obs, action=action, info=info)
+
+        success = info.get("success")
+        if success is not None:
+            if not isinstance(success, torch.Tensor):
+                success_tensor = torch.as_tensor(success, device=self.device)
+                if success_tensor.ndim == 0:
+                    success_tensor = success_tensor.unsqueeze(0)
+            else:
+                success_tensor = success.to(device=self.device)
+            if success_tensor.ndim == 0:
+                success_tensor = success_tensor.unsqueeze(0)
+            success_envs = torch.nonzero(success_tensor, as_tuple=False).squeeze(-1)
+            if success_envs.numel() > 0:
+                # Keep the episode running by respawning the marker when success is achieved.
+                self._respawn_marker(success_envs)
+                raw_obs = self.get_obs(info, unflattened=True)
+
+        obs = self._flatten_raw_obs(raw_obs)
+        if "fail" in info:
+            terminated = info["fail"].clone()
+        else:
+            terminated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
+        truncated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
+        self._last_obs = obs
+        return obs, reward, terminated, truncated, info
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
         marker_pose, _, _, normal = self._marker_frame_axes()
