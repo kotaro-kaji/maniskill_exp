@@ -18,7 +18,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def add_frame(scene, pose: sapien.Pose, size: float = 0.1, thickness: float = 0.004):
+def add_frame(
+    scene,
+    pose: sapien.Pose,
+    size: float = 0.1,
+    thickness: float = 0.004,
+    name: str = "debug_frame",
+):
     """Draw a small XYZ frame using three colored box visuals."""
 
     def make_mat(color):
@@ -43,7 +49,8 @@ def add_frame(scene, pose: sapien.Pose, size: float = 0.1, thickness: float = 0.
         pose=sapien.Pose([0, 0, half]),
         material=make_mat([0.0, 0.0, 1.0]),  # Z axis
     )
-    frame = builder.build_static(name="debug_frame")
+    builder.initial_pose = pose
+    frame = builder.build_static(name=name)
     frame.set_pose(pose)
     return frame
 
@@ -66,10 +73,10 @@ def main():
 
     obs, _ = env.reset(seed=0)
     scene = env.unwrapped.scene
-    add_frame(scene, sapien.Pose(), size=0.15)
+    add_frame(scene, sapien.Pose(), size=0.15, name="world_frame")
     agent = getattr(env.unwrapped, "agent", None)
     if agent is not None:
-        add_frame(scene, agent.robot.pose, size=0.1)
+        add_frame(scene, agent.robot.pose, size=0.1, name="robot_base_frame")
 
     done = False
     while not done:
