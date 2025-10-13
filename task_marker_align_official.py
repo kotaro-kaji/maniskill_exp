@@ -27,7 +27,7 @@ MAX_SUCCESSES_PER_EPISODE = 3
 
 VELOCITY_PENALTY_THRESHOLD = 0.15
 VELOCITY_PENALTY_SCALE = 0.05
-VELOCITY_PENALTY_EXP_MAX = 10.0
+VELOCITY_PENALTY_EXP_MAX = 5.0
 
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
@@ -476,7 +476,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         )
         reward = alignment_reward
         if "success" in info:
-            reward = reward + info["success"].to(reward.dtype)
+            reward = reward + 5.0*info["success"].to(reward.dtype)
 
         observed_qvel = self._get_observed_qvel()
         speed = torch.linalg.norm(observed_qvel, dim=1)
