@@ -22,9 +22,9 @@ MARKER_NORMAL_OFFSET = 0.2
 ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
 
-VELOCITY_PENALTY_THRESHOLD = 0.55
-VELOCITY_PENALTY_SCALE = 0.015
-VELOCITY_PENALTY_EXP_MAX = 1.0
+VELOCITY_PENALTY_THRESHOLD = 0.15
+VELOCITY_PENALTY_SCALE = 0.05
+VELOCITY_PENALTY_EXP_MAX = 10.0
 
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
@@ -224,9 +224,35 @@ class MyEEAlignMarkerEnv(BaseEnv):
             (rand_x_world, rand_y_world, rand_z_world), dim=-1
         )
         marker_pose_world = self._convert_pose_base_to_world(marker_pose_base, env_idx)
+        base_quats_world = marker_pose_world.q
+        # Randomize yaw about the world z-axis while keeping roll/pitch fixed
+        rand_yaw = torch.rand((batch_size,), device=self.device) * 2 * torch.pi - torch.pi
+        half_yaw = rand_yaw * 0.5
+        sin_half = torch.sin(half_yaw)
+        cos_half = torch.cos(half_yaw)
+        zeros = torch.zeros_like(sin_half)
+        yaw_quats_world = torch.stack(
+            (cos_half, zeros, zeros, sin_half),
+            dim=-1,
+        )
+        w1, x1, y1, z1 = yaw_quats_world.unbind(dim=-1)
+        w2, x2, y2, z2 = base_quats_world.unbind(dim=-1)
+        randomized_orientations_world = torch.stack(
+            (
+                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+            ),
+            dim=-1,
+        )
+        quat_norm = torch.linalg.norm(randomized_orientations_world, dim=-1, keepdim=True)
+        randomized_orientations_world = randomized_orientations_world / torch.clamp(
+            quat_norm, min=1e-6
+        )
         randomized_world_pose = Pose.create_from_pq(
             p=randomized_positions_world,
-            q=marker_pose_world.q,
+            q=randomized_orientations_world,
             device=self.device,
         )
         return self._convert_pose_world_to_base(randomized_world_pose, env_idx)
