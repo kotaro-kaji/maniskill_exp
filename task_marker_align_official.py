@@ -22,6 +22,8 @@ MARKER_NORMAL_OFFSET = 0.2
 ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
 
+MAX_SUCCESSES_PER_EPISODE = 3
+
 VELOCITY_PENALTY_THRESHOLD = 0.15
 VELOCITY_PENALTY_SCALE = 0.05
 VELOCITY_PENALTY_EXP_MAX = 10.0
@@ -52,6 +54,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
             self._configured_marker_pose_base: Optional[Pose] = None
         else:
             self._configured_marker_pose_base = Pose.create(marker_pose)
+        self._success_counts: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: dict):
@@ -99,6 +102,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self._human_render_cameras = dict()
         self.scene = None
         self._hidden_objects = []
+        self._success_counts = None
         try:
             import gc as _gc
 
@@ -109,6 +113,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
+            self._initialize_success_counters(env_idx)
             marker_pose_base = self._resolve_marker_pose(env_idx, options)
             if (
                 self._configured_marker_pose_base is None
@@ -210,6 +215,16 @@ class MyEEAlignMarkerEnv(BaseEnv):
             else:
                 pose = Pose.create(pose.raw_pose[:batch_size], device=self.device)
         return pose
+
+    def _initialize_success_counters(self, env_idx: torch.Tensor):
+        env_idx = env_idx.to(device=self.device, dtype=torch.long)
+        if self._success_counts is None or len(self._success_counts) != self.num_envs:
+            self._success_counts = torch.zeros(
+                self.num_envs, dtype=torch.long, device=self.device
+            )
+        elif self._success_counts.device != self.device:
+            self._success_counts = self._success_counts.to(self.device)
+        self._success_counts.index_fill_(0, env_idx, 0)
 
     def _randomize_marker_pose_in_base(
         self, marker_pose_base: Pose, env_idx: torch.Tensor
@@ -380,15 +395,32 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 success_tensor = success_tensor.unsqueeze(0)
             success_envs = torch.nonzero(success_tensor, as_tuple=False).squeeze(-1)
             if success_envs.numel() > 0:
-                # Keep the episode running by respawning the marker when success is achieved.
-                self._respawn_marker(success_envs)
-                raw_obs = self.get_obs(info, unflattened=True)
+                success_envs = success_envs.to(device=self.device, dtype=torch.long)
+                if self._success_counts is None:
+                    # Should not happen, but guard to avoid crashes.
+                    self._success_counts = torch.zeros(
+                        self.num_envs, dtype=torch.long, device=self.device
+                    )
+                increment = torch.ones(success_envs.shape, dtype=torch.long, device=self.device)
+                self._success_counts.index_add_(0, success_envs, increment)
+                completed_mask = self._success_counts.index_select(0, success_envs) >= MAX_SUCCESSES_PER_EPISODE
+                ongoing_envs = success_envs[~completed_mask]
+                if ongoing_envs.numel() > 0:
+                    # Keep the episode running by respawning the marker when success is achieved.
+                    self._respawn_marker(ongoing_envs)
+                    raw_obs = self.get_obs(info, unflattened=True)
+                # Let termination logic below handle env shutdown after required successes.
 
         obs = self._flatten_raw_obs(raw_obs)
         if "fail" in info:
             terminated = info["fail"].clone()
         else:
             terminated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
+        if self._success_counts is not None:
+            success_limit_reached = self._success_counts >= MAX_SUCCESSES_PER_EPISODE
+            if terminated.device != success_limit_reached.device:
+                success_limit_reached = success_limit_reached.to(terminated.device)
+            terminated = torch.logical_or(terminated, success_limit_reached)
         truncated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
         self._last_obs = obs
         return obs, reward, terminated, truncated, info
