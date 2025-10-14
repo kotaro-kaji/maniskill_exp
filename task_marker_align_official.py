@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from typing import Any, Dict, Optional
 
 from mani_skill.envs.sapien_env import BaseEnv
+from mani_skill.agents.utils import get_active_joint_indices
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.registration import register_env
@@ -55,11 +56,13 @@ class MyEEAlignMarkerEnv(BaseEnv):
         else:
             self._configured_marker_pose_base = Pose.create(marker_pose)
         self._success_counts: Optional[torch.Tensor] = None
+        self._obs_joint_indices: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: dict):
         base_pose = sapien.Pose(p=[0.0, 0.0, 0.0])
         super()._load_agent(options, base_pose)
+        self._configure_observed_joint_indices()
 
     @property
     def _default_human_render_camera_configs(self):
@@ -95,6 +98,25 @@ class MyEEAlignMarkerEnv(BaseEnv):
         builder.initial_pose = sapien.Pose()
         self.marker = builder.build_kinematic(name="alignment_marker")
 
+    def _configure_observed_joint_indices(self):
+        observed_joint_names = []
+        arm_joint_names = getattr(self.agent, "arm_joint_names", None)
+        if arm_joint_names is not None:
+            observed_joint_names.extend(list(arm_joint_names))
+        gripper_joint_names = getattr(self.agent, "gripper_joint_names", None)
+        if gripper_joint_names:
+            drive_joint = gripper_joint_names[0]
+            if drive_joint not in observed_joint_names:
+                observed_joint_names.append(drive_joint)
+        if not observed_joint_names:
+            self._obs_joint_indices = None
+            if hasattr(self.agent, "_obs_joint_indices"):
+                delattr(self.agent, "_obs_joint_indices")
+            return
+        indices = get_active_joint_indices(self.agent.robot, observed_joint_names).long()
+        self._obs_joint_indices = indices
+        self.agent._obs_joint_indices = indices
+
     def _clear(self):
         self._close_viewer()
         self.agent = None
@@ -103,6 +125,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self.scene = None
         self._hidden_objects = []
         self._success_counts = None
+        self._obs_joint_indices = None
         try:
             import gc as _gc
 
@@ -354,6 +377,23 @@ class MyEEAlignMarkerEnv(BaseEnv):
             "success": success,
             "target_distance": distance,
         }
+
+    def _get_obs_agent(self):
+        obs = super()._get_obs_agent()
+        indices = getattr(self.agent, "_obs_joint_indices", None)
+        if indices is None:
+            indices = getattr(self, "_obs_joint_indices", None)
+        if indices is None:
+            return obs
+        if "qpos" in obs:
+            dim = obs["qpos"].dim() - 1
+            idx = indices.to(device=obs["qpos"].device, dtype=torch.long)
+            obs["qpos"] = obs["qpos"].index_select(dim, idx)
+        if "qvel" in obs:
+            dim = obs["qvel"].dim() - 1
+            idx = indices.to(device=obs["qvel"].device, dtype=torch.long)
+            obs["qvel"] = obs["qvel"].index_select(dim, idx)
+        return obs
 
     def _get_obs_extra(self, info: Dict):
         marker_pose_base = self._get_marker_pose_in_base_frame()
