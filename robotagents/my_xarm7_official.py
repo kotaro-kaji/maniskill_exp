@@ -74,7 +74,7 @@ class Xarm7Official(Xarm7):
             damping=_broadcast(self.arm_damping, arm_dof),
             force_limit=arm_force_limits,
             use_delta=True,
-            use_target=True,
+            use_target=False,
             max_velocity=arm_max_vel,
             max_acceleration=arm_max_acc,
             max_jerk=None,  # Populate once jerk data is available.
