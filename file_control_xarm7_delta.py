@@ -4,17 +4,9 @@ from typing import List, Optional
 
 import gymnasium as gym
 import mani_skill.envs  # registers built-in envs
-import my_xarm7  # registers custom URDF robot
-import my_xarm7_mjcf  # keep registrations for MJCF variants
-try:
-    import my_xarm7_mjcf_1  # optional variants if available
-    import my_xarm7_mjcf_2
-    import my_xarm7_mjcf_3
-except Exception:
-    pass
-import task_pushcube  # registers MyPushCube-v1
+import robotagents.my_xarm7_official  # registers custom URDF robot
 import numpy as np
-
+import task_marker_align_official
 
 CONTROL_FILE = "control_delta_input.txt"
 STATE_FILE = "joint_state_delta.txt"
@@ -105,13 +97,13 @@ def _write_joint_state(path: str, joint_names: List[str], qpos: np.ndarray):
 
 
 def main():
-    robot_uid = os.environ.get("ROBOT_UID", "my_xarm7")
+    robot_uid = os.environ.get("ROBOT_UID", "my_xarm7_official")
     print(f"Using robot_uids='{robot_uid}' (set ROBOT_UID to override)")
 
     env = gym.make(
-        "MyPushCube-v1",
+        "MyEEAlignMarker-v0",
         obs_mode="state",
-        control_mode="pd_joint_delta_pos",
+        control_mode="rate_limited_pd_joint_delta_pos",
         robot_uids=robot_uid,
         render_mode="human",
         sim_backend="gpu",
