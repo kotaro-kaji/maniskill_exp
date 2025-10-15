@@ -1,262 +1,52 @@
-"""xArm7 controller variant that mirrors the behaviour of the official SDK.
+"""xArm7 variant that wires the new rate-limited joint controller.
 
-The new controller keeps the 7-DoF joint delta interface used by the
-`my_xarm7` agent while emulating the firmware-level smoothing in
-`set_servo_angle_j`: at every control step we integrate joint targets subject
-to the SDK's velocity and acceleration caps before forwarding them to the
-underlying ManiSkill PD drives.
+This agent preserves the joint-delta control interface used by ``my_xarm7``
+while replacing the legacy ad-hoc filter with ManiSkill's
+``RateLimitedJointPosController`` so that simulation enforces the same
+velocity/acceleration caps exposed by the real xArm SDK (Mode 6).
+
+Users should update the rate-limit arrays and PD gains with the values
+measured on their robot to ensure the simulation faithfully mirrors the
+hardware behaviour.
 """
 
 from __future__ import annotations
 
-import copy
-import math
 from collections import OrderedDict
-from dataclasses import dataclass
-from typing import Sequence, Union
+from typing import Sequence
 
 import numpy as np
-import torch
 
 from mani_skill.agents.controllers import (
-    PDJointPosController,
-    PDJointPosControllerConfig,
+    RateLimitedJointPosControllerConfig,
     deepcopy_dict,
 )
 from mani_skill.agents.registration import register_agent
-from mani_skill.utils.structs.types import Array
 
 from .my_xarm7 import Xarm7
 
+# ---------------------------------------------------------------------------
+# Default xArm Mode 6 limits (approximate SDK defaults). These should be
+# replaced with the actual values measured on the user's robot.
+# ---------------------------------------------------------------------------
+_DEFAULT_ARM_MAX_VEL = float(np.deg2rad(20.0))  # ≈0.349 rad/s
+_DEFAULT_ARM_MAX_ACC = float(np.deg2rad(500.0))  # ≈8.73 rad/s^2
 
-def _to_tensor_parameter(
-    value: Union[float, Sequence[float], np.ndarray],
-    dof: int,
-    device,
-) -> torch.Tensor:
-    """Utility to broadcast scalar/sequence parameters to ``(1, dof)`` tensors."""
 
-    if value is None:
-        raise ValueError("Expected a numeric value, got None")
-    arr = np.asarray(value, dtype=np.float32)
+def _broadcast(values: Sequence[float] | float, dof: int) -> np.ndarray:
+    """Utility to produce per-joint arrays from scalars or sequences."""
+
+    arr = np.asarray(values, dtype=np.float32)
     if arr.ndim == 0:
-        arr = np.full(dof, arr, dtype=np.float32)
-    elif arr.size != dof:
-        arr = np.broadcast_to(arr, (dof,)).astype(np.float32)
-    return torch.from_numpy(arr).to(device=device)
-
-
-@dataclass
-class XArmSDKJointDeltaControllerConfig(PDJointPosControllerConfig):
-    """Configuration for the SDK-inspired joint delta controller."""
-
-    max_joint_speed: Union[float, Sequence[float]] = math.pi  # rad/s cap (≈180°/s)
-    max_joint_acc: Union[float, Sequence[float]] = 12.0  # rad/s^2 cap mirroring ROS controllers
-    integral_gain: Union[float, Sequence[float]] = 0.0
-    integral_limit: Union[float, Sequence[float]] = 1.0
-    positional_gain: Union[float, Sequence[float]] = 6.0
-    velocity_damping: Union[float, Sequence[float]] = 1.5
-    controller_cls = None  # populated after class declaration
-
-
-class XArmSDKJointDeltaController(PDJointPosController):
-    """Delta-angle controller that mimics xArm's ``set_servo_angle_j`` pathing.
-
-    Each control tick we respect the SDK's joint velocity/acceleration limits
-    while moving the internal waypoint toward the commanded joint targets; the
-    resulting pose is then tracked by ManiSkill's PD drives.
-    """
-
-    config: "XArmSDKJointDeltaControllerConfig"
-
-    def __init__(
-        self,
-        config: XArmSDKJointDeltaControllerConfig,
-        articulation,
-        control_freq: int,
-        sim_freq: int = None,
-        scene=None,
-    ):
-        super().__init__(config, articulation, control_freq, sim_freq, scene)
-        self._sim_dt = float(self.articulation.px.timestep)
-        self._control_dt = self._sim_dt * self._sim_steps
-        dof = len(self.joints)
-
-        # Hardware joint limits (same for every env instance)
-        qlimits = (
-            self.articulation.get_qlimits()[0, self.active_joint_indices]
-            .detach()
-            .cpu()
-            .numpy()
-        )
-        self._joint_lower = torch.from_numpy(qlimits[:, 0]).to(self.device)
-        self._joint_upper = torch.from_numpy(qlimits[:, 1]).to(self.device)
-
-        # Pre-broadcasted motion constraints
-        self._max_speed = _to_tensor_parameter(
-            self.config.max_joint_speed, dof, self.device
-        )
-        self._max_acc = _to_tensor_parameter(
-            self.config.max_joint_acc, dof, self.device
-        )
-        self._pos_gain = _to_tensor_parameter(
-            self.config.positional_gain, dof, self.device
-        )
-        self._vel_damp = _to_tensor_parameter(
-            self.config.velocity_damping, dof, self.device
-        )
-        self._int_gain = _to_tensor_parameter(
-            self.config.integral_gain, dof, self.device
-        )
-        self._integral_limit = _to_tensor_parameter(
-            self.config.integral_limit, dof, self.device
-        )
-
-        # Action bounds (delta joint limits)
-        lower = self.config.lower if self.config.lower is not None else -0.1
-        upper = self.config.upper if self.config.upper is not None else 0.1
-        self._delta_lower = _to_tensor_parameter(lower, dof, self.device)
-        self._delta_upper = _to_tensor_parameter(upper, dof, self.device)
-
-        # Ring buffers for the servo filter
-        self._commanded_target = None
-        self._servo_target = None
-        self._servo_velocity = None
-        self._servo_integral = None
-        self._pos_tolerance = 1e-4
-        self._vel_tolerance = 5e-4
-
-    def reset(self):
-        super().reset()
-        if self._commanded_target is None:
-            self._commanded_target = self._target_qpos.clone()
-            self._servo_target = self._target_qpos.clone()
-            self._servo_velocity = torch.zeros_like(self._target_qpos)
-            self._servo_integral = torch.zeros_like(self._target_qpos)
-        else:
-            mask = getattr(self.scene, "_reset_mask", None)
-            if mask is None:
-                self._commanded_target.copy_(self._target_qpos)
-                self._servo_target.copy_(self._target_qpos)
-                self._servo_velocity.zero_()
-                self._servo_integral.zero_()
-            else:
-                self._commanded_target[mask] = self._target_qpos[mask]
-                self._servo_target[mask] = self._target_qpos[mask]
-                self._servo_velocity[mask] = 0.0
-                self._servo_integral[mask] = 0.0
-        self.set_drive_targets(self._servo_target)
-
-    def set_action(self, action: Array):
-        action = self._preprocess_action(action).to(self.device)
-        self._step = 0
-
-        if self._commanded_target is None:
-            self._commanded_target = self.qpos.clone()
-            self._servo_target = self.qpos.clone()
-            self._servo_velocity = torch.zeros_like(self.qpos)
-            self._servo_integral = torch.zeros_like(self.qpos)
-
-        delta = torch.clamp(action, self._delta_lower, self._delta_upper)
-        base = self._commanded_target if self.config.use_target else self.qpos
-        commanded = torch.clamp(base + delta, self._joint_lower, self._joint_upper)
-        self._commanded_target = commanded.clone()
-        self._target_qpos = self._servo_target.clone()
-
-    def _integrate_servo(self, dt: float):
-        if self._commanded_target is None or self._servo_target is None:
-            return
-
-        error = self._commanded_target - self._servo_target
-
-        if self._servo_integral is None:
-            self._servo_integral = torch.zeros_like(self._servo_target)
-
-        proposed_integral = self._servo_integral + error * dt
-        self._servo_integral = torch.clamp(
-            proposed_integral,
-            -self._integral_limit,
-            self._integral_limit,
-        )
-
-        # Zero integrator on axes without integral gain to avoid meaningless drift.
-        no_int = torch.abs(self._int_gain) <= 1e-6
-        if no_int.any():
-            self._servo_integral = torch.where(
-                no_int, torch.zeros_like(self._servo_integral), self._servo_integral
-            )
-
-        desired_acc = (
-            self._pos_gain * error
-            + self._int_gain * self._servo_integral
-            - self._vel_damp * self._servo_velocity
-        )
-        desired_acc = torch.clamp(desired_acc, -self._max_acc, self._max_acc)
-
-        new_velocity = torch.clamp(
-            self._servo_velocity + desired_acc * dt,
-            -self._max_speed,
-            self._max_speed,
-        )
-
-        new_target = self._servo_target + new_velocity * dt
-
-        overshoot_pos = (error > 0) & (new_target > self._commanded_target)
-        overshoot_neg = (error < 0) & (new_target < self._commanded_target)
-        overshoot_mask = overshoot_pos | overshoot_neg
-        if overshoot_mask.any():
-            new_target = torch.where(overshoot_mask, self._commanded_target, new_target)
-            new_velocity = torch.where(
-                overshoot_mask, torch.zeros_like(new_velocity), new_velocity
-            )
-            self._servo_integral = torch.where(
-                overshoot_mask, torch.zeros_like(self._servo_integral), self._servo_integral
-            )
-
-        new_target = torch.clamp(new_target, self._joint_lower, self._joint_upper)
-
-        remaining_error = self._commanded_target - new_target
-        arrived = torch.abs(remaining_error) <= self._pos_tolerance
-        near_still = torch.abs(new_velocity) <= self._vel_tolerance
-        settle_mask = arrived & near_still
-        if settle_mask.any():
-            new_target = torch.where(settle_mask, self._commanded_target, new_target)
-            new_velocity = torch.where(
-                settle_mask, torch.zeros_like(new_velocity), new_velocity
-            )
-            self._servo_integral = torch.where(
-                settle_mask, torch.zeros_like(self._servo_integral), self._servo_integral
-            )
-
-        self._servo_velocity = new_velocity
-        self._servo_target = new_target
-        self._target_qpos = self._servo_target.clone()
-        self.set_drive_targets(self._servo_target)
-
-    def before_simulation_step(self):
-        if self._servo_target is not None:
-            self._integrate_servo(self._sim_dt)
-
-    def get_state(self) -> dict:
-        state = super().get_state()
-        state.update(
-            {
-                "sdk_command_qpos": self._commanded_target,
-                "sdk_servo_qpos": self._servo_target,
-                "sdk_servo_qvel": self._servo_velocity,
-                "sdk_servo_integral": self._servo_integral,
-            }
-        )
-        return state
-
-
-# Link the config to the controller implementation
-XArmSDKJointDeltaControllerConfig.controller_cls = XArmSDKJointDeltaController
+        return np.full(dof, float(arr), dtype=np.float32)
+    if arr.shape[0] != dof:
+        return np.broadcast_to(arr, (dof,)).astype(np.float32)
+    return arr.astype(np.float32)
 
 
 @register_agent()
 class Xarm7Official(Xarm7):
-    """XArm7 variant with an SDK-faithful joint delta position controller."""
+    """xArm7 agent that exposes a rate-limited joint delta controller."""
 
     uid = "my_xarm7_official"
 
@@ -264,80 +54,38 @@ class Xarm7Official(Xarm7):
     def _controller_configs(self):
         base_configs = deepcopy_dict(super()._controller_configs)
 
-        # SDK-aligned per-joint gains taken from UFactory's ROS configs so the
-        # simulated response mirrors the firmware defaults. Gains are rescaled
-        # from the integer PID units used by the embedded drives to radian space.
-        hardware_p = np.array(
-            [1200.0, 1400.0, 1200.0, 850.0, 500.0, 500.0, 300.0],
-            dtype=np.float32,
-        )
-        hardware_d = np.array(
-            [10.0, 10.0, 5.0, 5.0, 1.0, 1.0, 1.0], dtype=np.float32
-        )
-        force_limits = np.array([50.0, 50.0, 30.0, 30.0, 30.0, 20.0, 20.0], dtype=np.float32)
+        arm_dof = len(self.arm_joint_names)
 
-        official_pd_arm = PDJointPosControllerConfig(
+        # Rate-limit parameters for the arm. Replace with real hardware values.
+        arm_max_vel = _broadcast(_DEFAULT_ARM_MAX_VEL, arm_dof)
+        arm_max_acc = _broadcast(_DEFAULT_ARM_MAX_ACC, arm_dof)
+
+        # PD gains fall back to the environment defaults; users should update
+        # them with the values reported by their controller firmware.
+        arm_force_limits = _broadcast(self.arm_force_limit, arm_dof)
+
+        arm_rate_limited = RateLimitedJointPosControllerConfig(
             self.arm_joint_names,
             lower=-0.1,
             upper=0.1,
-            stiffness=hardware_p,
-            damping=np.maximum(hardware_d, 0.05),
-            force_limit=force_limits,
-            use_delta=True
-        )
-
-        sdk_positional_gain = hardware_p.astype(np.float32)
-        sdk_integral_gain = np.array(
-            [5.0, 5.0, 5.0, 3.0, 3.0, 1.0, 0.05], dtype=np.float32
-        )
-        sdk_velocity_damping = np.maximum(hardware_d, 0.0).astype(np.float32)
-        sdk_max_speed = np.full_like(sdk_positional_gain, math.pi, dtype=np.float32)
-        sdk_max_acc = np.full_like(sdk_positional_gain, 12.0, dtype=np.float32)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            raw_integral_limit = np.where(
-                sdk_integral_gain > 0,
-                sdk_max_acc / sdk_integral_gain,
-                0.0,
-            )
-        sdk_integral_limit = np.where(
-            sdk_integral_gain > 0,
-            np.clip(raw_integral_limit, 0.1, 5.0),
-            0.0,
-        ).astype(np.float32)
-
-        sdk_arm = XArmSDKJointDeltaControllerConfig(
-            self.arm_joint_names,
-            lower=-0.1,
-            upper=0.1,
-            stiffness=self.arm_stiffness,
-            damping=self.arm_damping,
-            force_limit=force_limits,
+            stiffness=_broadcast(self.arm_stiffness, arm_dof),
+            damping=_broadcast(self.arm_damping, arm_dof),
+            force_limit=arm_force_limits,
             use_delta=True,
-            use_target=False,
-            positional_gain=sdk_positional_gain,
-            velocity_damping=sdk_velocity_damping,
-            integral_gain=sdk_integral_gain,
-            integral_limit=sdk_integral_limit,
-            max_joint_speed=sdk_max_speed,
-            max_joint_acc=sdk_max_acc,
+            use_target=True,
+            max_velocity=arm_max_vel,
+            max_acceleration=arm_max_acc,
+            max_jerk=None,  # Populate once jerk data is available.
         )
-
-        gripper_cfg_official = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
-        gripper_cfg_sdk = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
 
         controller_configs = OrderedDict()
-        controller_configs["official_pd_joint_delta_pos"] = dict(
-            arm=official_pd_arm,
-            gripper=gripper_cfg_official,
-            balance_passive_force=False,
-        )
-        controller_configs["sdk_joint_delta_pos"] = dict(
-            arm=sdk_arm,
-            gripper=gripper_cfg_sdk,
+        controller_configs["rate_limited_pd_joint_delta_pos"] = dict(
+            arm=arm_rate_limited,
+            gripper=base_configs["pd_joint_delta_pos"]["gripper"],
             balance_passive_force=False,
         )
 
-        # Preserve access to the legacy controllers for backwards compatibility.
+        # Keep access to existing controllers for backwards compatibility.
         for name, cfg in base_configs.items():
             controller_configs[name] = cfg
 
