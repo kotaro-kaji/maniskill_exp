@@ -66,7 +66,7 @@ class Xarm7Official(Xarm7):
             use_target=False,
             # Placeholder limits – replace with measured Mode 6 values.
             max_velocity=_broadcast(np.deg2rad(40.0), arm_dof),
-            max_acceleration=_broadcast(np.deg2rad(800.0), arm_dof),
+            max_acceleration=_broadcast(np.deg2rad(200.0), arm_dof),
         )
 
         controller_configs = OrderedDict()
