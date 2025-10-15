@@ -13,19 +13,26 @@ hardware behaviour.
 from __future__ import annotations
 
 import copy
+import os
+import sys
 from collections import OrderedDict
 from typing import Sequence
 
 import numpy as np
 
-from mani_skill.agents.controllers import (
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_MANISKILL_PATH = os.path.join(_REPO_ROOT, "ManiSkill")
+if os.path.isdir(_MANISKILL_PATH) and _MANISKILL_PATH not in sys.path:
+    sys.path.insert(0, _MANISKILL_PATH)
+
+from mani_skill.agents.controllers import (  # noqa: E402
     PDJointPosControllerConfig,
     RateLimitedJointPosControllerConfig,
     deepcopy_dict,
 )
-from mani_skill.agents.registration import register_agent
+from mani_skill.agents.registration import register_agent  # noqa: E402
 
-from .my_xarm7 import Xarm7
+from .my_xarm7 import Xarm7  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Default xArm Mode 6 limits (approximate SDK defaults). These should be
