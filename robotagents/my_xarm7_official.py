@@ -12,12 +12,14 @@ hardware behaviour.
 
 from __future__ import annotations
 
+import copy
 from collections import OrderedDict
 from typing import Sequence
 
 import numpy as np
 
 from mani_skill.agents.controllers import (
+    PDJointPosControllerConfig,
     RateLimitedJointPosControllerConfig,
     deepcopy_dict,
 )
@@ -82,6 +84,36 @@ class Xarm7Official(Xarm7):
         controller_configs["rate_limited_pd_joint_delta_pos"] = dict(
             arm=arm_rate_limited,
             gripper=base_configs["pd_joint_delta_pos"]["gripper"],
+            balance_passive_force=False,
+        )
+
+        hardware_p = np.array(
+            [1200.0, 1400.0, 1200.0, 850.0, 500.0, 500.0, 300.0],
+            dtype=np.float32,
+        )
+        hardware_d = np.array(
+            [10.0, 10.0, 5.0, 5.0, 1.0, 1.0, 1.0],
+            dtype=np.float32,
+        )
+        force_limits = np.array(
+            [50.0, 50.0, 30.0, 30.0, 30.0, 20.0, 20.0],
+            dtype=np.float32,
+        )
+
+        official_arm = PDJointPosControllerConfig(
+            self.arm_joint_names,
+            lower=-0.1,
+            upper=0.1,
+            stiffness=hardware_p,
+            damping=np.maximum(hardware_d, 0.05),
+            force_limit=force_limits,
+            use_delta=True,
+        )
+        official_gripper = copy.deepcopy(base_configs["pd_joint_delta_pos"]["gripper"])
+
+        controller_configs["official_pd_joint_delta_pos"] = dict(
+            arm=official_arm,
+            gripper=official_gripper,
             balance_passive_force=False,
         )
 
