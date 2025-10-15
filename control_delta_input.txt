@@ -23,4 +23,4 @@
 # Current delta command (used if the edited line is invalid):
 # 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000
 # --- Edit the line below: ---
-0.1 0.2 0.3 0.3 0.3 0.0 0.0 0.3
+0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
