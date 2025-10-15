@@ -6,6 +6,11 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
+_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+_MANISKILL_PATH = os.path.join(_REPO_ROOT, "ManiSkill")
+if os.path.isdir(_MANISKILL_PATH) and _MANISKILL_PATH not in sys.path:
+    sys.path.insert(0, _MANISKILL_PATH)
+
 import gymnasium as gym
 import numpy as np
 import torch
@@ -22,11 +27,6 @@ from mani_skill.utils.structs.types import SimConfig
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
-
-_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-_MANISKILL_PATH = os.path.join(_REPO_ROOT, "ManiSkill")
-if os.path.isdir(_MANISKILL_PATH) and _MANISKILL_PATH not in sys.path:
-    sys.path.insert(0, _MANISKILL_PATH)
 
 from task_joint_hold import MyJointHoldEnv
 from task_marker_align_official import MyEEAlignMarkerEnv
