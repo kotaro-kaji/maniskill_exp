@@ -64,6 +64,8 @@ python ppo_xarm7.py --env_id="MyEEAlignMarker-v0" \
 
 
 
+
+
 #rolloutのみ
 python ppo_rollout_xarm7.py --env_id MySimpleReach-v0 --checkpoint runs/MySimpleReach-v0__ppo_xarm7__1__1758253720/ckpt_226.pt
 python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_delta_pos --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1759051124/final_ckpt.pt
@@ -75,3 +77,11 @@ python ppo_rollout_virtual_xarm7.py runs/MyJointHold-v0__ppo_xarm7__1__175905112
 
 controller check
 python file_control_xarm7_delta.py --env_id MySimpleReach-v0 --control-mode rate_limited_pd_joint_delta_pos
+
+
+
+python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode rate_limited_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
+
+python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
+
+python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode official_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
