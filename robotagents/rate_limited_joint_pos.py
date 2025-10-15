@@ -129,21 +129,21 @@ class RateLimitedJointPosController(PDJointPosController):
 
     def reset(self):
         super().reset()
-        if self._desired_qpos is None:
-            self._desired_qpos = self._target_qpos.clone()
-            self._rate_velocity = torch.zeros_like(self._target_qpos)
-            self._rate_acceleration = torch.zeros_like(self._target_qpos)
+        current_qpos = self.qpos.clone()
+        self._target_qpos = current_qpos
+        self._desired_qpos = current_qpos.clone()
+        if self._rate_velocity is None or self._rate_velocity.shape != current_qpos.shape:
+            self._rate_velocity = torch.zeros_like(current_qpos)
         else:
-            mask = getattr(self.scene, "_reset_mask", None)
-            if mask is None:
-                self._desired_qpos.copy_(self._target_qpos)
-                self._rate_velocity.zero_()
-                self._rate_acceleration.zero_()
-            else:
-                self._desired_qpos[mask] = self._target_qpos[mask]
-                self._rate_velocity[mask] = 0.0
-                self._rate_acceleration[mask] = 0.0
-        self.set_drive_targets(self._target_qpos)
+            self._rate_velocity.zero_()
+        if (
+            self._rate_acceleration is None
+            or self._rate_acceleration.shape != current_qpos.shape
+        ):
+            self._rate_acceleration = torch.zeros_like(current_qpos)
+        else:
+            self._rate_acceleration.zero_()
+        self.set_drive_targets(current_qpos)
 
     def set_action(self, action: Array):
         action = self._preprocess_action(action)

@@ -86,6 +86,20 @@ class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
                     _set_targets(ctrl)
             else:
                 _set_targets(controller)
+
+            # Issue an explicit zero action so delta controllers anchor to the current pose
+            try:
+                zero_action = controller.action_space.sample()
+
+                def _zero_like(sample):
+                    if isinstance(sample, dict):
+                        return {k: _zero_like(v) for k, v in sample.items()}
+                    return np.zeros_like(sample)
+
+                zero_action = _zero_like(zero_action)
+                controller.set_action(zero_action)
+            except Exception:
+                pass
         except Exception:
             pass
 
