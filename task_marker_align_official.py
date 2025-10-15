@@ -253,8 +253,8 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self, marker_pose_base: Pose, env_idx: torch.Tensor
     ) -> Pose:
         batch_size = len(marker_pose_base)
-        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.2 - 0.35
-        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.2 - 0.1
+        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.25 + 0.22
+        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.42 - 0.30
         rand_z_world = torch.full(
             (batch_size,), DEFAULT_MARKER_POSITION[2], device=self.device
         )
