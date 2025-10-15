@@ -1,6 +1,7 @@
 from collections import defaultdict
 import os
 import random
+import sys
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -22,10 +23,15 @@ from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
-from task_pushcube_beatiful import MyPushCubeEnv
+_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+_MANISKILL_PATH = os.path.join(_REPO_ROOT, "ManiSkill")
+if os.path.isdir(_MANISKILL_PATH) and _MANISKILL_PATH not in sys.path:
+    sys.path.insert(0, _MANISKILL_PATH)
+
 from task_joint_hold import MyJointHoldEnv
 from task_marker_align_official import MyEEAlignMarkerEnv
 import task_simple
+from task_pushcube_beatiful import MyPushCubeEnv
 
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
