@@ -73,7 +73,7 @@ class Xarm7Official(Xarm7):
         controller_configs["rate_limited_pd_joint_delta_pos"] = dict(
             arm=arm_rate_limited,
             gripper=base_configs["pd_joint_delta_pos"]["gripper"],
-            balance_passive_force=False,
+            balance_passive_force=True,
         )
 
         hardware_p = np.array(
