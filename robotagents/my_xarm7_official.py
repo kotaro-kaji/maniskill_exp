@@ -27,14 +27,6 @@ from mani_skill.agents.registration import register_agent
 from .my_xarm7 import Xarm7
 from .rate_limited_joint_pos import RateLimitedJointPosControllerConfig
 
-# ---------------------------------------------------------------------------
-# Default xArm Mode 6 limits (approximate SDK defaults). These should be
-# replaced with the actual values measured on the user's robot.
-# ---------------------------------------------------------------------------
-_DEFAULT_ARM_MAX_VEL = float(np.deg2rad(20.0))  # ≈0.349 rad/s
-_DEFAULT_ARM_MAX_ACC = float(np.deg2rad(500.0))  # ≈8.73 rad/s^2
-
-
 def _broadcast(values: Sequence[float] | float, dof: int) -> np.ndarray:
     """Utility to produce per-joint arrays from scalars or sequences."""
 
@@ -59,9 +51,6 @@ class Xarm7Official(Xarm7):
         arm_dof = len(self.arm_joint_names)
 
         # Rate-limit parameters for the arm. Replace with real hardware values.
-        arm_max_vel = _broadcast(_DEFAULT_ARM_MAX_VEL, arm_dof)
-        arm_max_acc = _broadcast(_DEFAULT_ARM_MAX_ACC, arm_dof)
-
         # PD gains fall back to the environment defaults; users should update
         # them with the values reported by their controller firmware.
         arm_force_limits = _broadcast(self.arm_force_limit, arm_dof)
@@ -75,9 +64,6 @@ class Xarm7Official(Xarm7):
             force_limit=arm_force_limits,
             use_delta=True,
             use_target=False,
-            max_velocity=arm_max_vel,
-            max_acceleration=arm_max_acc,
-            max_jerk=None,  # Populate once jerk data is available.
         )
 
         controller_configs = OrderedDict()
