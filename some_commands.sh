@@ -13,6 +13,8 @@ python -m mani_skill.trajectory.replay_trajectory --traj_path path/to/trajectory
 
 
 
+
+
 # 確認コマンド (CPU backend で安定性チェック)
 python ppo_xarm7.py \
   --env_id MyPushCube-v1 \
@@ -56,16 +58,19 @@ python ppo_xarm7.py --env_id="MyJointHold-v0" \
 
 
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0" \
-  --control-mode official_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32 \
-  --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
+  --control-mode sdk_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32 \
+  --total_timesteps=25_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
 
 
 
 #rolloutのみ
 python ppo_rollout_xarm7.py --env_id MySimpleReach-v0 --checkpoint runs/MySimpleReach-v0__ppo_xarm7__1__1758253720/ckpt_226.pt
 python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_delta_pos --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1759051124/final_ckpt.pt
-python ppo_rollout_xarm7.py --env_id MyEEAlignMarker-v0 --control-mode official_pd_joint_delta_pos --checkpoint runs/MyEEAlignMarker-v0__ppo_xarm7__1__1760008333/ckpt_226.pt
+
 
 #仮想的なrolloutのみ
 python ppo_rollout_virtual_xarm7.py runs/MyJointHold-v0__ppo_xarm7__1__1759051124/final_ckpt.pt
 
+
+controller check
+python file_control_xarm7_delta.py --env_id MySimpleReach-v0 --control-mode rate_limited_pd_joint_delta_pos
