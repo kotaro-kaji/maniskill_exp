@@ -65,6 +65,7 @@ class Xarm7Official(Xarm7):
             use_delta=True,
             use_target=False,
             max_velocity=_broadcast(np.deg2rad(60.0), arm_dof),
+            max_acceleration=_broadcast(np.deg2rad(600.0), arm_dof),
         )
 
         controller_configs = OrderedDict()
