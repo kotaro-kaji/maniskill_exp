@@ -74,6 +74,18 @@ class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
                     ctrl.reset()
             else:
                 controller.reset()
+
+            current_qpos = self.env.agent.robot.get_qpos()
+
+            def _set_targets(ctrl):
+                if hasattr(ctrl, "set_drive_targets"):
+                    ctrl.set_drive_targets(current_qpos)
+
+            if hasattr(controller, "controllers"):
+                for ctrl in controller.controllers.values():
+                    _set_targets(ctrl)
+            else:
+                _set_targets(controller)
         except Exception:
             pass
 
