@@ -63,6 +63,20 @@ class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
             qpos = base + offsets
             qpos[:, 8:] = qpos[:, 7:8]
             self.env.agent.reset(qpos)
+
+            # Ensure the controller drive targets match the new joint pose so we do not snap
+            controller = self.env.agent.controller
+            current_qpos = self.env.agent.robot.get_qpos()
+
+            def _align_targets(ctrl):
+                if hasattr(ctrl, "set_drive_targets"):
+                    ctrl.set_drive_targets(current_qpos)
+
+            if isinstance(controller, dict):
+                for ctrl in controller.values():
+                    _align_targets(ctrl)
+            else:
+                _align_targets(controller)
         except Exception:
             pass
 
