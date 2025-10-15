@@ -64,6 +64,7 @@ class Xarm7Official(Xarm7):
             force_limit=arm_force_limits,
             use_delta=True,
             use_target=False,
+            max_velocity=_broadcast(np.deg2rad(60.0), arm_dof),
         )
 
         controller_configs = OrderedDict()
