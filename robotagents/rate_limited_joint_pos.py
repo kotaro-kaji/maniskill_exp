@@ -110,6 +110,7 @@ class RateLimitedJointPosController(PDJointPosController):
     ):
         super().__init__(config, articulation, control_freq, sim_freq, scene)
         self._sim_dt = float(self.articulation.px.timestep)
+        self._control_dt = self._sim_dt * self._sim_steps if self._sim_steps > 0 else self._sim_dt
         self._dof = len(self.joints)
 
         limits = self._get_joint_limits()
@@ -161,6 +162,7 @@ class RateLimitedJointPosController(PDJointPosController):
 
         desired = torch.clamp(desired, self._joint_lower, self._joint_upper)
         self._desired_qpos = desired
+        self._rate_limit_step(self._control_dt)
 
     def before_simulation_step(self):
         self._step += 1
