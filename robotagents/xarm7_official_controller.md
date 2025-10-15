@@ -54,8 +54,8 @@
 
 | 項目 | 適用先 | 入手先メモ |
 | ---- | ------ | ----------- |
-| 各関節の速度上限 (`rad/s`) | `max_velocity` | `set_servo_angle` 実行時の `speed` 応答、または SDK パラメータダンプ |
-| 各関節の加速度上限 (`rad/s²`) | `max_acceleration` | SDK の `mvacc` パラメータ／実機ログ |
+| 各関節の速度上限 (`rad/s`) | `max_velocity` | `set_servo_angle` 実行時の `speed` 応答、または SDK パラメータダンプ（現在は暫定値として 40°/s を rad/s に変換した値を設置） |
+| 各関節の加速度上限 (`rad/s²`) | `max_acceleration` | SDK の `mvacc` パラメータ／実機ログ（現在は暫定値として 800°/s² を rad/s² に変換した値を設置） |
 | （任意）ジャーク上限 (`rad/s³`) | `max_jerk` | 実機挙動を微分して推定。SDK からは提供されない |
 | 関節別 PD ゲイン (P/D) | `stiffness`, `damping` | ROS `xarm7_controllers.yaml` または `set_servo_angle` 実験で同定 |
 | 力制限 (`Nm`) | `force_limit` | `xarm7.urdf.xacro` の `effort` 値 |

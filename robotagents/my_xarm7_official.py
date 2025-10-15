@@ -64,9 +64,9 @@ class Xarm7Official(Xarm7):
             force_limit=arm_force_limits,
             use_delta=True,
             use_target=False,
-            max_velocity=_broadcast(np.deg2rad(60.0), arm_dof),
-            max_acceleration=_broadcast(np.deg2rad(600.0), arm_dof),
-            max_jerk=_broadcast(np.deg2rad(5000.0), arm_dof),
+            # Placeholder limits – replace with measured Mode 6 values.
+            max_velocity=_broadcast(np.deg2rad(40.0), arm_dof),
+            max_acceleration=_broadcast(np.deg2rad(800.0), arm_dof),
         )
 
         controller_configs = OrderedDict()
