@@ -1,15 +1,9 @@
 from collections import defaultdict
 import os
 import random
-import sys
 import time
 from dataclasses import dataclass
 from typing import Optional
-
-_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-_MANISKILL_PATH = os.path.join(_REPO_ROOT, "ManiSkill")
-if os.path.isdir(_MANISKILL_PATH) and _MANISKILL_PATH not in sys.path:
-    sys.path.insert(0, _MANISKILL_PATH)
 
 import gymnasium as gym
 import numpy as np

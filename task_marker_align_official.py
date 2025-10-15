@@ -1,16 +1,9 @@
-import os
-import sys
 from typing import Any, Dict, Optional
 
 import sapien
 import sapien.render
 import torch
 import torch.nn.functional as F
-
-_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-_MANISKILL_PATH = os.path.join(_REPO_ROOT, "ManiSkill")
-if os.path.isdir(_MANISKILL_PATH) and _MANISKILL_PATH not in sys.path:
-    sys.path.insert(0, _MANISKILL_PATH)
 
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.agents.utils import get_active_joint_indices
