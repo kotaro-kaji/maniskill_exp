@@ -123,7 +123,7 @@ class RateLimitedJointPosController(PDJointPosController):
         )
         self._max_jerk = _broadcast_limit(self.config.max_jerk, self._dof, self.device)
 
-        self._desired_qpos: Optional[torch.Tensor] = None
+        self._command_qpos: Optional[torch.Tensor] = None
         self._rate_velocity: Optional[torch.Tensor] = None
         self._rate_acceleration: Optional[torch.Tensor] = None
 
@@ -131,7 +131,7 @@ class RateLimitedJointPosController(PDJointPosController):
         super().reset()
         current_qpos = self.qpos.clone()
         self._target_qpos = current_qpos
-        self._desired_qpos = current_qpos.clone()
+        self._command_qpos = current_qpos.clone()
         if self._rate_velocity is None or self._rate_velocity.shape != current_qpos.shape:
             self._rate_velocity = torch.zeros_like(current_qpos)
         else:
@@ -149,19 +149,19 @@ class RateLimitedJointPosController(PDJointPosController):
         action = self._preprocess_action(action)
         self._step = 0
 
-        if self._desired_qpos is None:
-            self._desired_qpos = self.qpos.clone()
-            self._rate_velocity = torch.zeros_like(self._desired_qpos)
-            self._rate_acceleration = torch.zeros_like(self._desired_qpos)
+        if self._command_qpos is None:
+            self._command_qpos = self.qpos.clone()
+            self._rate_velocity = torch.zeros_like(self._command_qpos)
+            self._rate_acceleration = torch.zeros_like(self._command_qpos)
 
         if self.config.use_delta:
-            base = self._desired_qpos if self.config.use_target else self.qpos
+            base = self._command_qpos if self.config.use_target else self.qpos
             desired = base + action
         else:
             desired = torch.broadcast_to(action, self.qpos.shape).clone()
 
         desired = torch.clamp(desired, self._joint_lower, self._joint_upper)
-        self._desired_qpos = desired
+        self._command_qpos = desired
         self._rate_limit_step(self._control_dt)
 
     def before_simulation_step(self):
@@ -170,13 +170,13 @@ class RateLimitedJointPosController(PDJointPosController):
 
     def _rate_limit_step(self, dt: float):
         if (
-            self._desired_qpos is None
+            self._command_qpos is None
             or self._target_qpos is None
             or self._rate_velocity is None
         ):
             return
 
-        desired = torch.clamp(self._desired_qpos, self._joint_lower, self._joint_upper)
+        desired = torch.clamp(self._command_qpos, self._joint_lower, self._joint_upper)
         prev_acc = self._rate_acceleration if self._max_jerk is not None else None
         new_target, new_velocity, new_acc = _apply_rate_limits(
             desired,
@@ -200,7 +200,7 @@ class RateLimitedJointPosController(PDJointPosController):
         state = super().get_state()
         state.update(
             {
-                "desired_qpos": self._desired_qpos,
+                "command_qpos": self._command_qpos,
                 "rate_target_qpos": self._target_qpos,
                 "rate_velocity": self._rate_velocity,
                 "rate_acceleration": self._rate_acceleration,
@@ -211,13 +211,13 @@ class RateLimitedJointPosController(PDJointPosController):
     def set_state(self, state: dict):
         if "target_qpos" in state:
             super().set_state(state)
-        self._desired_qpos = state.get("desired_qpos")
+        self._command_qpos = state.get("command_qpos")
         self._target_qpos = state.get("rate_target_qpos", self._target_qpos)
         self._rate_velocity = state.get("rate_velocity")
         self._rate_acceleration = state.get("rate_acceleration")
 
-        if self._desired_qpos is None:
-            self._desired_qpos = self.qpos.clone()
+        if self._command_qpos is None:
+            self._command_qpos = self.qpos.clone()
         if self._target_qpos is None:
             self._target_qpos = self.qpos.clone()
         if self._rate_velocity is None:
