@@ -92,8 +92,8 @@ def _apply_rate_limits(
 
 @dataclass
 class RateLimitedJointPosControllerConfig(PDJointPosControllerConfig):
-    max_velocity: Union[float, Sequence[float]] = math.radians(20.0)
-    max_acceleration: Union[float, Sequence[float]] = math.radians(500.0)
+    max_velocity: Union[float, Sequence[float]] = math.radians(360.0)
+    max_acceleration: Union[float, Sequence[float]] = math.radians(6000.0)
     max_jerk: Union[None, float, Sequence[float]] = None
     controller_cls = None  # populated after class definition
 
