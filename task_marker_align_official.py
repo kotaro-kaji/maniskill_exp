@@ -29,10 +29,6 @@ VELOCITY_PENALTY_THRESHOLD = 0.15
 VELOCITY_PENALTY_SCALE = 0.005
 VELOCITY_PENALTY_EXP_MAX = 0.0
 
-PROGRESS_REWARD = 0.1
-SUCCESS_BONUS = 5.0
-PROGRESS_EPS = 2e-4
-
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_POSE = torch.cat((DEFAULT_MARKER_POSITION, DEFAULT_MARKER_ORIENTATION))
@@ -61,7 +57,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
             self._configured_marker_pose_base = Pose.create(marker_pose)
         self._success_counts: Optional[torch.Tensor] = None
         self._obs_joint_indices: Optional[torch.Tensor] = None
-        self._prev_distance: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: dict):
@@ -131,7 +126,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self._hidden_objects = []
         self._success_counts = None
         self._obs_joint_indices = None
-        self._prev_distance = None
         try:
             import gc as _gc
 
@@ -155,7 +149,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 marker_pose_base, env_idx
             )
             self.marker.set_pose(marker_pose_world)
-            self._update_prev_distance(env_idx)
 
     def _get_robot_base_pose_on_device(
         self, env_idx: Optional[torch.Tensor] = None
@@ -255,68 +248,34 @@ class MyEEAlignMarkerEnv(BaseEnv):
         elif self._success_counts.device != self.device:
             self._success_counts = self._success_counts.to(self.device)
         self._success_counts.index_fill_(0, env_idx, 0)
-        self._ensure_prev_distance()
-        if env_idx.numel() > 0:
-            inf_values = torch.full(
-                (env_idx.numel(),), float("inf"), device=self.device
-            )
-            self._prev_distance.index_copy_(0, env_idx, inf_values)
-
-    def _ensure_prev_distance(self):
-        if self._prev_distance is None or len(self._prev_distance) != self.num_envs:
-            self._prev_distance = torch.zeros(
-                self.num_envs, dtype=torch.float32, device=self.device
-            )
-        elif self._prev_distance.device != self.device:
-            self._prev_distance = self._prev_distance.to(
-                device=self.device, dtype=torch.float32
-            )
-
-    def _current_distance(self) -> torch.Tensor:
-        marker_pose, _, _, normal = self._marker_frame_axes()
-        target_point = marker_pose.p + normal * MARKER_NORMAL_OFFSET
-        tcp_position = self._get_tcp_pose_on_device().p
-        return torch.linalg.norm(tcp_position - target_point, dim=1)
-
-    def _update_prev_distance(self, env_idx: torch.Tensor):
-        self._ensure_prev_distance()
-        if env_idx.ndim == 0:
-            env_idx = env_idx.unsqueeze(0)
-        env_idx = env_idx.to(device=self.device, dtype=torch.long)
-        if env_idx.numel() == 0:
-            return
-        distances = self._current_distance()
-        if distances.device != self.device:
-            distances = distances.to(self.device)
-        selected = distances.index_select(0, env_idx)
-        self._prev_distance.index_copy_(0, env_idx, selected)
 
     def _randomize_marker_pose_in_base(
         self, marker_pose_base: Pose, env_idx: torch.Tensor
     ) -> Pose:
-        marker_pose_base = Pose.create(marker_pose_base, device=self.device)
-        _ = env_idx  # keep signature compatibility
         batch_size = len(marker_pose_base)
-        rand_x_base = torch.rand((batch_size,), device=self.device) * 0.25 + 0.22
-        rand_y_base = torch.rand((batch_size,), device=self.device) * 0.42 - 0.30
-        rand_z_base = marker_pose_base.p[..., 2]
-        randomized_positions_base = torch.stack(
-            (rand_x_base, rand_y_base, rand_z_base), dim=-1
+        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.25 + 0.22
+        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.42 - 0.30
+        rand_z_world = torch.full(
+            (batch_size,), DEFAULT_MARKER_POSITION[2], device=self.device
         )
-        base_quats = marker_pose_base.q
-        # Randomize yaw about the base-frame z-axis while keeping roll/pitch fixed
+        randomized_positions_world = torch.stack(
+            (rand_x_world, rand_y_world, rand_z_world), dim=-1
+        )
+        marker_pose_world = self._convert_pose_base_to_world(marker_pose_base, env_idx)
+        base_quats_world = marker_pose_world.q
+        # Randomize yaw about the world z-axis while keeping roll/pitch fixed
         rand_yaw = torch.rand((batch_size,), device=self.device) * 2 * torch.pi - torch.pi
         half_yaw = rand_yaw * 0.5
         sin_half = torch.sin(half_yaw)
         cos_half = torch.cos(half_yaw)
         zeros = torch.zeros_like(sin_half)
-        yaw_quats_base = torch.stack(
+        yaw_quats_world = torch.stack(
             (cos_half, zeros, zeros, sin_half),
             dim=-1,
         )
-        w1, x1, y1, z1 = yaw_quats_base.unbind(dim=-1)
-        w2, x2, y2, z2 = base_quats.unbind(dim=-1)
-        randomized_orientations = torch.stack(
+        w1, x1, y1, z1 = yaw_quats_world.unbind(dim=-1)
+        w2, x2, y2, z2 = base_quats_world.unbind(dim=-1)
+        randomized_orientations_world = torch.stack(
             (
                 w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
                 w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
@@ -325,16 +284,16 @@ class MyEEAlignMarkerEnv(BaseEnv):
             ),
             dim=-1,
         )
-        quat_norm = torch.linalg.norm(randomized_orientations, dim=-1, keepdim=True)
-        randomized_orientations = randomized_orientations / torch.clamp(
+        quat_norm = torch.linalg.norm(randomized_orientations_world, dim=-1, keepdim=True)
+        randomized_orientations_world = randomized_orientations_world / torch.clamp(
             quat_norm, min=1e-6
         )
-        randomized_pose_base = Pose.create_from_pq(
-            p=randomized_positions_base,
-            q=randomized_orientations,
+        randomized_world_pose = Pose.create_from_pq(
+            p=randomized_positions_world,
+            q=randomized_orientations_world,
             device=self.device,
         )
-        return randomized_pose_base
+        return self._convert_pose_world_to_base(randomized_world_pose, env_idx)
 
     def _set_marker_pose_world(self, pose_world: Pose, env_idx: torch.Tensor):
         pose_world = Pose.create(pose_world, device=self.device)
@@ -371,7 +330,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
             randomized_pose_base, env_idx
         )
         self._set_marker_pose_world(randomized_pose_world, env_idx)
-        self._update_prev_distance(env_idx)
 
     def _get_marker_pose_on_device(self) -> Pose:
         marker_pose = self.marker.pose
@@ -498,37 +456,41 @@ class MyEEAlignMarkerEnv(BaseEnv):
             terminated = info["fail"].clone()
         else:
             terminated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
+        if self._success_counts is not None:
+            success_limit_reached = self._success_counts >= MAX_SUCCESSES_PER_EPISODE
+            if terminated.device != success_limit_reached.device:
+                success_limit_reached = success_limit_reached.to(terminated.device)
+            terminated = torch.logical_or(terminated, success_limit_reached)
         truncated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
         self._last_obs = obs
         return obs, reward, terminated, truncated, info
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
-        self._ensure_prev_distance()
-        current_distance = self._current_distance()
-        prev_distance = self._prev_distance
-        if prev_distance.device != current_distance.device:
-            prev_distance = prev_distance.to(current_distance.device)
-            self._prev_distance = prev_distance
+        marker_pose, _, _, normal = self._marker_frame_axes()
+        target_point = marker_pose.p + normal * MARKER_NORMAL_OFFSET
+        tcp_pose = self._get_tcp_pose_on_device()
+        tcp_position = tcp_pose.p
+        alignment_error = torch.linalg.norm(tcp_position - target_point, dim=1)
+        alignment_reward = torch.exp(
+            -alignment_error / POSITION_REWARD_LENGTH_SCALE
+        )
+        reward = alignment_reward
+        if "success" in info:
+            reward = reward + 5.0*info["success"].to(reward.dtype)
 
-        improved = (prev_distance - current_distance) > PROGRESS_EPS
-        reward = improved.float() * PROGRESS_REWARD
+        observed_qvel = self._get_observed_qvel()
+        speed = torch.linalg.norm(observed_qvel, dim=1)
+        excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
+        exponent = torch.clamp(
+            excess_speed * VELOCITY_PENALTY_SCALE, max=VELOCITY_PENALTY_EXP_MAX
+        )
+        velocity_penalty = torch.expm1(exponent)
+        reward = reward - velocity_penalty
 
-        success = info.get("success")
-        if success is not None:
-            if not isinstance(success, torch.Tensor):
-                success_tensor = torch.as_tensor(success, device=self.device)
-            else:
-                success_tensor = success.to(self.device)
-            if success_tensor.ndim == 0:
-                success_tensor = success_tensor.unsqueeze(0)
-            success_tensor = success_tensor.to(current_distance.device, dtype=torch.float32)
-            reward = reward + success_tensor * SUCCESS_BONUS
-
-        self._prev_distance = current_distance.detach().clone()
         return reward
 
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
-        max_reward = SUCCESS_BONUS + PROGRESS_REWARD
+        max_reward = 1.0 + 1.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
