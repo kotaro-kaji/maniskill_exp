@@ -84,6 +84,6 @@ python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode rate_limited_
 
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
 
-python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode official_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
+python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode official_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions -checkpoint runs/MyEEAlignMarker-v0__ppo_xarm7__1__1760590273/ckpt_76.pt
 
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode local_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
