@@ -474,8 +474,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
             -alignment_error / POSITION_REWARD_LENGTH_SCALE
         )
         reward = alignment_reward
-        if "success" in info:
-            reward = reward + 5.0*info["success"].to(reward.dtype)
 
         observed_qvel = self._get_observed_qvel()
         speed = torch.linalg.norm(observed_qvel, dim=1)
@@ -491,5 +489,5 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
-        max_reward = 1.0 + 1.0
+        max_reward = 1.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
