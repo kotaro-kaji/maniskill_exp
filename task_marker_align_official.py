@@ -22,6 +22,7 @@ from scenebuilders.xarm7_joint_hold_scene_builder import (
 MARKER_NORMAL_OFFSET = 0.2
 ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
+ALIGNMENT_REWARD_WEIGHT = 0.1
 
 MAX_SUCCESSES_PER_EPISODE = 4
 
@@ -470,7 +471,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         alignment_error = torch.linalg.norm(tcp_position - target_point, dim=1)
         alignment_reward = torch.exp(
             -alignment_error / POSITION_REWARD_LENGTH_SCALE
-        )
+        ) * ALIGNMENT_REWARD_WEIGHT
         reward = alignment_reward
         if "success" in info:
             reward = reward + 5.0*info["success"].to(reward.dtype)
@@ -489,5 +490,5 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
-        max_reward = 1.0 + 1.0
+        max_reward = ALIGNMENT_REWARD_WEIGHT + 5.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
