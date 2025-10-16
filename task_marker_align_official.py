@@ -29,6 +29,10 @@ VELOCITY_PENALTY_THRESHOLD = 0.15
 VELOCITY_PENALTY_SCALE = 0.005
 VELOCITY_PENALTY_EXP_MAX = 0.0
 
+PROGRESS_REWARD = 0.1
+SUCCESS_BONUS = 5.0
+PROGRESS_EPS = 2e-4
+
 DEFAULT_MARKER_POSITION = torch.tensor([-0.15, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_ORIENTATION = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
 DEFAULT_MARKER_POSE = torch.cat((DEFAULT_MARKER_POSITION, DEFAULT_MARKER_ORIENTATION))
@@ -57,6 +61,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
             self._configured_marker_pose_base = Pose.create(marker_pose)
         self._success_counts: Optional[torch.Tensor] = None
         self._obs_joint_indices: Optional[torch.Tensor] = None
+        self._prev_distance: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: dict):
@@ -126,6 +131,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self._hidden_objects = []
         self._success_counts = None
         self._obs_joint_indices = None
+        self._prev_distance = None
         try:
             import gc as _gc
 
@@ -149,6 +155,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 marker_pose_base, env_idx
             )
             self.marker.set_pose(marker_pose_world)
+            self._update_prev_distance(env_idx)
 
     def _get_robot_base_pose_on_device(
         self, env_idx: Optional[torch.Tensor] = None
@@ -248,6 +255,41 @@ class MyEEAlignMarkerEnv(BaseEnv):
         elif self._success_counts.device != self.device:
             self._success_counts = self._success_counts.to(self.device)
         self._success_counts.index_fill_(0, env_idx, 0)
+        self._ensure_prev_distance()
+        if env_idx.numel() > 0:
+            inf_values = torch.full(
+                (env_idx.numel(),), float("inf"), device=self.device
+            )
+            self._prev_distance.index_copy_(0, env_idx, inf_values)
+
+    def _ensure_prev_distance(self):
+        if self._prev_distance is None or len(self._prev_distance) != self.num_envs:
+            self._prev_distance = torch.zeros(
+                self.num_envs, dtype=torch.float32, device=self.device
+            )
+        elif self._prev_distance.device != self.device:
+            self._prev_distance = self._prev_distance.to(
+                device=self.device, dtype=torch.float32
+            )
+
+    def _current_distance(self) -> torch.Tensor:
+        marker_pose, _, _, normal = self._marker_frame_axes()
+        target_point = marker_pose.p + normal * MARKER_NORMAL_OFFSET
+        tcp_position = self._get_tcp_pose_on_device().p
+        return torch.linalg.norm(tcp_position - target_point, dim=1)
+
+    def _update_prev_distance(self, env_idx: torch.Tensor):
+        self._ensure_prev_distance()
+        if env_idx.ndim == 0:
+            env_idx = env_idx.unsqueeze(0)
+        env_idx = env_idx.to(device=self.device, dtype=torch.long)
+        if env_idx.numel() == 0:
+            return
+        distances = self._current_distance()
+        if distances.device != self.device:
+            distances = distances.to(self.device)
+        selected = distances.index_select(0, env_idx)
+        self._prev_distance.index_copy_(0, env_idx, selected)
 
     def _randomize_marker_pose_in_base(
         self, marker_pose_base: Pose, env_idx: torch.Tensor
@@ -329,6 +371,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
             randomized_pose_base, env_idx
         )
         self._set_marker_pose_world(randomized_pose_world, env_idx)
+        self._update_prev_distance(env_idx)
 
     def _get_marker_pose_on_device(self) -> Pose:
         marker_pose = self.marker.pose
@@ -455,39 +498,37 @@ class MyEEAlignMarkerEnv(BaseEnv):
             terminated = info["fail"].clone()
         else:
             terminated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
-        if self._success_counts is not None:
-            success_limit_reached = self._success_counts >= MAX_SUCCESSES_PER_EPISODE
-            if terminated.device != success_limit_reached.device:
-                success_limit_reached = success_limit_reached.to(terminated.device)
-            terminated = torch.logical_or(terminated, success_limit_reached)
         truncated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
         self._last_obs = obs
         return obs, reward, terminated, truncated, info
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
-        marker_pose, _, _, normal = self._marker_frame_axes()
-        target_point = marker_pose.p + normal * MARKER_NORMAL_OFFSET
-        tcp_pose = self._get_tcp_pose_on_device()
-        tcp_position = tcp_pose.p
-        alignment_error = torch.linalg.norm(tcp_position - target_point, dim=1)
-        alignment_reward = torch.exp(
-            -alignment_error / POSITION_REWARD_LENGTH_SCALE
-        )
-        reward = alignment_reward
+        self._ensure_prev_distance()
+        current_distance = self._current_distance()
+        prev_distance = self._prev_distance
+        if prev_distance.device != current_distance.device:
+            prev_distance = prev_distance.to(current_distance.device)
+            self._prev_distance = prev_distance
 
-        observed_qvel = self._get_observed_qvel()
-        speed = torch.linalg.norm(observed_qvel, dim=1)
-        excess_speed = torch.clamp(speed - VELOCITY_PENALTY_THRESHOLD, min=0.0)
-        exponent = torch.clamp(
-            excess_speed * VELOCITY_PENALTY_SCALE, max=VELOCITY_PENALTY_EXP_MAX
-        )
-        velocity_penalty = torch.expm1(exponent)
-        reward = reward - velocity_penalty
+        improved = (prev_distance - current_distance) > PROGRESS_EPS
+        reward = improved.float() * PROGRESS_REWARD
 
+        success = info.get("success")
+        if success is not None:
+            if not isinstance(success, torch.Tensor):
+                success_tensor = torch.as_tensor(success, device=self.device)
+            else:
+                success_tensor = success.to(self.device)
+            if success_tensor.ndim == 0:
+                success_tensor = success_tensor.unsqueeze(0)
+            success_tensor = success_tensor.to(current_distance.device, dtype=torch.float32)
+            reward = reward + success_tensor * SUCCESS_BONUS
+
+        self._prev_distance = current_distance.detach().clone()
         return reward
 
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
-        max_reward = 1.0
+        max_reward = SUCCESS_BONUS + PROGRESS_REWARD
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
