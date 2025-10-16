@@ -18,13 +18,11 @@ from typing import Sequence
 
 import numpy as np
 
-from mani_skill.agents.controllers import (
-    PDJointPosControllerConfig,
-    deepcopy_dict,
-)
+from mani_skill.agents.controllers import PDJointPosControllerConfig, deepcopy_dict
 from mani_skill.agents.registration import register_agent
 
 from .my_xarm7 import Xarm7
+from .pd_joint_pos_clone import LocalPDJointPosControllerConfig
 from .rate_limited_joint_pos import RateLimitedJointPosControllerConfig
 
 def _broadcast(values: Sequence[float] | float, dof: int) -> np.ndarray:
@@ -69,9 +67,25 @@ class Xarm7Official(Xarm7):
             max_acceleration=_broadcast(np.deg2rad(200.0), arm_dof),
         )
 
+        arm_local_pd = LocalPDJointPosControllerConfig(
+            self.arm_joint_names,
+            lower=-0.1,
+            upper=0.1,
+            stiffness=_broadcast(self.arm_stiffness, arm_dof),
+            damping=_broadcast(self.arm_damping, arm_dof),
+            force_limit=arm_force_limits,
+            use_delta=True,
+            use_target=False,
+        )
+
         controller_configs = OrderedDict()
         controller_configs["rate_limited_pd_joint_delta_pos"] = dict(
             arm=arm_rate_limited,
+            gripper=base_configs["pd_joint_delta_pos"]["gripper"],
+            balance_passive_force=True,
+        )
+        controller_configs["local_pd_joint_delta_pos"] = dict(
+            arm=arm_local_pd,
             gripper=base_configs["pd_joint_delta_pos"]["gripper"],
             balance_passive_force=True,
         )
