@@ -252,30 +252,29 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _randomize_marker_pose_in_base(
         self, marker_pose_base: Pose, env_idx: torch.Tensor
     ) -> Pose:
+        marker_pose_base = Pose.create(marker_pose_base, device=self.device)
+        _ = env_idx  # keep signature compatibility
         batch_size = len(marker_pose_base)
-        rand_x_world = torch.rand((batch_size,), device=self.device) * 0.25 + 0.22
-        rand_y_world = torch.rand((batch_size,), device=self.device) * 0.42 - 0.30
-        rand_z_world = torch.full(
-            (batch_size,), DEFAULT_MARKER_POSITION[2], device=self.device
+        rand_x_base = torch.rand((batch_size,), device=self.device) * 0.25 + 0.22
+        rand_y_base = torch.rand((batch_size,), device=self.device) * 0.42 - 0.30
+        rand_z_base = marker_pose_base.p[..., 2]
+        randomized_positions_base = torch.stack(
+            (rand_x_base, rand_y_base, rand_z_base), dim=-1
         )
-        randomized_positions_world = torch.stack(
-            (rand_x_world, rand_y_world, rand_z_world), dim=-1
-        )
-        marker_pose_world = self._convert_pose_base_to_world(marker_pose_base, env_idx)
-        base_quats_world = marker_pose_world.q
-        # Randomize yaw about the world z-axis while keeping roll/pitch fixed
+        base_quats = marker_pose_base.q
+        # Randomize yaw about the base-frame z-axis while keeping roll/pitch fixed
         rand_yaw = torch.rand((batch_size,), device=self.device) * 2 * torch.pi - torch.pi
         half_yaw = rand_yaw * 0.5
         sin_half = torch.sin(half_yaw)
         cos_half = torch.cos(half_yaw)
         zeros = torch.zeros_like(sin_half)
-        yaw_quats_world = torch.stack(
+        yaw_quats_base = torch.stack(
             (cos_half, zeros, zeros, sin_half),
             dim=-1,
         )
-        w1, x1, y1, z1 = yaw_quats_world.unbind(dim=-1)
-        w2, x2, y2, z2 = base_quats_world.unbind(dim=-1)
-        randomized_orientations_world = torch.stack(
+        w1, x1, y1, z1 = yaw_quats_base.unbind(dim=-1)
+        w2, x2, y2, z2 = base_quats.unbind(dim=-1)
+        randomized_orientations = torch.stack(
             (
                 w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
                 w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
@@ -284,16 +283,16 @@ class MyEEAlignMarkerEnv(BaseEnv):
             ),
             dim=-1,
         )
-        quat_norm = torch.linalg.norm(randomized_orientations_world, dim=-1, keepdim=True)
-        randomized_orientations_world = randomized_orientations_world / torch.clamp(
+        quat_norm = torch.linalg.norm(randomized_orientations, dim=-1, keepdim=True)
+        randomized_orientations = randomized_orientations / torch.clamp(
             quat_norm, min=1e-6
         )
-        randomized_world_pose = Pose.create_from_pq(
-            p=randomized_positions_world,
-            q=randomized_orientations_world,
+        randomized_pose_base = Pose.create_from_pq(
+            p=randomized_positions_base,
+            q=randomized_orientations,
             device=self.device,
         )
-        return self._convert_pose_world_to_base(randomized_world_pose, env_idx)
+        return randomized_pose_base
 
     def _set_marker_pose_world(self, pose_world: Pose, env_idx: torch.Tensor):
         pose_world = Pose.create(pose_world, device=self.device)
