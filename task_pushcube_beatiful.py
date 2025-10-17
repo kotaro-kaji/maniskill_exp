@@ -3,7 +3,10 @@ from mani_skill.utils import sapien_utils, common
 from mani_skill.envs.sapien_env import BaseEnv
 
 ####the part which i made#################################
-from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
+from scenebuilders.xarm7_table_scene_builder import (
+    Xarm7TableSceneBuilder,
+    ROBOT_BASE_X_OFFSET,
+)
 ###############################################################
 
 
@@ -37,7 +40,9 @@ import robotagents.my_xarm7_mjcf  # registers Xarm7MJCF (uid: "my_xarm7_mjcf")
 class MyPushCubeEnv(BaseEnv):
 
     goal_radius = 0.1
-    cube_half_size = 0.02
+    cube_half_extent_x = 0.05
+    cube_half_extent_y = 0.025
+    cube_half_extent_z = 0.02
 
 
     def __init__(self, *args, **kwargs):
@@ -88,13 +93,21 @@ class MyPushCubeEnv(BaseEnv):
         builder = self.scene.create_actor_builder()
         builder.add_box_collision(
             # for boxes we specify half length of each side
-            half_size=[0.02] * 3,
+            half_size=[
+                self.cube_half_extent_x,
+                self.cube_half_extent_y,
+                self.cube_half_extent_z,
+            ],
         )
         builder.add_box_visual(
-            half_size=[0.02] * 3,
+            half_size=[
+                self.cube_half_extent_x,
+                self.cube_half_extent_y,
+                self.cube_half_extent_z,
+            ],
             material=sapien.render.RenderMaterial(
-                # RGBA values, this is a red cube
-                base_color=[1, 0, 0, 1],
+                # RGBA values, set to white for the rectangular prism
+                base_color=[1, 1, 1, 1],
             ),
         )
 
@@ -144,22 +157,54 @@ class MyPushCubeEnv(BaseEnv):
             self.table_scene.initialize(env_idx)
 
             # Randomize cube position closer to the robot side of the table
-            p = torch.zeros((b, 3))
-            # Bias cube spawn closer to the robot base (robot sits around x = -0.6)
-            p[..., 0] = torch.rand((b,)) * 0.1 - 0.35  # x in [-0.35, -0.25]
-            p[..., 1] = torch.rand((b,)) * 0.1 - 0.05  # y in [-0.05, 0.05]
-            p[..., 2] = self.cube_half_size
-            q = [1, 0, 0, 0]
-            obj_pose = Pose.create_from_pq(p=p, q=q)
+            target_x_base = torch.rand((b,), device=self.device) * 0.15 + 0.32
+            target_y_base = torch.rand((b,), device=self.device) * 0.42 - 0.30
+            cube_x_base = target_x_base - 0.1
+            cube_y_base = target_y_base
+
+            cube_positions_world = torch.stack(
+                (
+                    cube_x_base + ROBOT_BASE_X_OFFSET,
+                    cube_y_base,
+                    torch.full(
+                        (b,),
+                        self.cube_half_extent_z,
+                        device=self.device,
+                        dtype=torch.float32,
+                    ),
+                ),
+                dim=-1,
+            )
+            cube_orientation = torch.zeros(
+                (b, 4), device=self.device, dtype=torch.float32
+            )
+            cube_orientation[..., 0] = 1.0
+            obj_pose = Pose.create_from_pq(p=cube_positions_world, q=cube_orientation)
             self.obj.set_pose(obj_pose)
 
             # place the visual goal region slightly in front of the cube on the table
-            target_region_xyz = p + torch.tensor([0.1 + self.goal_radius, 0, 0])
-            target_region_xyz[..., 2] = 1e-3
+            target_positions_world = torch.stack(
+                (
+                    target_x_base + ROBOT_BASE_X_OFFSET,
+                    target_y_base,
+                    torch.full(
+                        (b,),
+                        1e-3,
+                        device=self.device,
+                        dtype=torch.float32,
+                    ),
+                ),
+                dim=-1,
+            )
+            goal_orientation = torch.tensor(
+                euler2quat(0, np.pi / 2, 0), device=self.device, dtype=torch.float32
+            ).repeat(b, 1)
+            if b == 0:
+                goal_orientation = goal_orientation.view(0, 4)
             self.goal_region.set_pose(
                 Pose.create_from_pq(
-                    p=target_region_xyz,
-                    q=euler2quat(0, np.pi / 2, 0),
+                    p=target_positions_world,
+                    q=goal_orientation,
                 )
             )
 
@@ -170,7 +215,7 @@ class MyPushCubeEnv(BaseEnv):
                 self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
             )
             < self.goal_radius
-        ) & (self.obj.pose.p[..., 2] < self.cube_half_size + 5e-3)
+        ) & (self.obj.pose.p[..., 2] < self.cube_half_extent_z + 5e-3)
 
         return {
             "success": is_obj_placed,
@@ -195,7 +240,9 @@ class MyPushCubeEnv(BaseEnv):
         # We also create a pose marking where the robot should push the cube from that is easiest (pushing from behind the cube)
         tcp_push_pose = Pose.create_from_pq(
             p=self.obj.pose.p
-            + torch.tensor([-self.cube_half_size - 0.005, 0, 0], device=self.device)
+            + torch.tensor(
+                [-self.cube_half_extent_x - 0.005, 0, 0], device=self.device
+            )
         )
         tcp_to_push_pose = tcp_push_pose.p - self.agent.tcp.pose.p
         tcp_to_push_pose_dist = torch.linalg.norm(tcp_to_push_pose, axis=1)
@@ -213,7 +260,7 @@ class MyPushCubeEnv(BaseEnv):
         reward += place_reward * reached
         
         # Compute a z reward to encourage the robot to keep the cube on the table
-        desired_obj_z = self.cube_half_size
+        desired_obj_z = self.cube_half_extent_z
         current_obj_z = self.obj.pose.p[..., 2]
         z_deviation = torch.abs(current_obj_z - desired_obj_z)
         z_reward = 1 - torch.tanh(5 * z_deviation)
