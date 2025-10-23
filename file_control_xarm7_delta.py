@@ -127,7 +127,13 @@ def main():
         marker_shapes = []
         for link_obj in tcp_link._objs:
             entity = link_obj.entity
-            marker_shape = sapien.render.RenderShapeSphere(0.02, marker_material)
+            render_body = entity.find_component_by_type(
+                sapien.render.RenderBodyComponent
+            )
+            if render_body is None:
+                render_body = sapien.render.RenderBodyComponent()
+                entity.add_component(render_body)
+            marker_shape = sapien.render.RenderShapeSphere(200.0, marker_material)
             marker_shape.local_pose = tcp_offset
             marker_component = sapien.render.RenderBodyComponent()
             marker_component.attach(marker_shape)
