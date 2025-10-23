@@ -118,18 +118,26 @@ def main():
     env.reset(seed=0)
     agent = env.unwrapped.agent
 
-    ee_marker = None
     try:
-        builder = env.unwrapped.scene.create_actor_builder()
+        tcp_link = agent.tcp
+        tcp_offset = getattr(agent, "_tcp_offset", sapien.Pose())
         marker_material = sapien.render.RenderMaterial(
             base_color=[1.0, 0.1, 0.1, 1.0], metallic=0.2, roughness=0.4
         )
-        builder.add_sphere_visual(radius=0.02, material=marker_material)
-        ee_marker = builder.build_kinematic(name="ee_tip_marker")
-        ee_marker.set_pose(agent.tcp_pose)
-        print("EE marker ready (red sphere shows the TCP pose).")
+        for link_obj in tcp_link._objs:
+            entity = link_obj.entity
+            render_body = entity.find_component_by_type(
+                sapien.render.RenderBodyComponent
+            )
+            if render_body is None:
+                render_body = sapien.render.RenderBodyComponent()
+                entity.add_component(render_body)
+            marker_shape = sapien.render.RenderShapeSphere(0.02, marker_material)
+            marker_shape.local_pose = tcp_offset
+            render_body.attach(marker_shape)
+        print("EE marker attached (red sphere on TCP).")
     except Exception as exc:
-        print(f"Failed to create EE marker: {exc}")
+        print(f"Failed to attach EE marker: {exc}")
 
     action_low = env.single_action_space.low
     action_high = env.single_action_space.high
@@ -193,12 +201,6 @@ def main():
                 flat[gripper_start:gripper_end] = new_action[7]
                 flat = np.clip(flat, action_low, action_high)
                 current_action = flat.astype(np.float32)
-
-            if ee_marker is not None:
-                try:
-                    ee_marker.set_pose(agent.tcp_pose)
-                except Exception:
-                    pass
 
             env.step(current_action)
             env.render()
