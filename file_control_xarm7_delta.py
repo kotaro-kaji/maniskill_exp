@@ -124,17 +124,17 @@ def main():
         marker_material = sapien.render.RenderMaterial(
             base_color=[1.0, 0.1, 0.1, 1.0], metallic=0.2, roughness=0.4
         )
+        marker_shapes = []
         for link_obj in tcp_link._objs:
             entity = link_obj.entity
-            render_body = entity.find_component_by_type(
-                sapien.render.RenderBodyComponent
-            )
-            if render_body is None:
-                render_body = sapien.render.RenderBodyComponent()
-                entity.add_component(render_body)
             marker_shape = sapien.render.RenderShapeSphere(0.02, marker_material)
             marker_shape.local_pose = tcp_offset
-            render_body.attach(marker_shape)
+            marker_component = sapien.render.RenderBodyComponent()
+            marker_component.attach(marker_shape)
+            marker_shapes.append((entity, marker_component))
+        for entity, component in marker_shapes:
+            entity.add_component(component)
+            component.set_property("shadeFlat", 1)
         env.unwrapped.scene.update_render()
         print("EE marker attached (red sphere on TCP).")
     except Exception as exc:
