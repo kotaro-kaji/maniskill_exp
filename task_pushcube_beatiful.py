@@ -284,3 +284,17 @@ class MyPushCubeEnv(BaseEnv):
         # this should be equal to compute_dense_reward / max possible reward
         max_reward = 4.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
+
+    def compute_simple_place_reward(self, obs: Any, action: Array, info: Dict):
+        """
+        Minimal alternative reward that only encourages the cube to reach the goal.
+        No waypoint/reaching term and no gating – always evaluates the placement distance.
+        """
+        obj_to_goal_dist = torch.linalg.norm(
+            self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
+        )
+        place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
+
+        reward = place_reward.clone()
+        reward[info["success"]] = 4
+        return reward
