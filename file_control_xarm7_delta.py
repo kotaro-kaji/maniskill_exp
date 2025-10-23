@@ -7,6 +7,8 @@ import mani_skill.envs  # registers built-in envs
 import robotagents.my_xarm7_official  # registers custom URDF robot
 import numpy as np
 import task_marker_align_official
+import sapien
+import sapien.render
 
 CONTROL_FILE = "control_delta_input.txt"
 STATE_FILE = "joint_state_delta.txt"
@@ -114,6 +116,20 @@ def main():
     print("Action space:", env.action_space)
 
     env.reset(seed=0)
+    agent = env.unwrapped.agent
+
+    ee_marker = None
+    try:
+        builder = env.unwrapped.scene.create_actor_builder()
+        marker_material = sapien.render.RenderMaterial(
+            base_color=[1.0, 0.1, 0.1, 1.0], metallic=0.2, roughness=0.4
+        )
+        builder.add_sphere_visual(radius=0.02, material=marker_material)
+        ee_marker = builder.build_kinematic(name="ee_tip_marker")
+        ee_marker.set_pose(agent.tcp_pose)
+        print("EE marker ready (red sphere shows the TCP pose).")
+    except Exception as exc:
+        print(f"Failed to create EE marker: {exc}")
 
     action_low = env.single_action_space.low
     action_high = env.single_action_space.high
@@ -178,6 +194,12 @@ def main():
                 flat = np.clip(flat, action_low, action_high)
                 current_action = flat.astype(np.float32)
 
+            if ee_marker is not None:
+                try:
+                    ee_marker.set_pose(agent.tcp_pose)
+                except Exception:
+                    pass
+
             env.step(current_action)
             env.render()
             time.sleep(0.005)
@@ -190,4 +212,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
