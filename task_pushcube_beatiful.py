@@ -40,9 +40,9 @@ import robotagents.my_xarm7_mjcf  # registers Xarm7MJCF (uid: "my_xarm7_mjcf")
 class MyPushCubeEnv(BaseEnv):
 
     goal_radius = 0.1
-    cube_half_extent_x = 0.05
-    cube_half_extent_y = 0.025
-    cube_half_extent_z = 0.02
+    cube_half_extent_x = 0.072
+    cube_half_extent_y = 0.0409
+    cube_half_extent_z = 0.0254
 
 
     def __init__(self, *args, **kwargs):
