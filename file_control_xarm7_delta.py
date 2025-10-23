@@ -133,7 +133,7 @@ def main():
             if render_body is None:
                 render_body = sapien.render.RenderBodyComponent()
                 entity.add_component(render_body)
-            marker_shape = sapien.render.RenderShapeSphere(200.0, marker_material)
+            marker_shape = sapien.render.RenderShapeSphere(0.02, marker_material)
             marker_shape.local_pose = tcp_offset
             marker_component = sapien.render.RenderBodyComponent()
             marker_component.attach(marker_shape)
