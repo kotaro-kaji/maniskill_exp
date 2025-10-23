@@ -1,9 +1,9 @@
 # Current joint positions (rad)
-00                   joint1: 0.042037
-01                   joint2: 0.108209
-02                   joint3: 0.086918
-03                   joint4: -0.041059
-04                   joint5: -0.098537
-05                   joint6: 0.099195
-06                   joint7: -0.088171
-07              drive_joint: 0.131104
+00                   joint1: -0.100000
+01                   joint2: -0.100000
+02                   joint3: 0.096132
+03                   joint4: 0.100000
+04                   joint5: -0.099833
+05                   joint6: 0.099752
+06                   joint7: -0.099994
+07              drive_joint: 0.108761
