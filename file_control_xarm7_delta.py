@@ -135,6 +135,7 @@ def main():
             marker_shape = sapien.render.RenderShapeSphere(0.02, marker_material)
             marker_shape.local_pose = tcp_offset
             render_body.attach(marker_shape)
+        env.unwrapped.scene.update_render()
         print("EE marker attached (red sphere on TCP).")
     except Exception as exc:
         print(f"Failed to attach EE marker: {exc}")
