@@ -236,7 +236,7 @@ class MyPushCubeEnv(BaseEnv):
             )
         return obs
 
-    def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_staged_dense_reward(self, obs: Any, action: Array, info: Dict):
         # We also create a pose marking where the robot should push the cube from that is easiest (pushing from behind the cube)
         tcp_push_pose = Pose.create_from_pq(
             p=self.obj.pose.p
@@ -298,3 +298,7 @@ class MyPushCubeEnv(BaseEnv):
         reward = place_reward.clone()
         reward[info["success"]] = 4
         return reward
+
+    def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
+        """Default dense reward (simple placement-based shaping)."""
+        return self.compute_simple_place_reward(obs=obs, action=action, info=info)
