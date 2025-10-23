@@ -67,6 +67,7 @@ python ppo_xarm7.py --env_id="MyEEAlignMarker-v0" \
 
 
 #rolloutのみ
+python ppo_rollout_xarm7.py --env_id MyPushCube-v1 --checkpoint runs/MyPushCube-v1__ppo_xarm7__1__1760757372/ckpt_51.pt
 python ppo_rollout_xarm7.py --env_id MySimpleReach-v0 --checkpoint runs/MySimpleReach-v0__ppo_xarm7__1__1758253720/ckpt_226.pt
 python ppo_rollout_xarm7.py --env_id MyJointHold-v0 --control-mode pd_joint_delta_pos --checkpoint runs/MyJointHold-v0__ppo_xarm7__1__1759051124/final_ckpt.pt
 
