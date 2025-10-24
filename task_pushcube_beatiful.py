@@ -300,5 +300,48 @@ class MyPushCubeEnv(BaseEnv):
         return reward
 
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
-        """Default dense reward (simple placement-based shaping)."""
-        return self.compute_simple_place_reward(obs=obs, action=action, info=info)
+        """Default dense reward encouraging the TCP to align with the ideal push point."""
+        return self._compute_pushpoint_distance_reward(obs=obs, action=action, info=info)
+
+    def _compute_pushpoint_distance_reward(
+        self, obs: Any, action: Array, info: Dict
+    ) -> torch.Tensor:
+        """
+        Dense reward that reduces the distance between the TCP and the optimal push point
+        on the cube surface, and penalizes the TCP for hovering too far above the cube.
+        """
+        tcp_pose = self.agent.tcp.pose
+        tcp_xy = tcp_pose.p[..., :2]
+        cube_pose = self.obj.pose
+        cube_xy = cube_pose.p[..., :2]
+        goal_xy = self.goal_region.pose.p[..., :2]
+
+        push_vec = goal_xy - cube_xy
+        eps = 1e-6
+        push_norm = torch.linalg.norm(push_vec, dim=1, keepdim=True)
+        default_dir = torch.tensor([1.0, 0.0], device=self.device).view(1, 2)
+        safe_dir = torch.where(
+            (push_norm < eps).expand(-1, 2),
+            default_dir.expand_as(push_vec),
+            push_vec / torch.clamp(push_norm, min=eps),
+        )
+
+        half_extents = torch.tensor(
+            [self.cube_half_extent_x, self.cube_half_extent_y],
+            device=self.device,
+            dtype=torch.float32,
+        )
+        denom = torch.clamp(torch.abs(safe_dir), min=eps)
+        t = torch.min(half_extents / denom, dim=1, keepdim=True).values
+        contact_xy = cube_xy - safe_dir * t
+
+        xy_dist = torch.linalg.norm(tcp_xy - contact_xy, dim=1)
+
+        cube_top_z = cube_pose.p[..., 2] + self.cube_half_extent_z
+        tcp_z = tcp_pose.p[..., 2]
+        z_offset = torch.clamp(tcp_z - cube_top_z, min=0.0)
+
+        total_dist = torch.sqrt(xy_dist**2 + z_offset**2)
+        reward = 1 - torch.tanh(5 * total_dist)
+        reward[info["success"]] = 4
+        return reward
