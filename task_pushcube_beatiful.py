@@ -326,13 +326,14 @@ class MyPushCubeEnv(BaseEnv):
             push_vec / torch.clamp(push_norm, min=eps),
         )
 
-        half_extents = torch.tensor(
+        contact_half_extents = torch.tensor(
             [self.cube_half_extent_x, self.cube_half_extent_y],
             device=self.device,
             dtype=torch.float32,
         )
+        contact_half_extents *= 0.85
         denom = torch.clamp(torch.abs(safe_dir), min=eps)
-        t = torch.min(half_extents / denom, dim=1, keepdim=True).values
+        t = torch.min(contact_half_extents / denom, dim=1, keepdim=True).values
         contact_xy = cube_xy - safe_dir * t
 
         xy_dist = torch.linalg.norm(tcp_xy - contact_xy, dim=1)
