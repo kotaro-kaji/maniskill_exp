@@ -29,6 +29,7 @@ import numpy as np
 
 # ★ 自作ロボットを import（これで登録の副作用が走る）
 from robotagents.my_xarm7 import Xarm7  # ← your file/module path に合わせて
+from robotagents.my_xarm7_official import Xarm7Official
 # my_xarm7_mjcf も登録の副作用が必要なので import
 import robotagents.my_xarm7_mjcf  # registers Xarm7MJCF (uid: "my_xarm7_mjcf")
 
@@ -51,12 +52,12 @@ class MyPushCubeEnv(BaseEnv):
     
     # ★ サポートロボに自作UIDを追加（自作だけにするなら ["my_xarm7"] だけでOK）
     # my_xarm7 に加えて my_xarm7_mjcf も選択可能に
-    SUPPORTED_ROBOTS = ["my_xarm7", "my_xarm7_mjcf"]  # , "panda", "fetch"]
+    SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_mjcf", "panda"]  # , "panda", "fetch"]
 
     # ★ 型ヒントも自作に
     agent: Xarm7  # Union[Xarm7, Xarm7MJCF] などでもOK
 
-    def __init__(self, *args, robot_uids="my_xarm7", **kwargs):
+    def __init__(self, *args, robot_uids="panda", **kwargs):
         # "panda" や "fetch" も許すなら、タプル/リストで受けられるのは元のまま
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
@@ -334,7 +335,7 @@ class MyPushCubeEnv(BaseEnv):
             device=self.device,
             dtype=torch.float32,
         )
-        contact_half_extents *= 0.75
+        contact_half_extents *= 0.95
         denom = torch.clamp(torch.abs(safe_dir), min=eps)
         t = torch.min(contact_half_extents / denom, dim=1, keepdim=True).values
         contact_xy = cube_xy - safe_dir * t
