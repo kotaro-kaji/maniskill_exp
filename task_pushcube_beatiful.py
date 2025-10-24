@@ -91,22 +91,18 @@ class MyPushCubeEnv(BaseEnv):
 
     def _load_scene(self, options: dict):
         builder = self.scene.create_actor_builder()
+        cube_half_size = [
+            self.cube_half_extent_x,
+            self.cube_half_extent_y,
+            self.cube_half_extent_z,
+        ]
         builder.add_box_collision(
-            # for boxes we specify half length of each side
-            half_size=[
-                self.cube_half_extent_x,
-                self.cube_half_extent_y,
-                self.cube_half_extent_z,
-            ],
+            half_size=cube_half_size,
+            density=500.0,
         )
         builder.add_box_visual(
-            half_size=[
-                self.cube_half_extent_x,
-                self.cube_half_extent_y,
-                self.cube_half_extent_z,
-            ],
+            half_size=cube_half_size,
             material=sapien.render.RenderMaterial(
-                # RGBA values, set to white for the rectangular prism
                 base_color=[1, 1, 1, 1],
             ),
         )
@@ -122,7 +118,7 @@ class MyPushCubeEnv(BaseEnv):
         )
         # strongly recommended to set initial poses for objects, even if you plan to modify them later
         builder.initial_pose = sapien.Pose(p=[0, 0, 0.02], q=[1, 0, 0, 0])
-        self.obj = builder.build(name="cube")
+        self.obj = builder.build_dynamic(name="cube")
         # PushCube has some other code after this removed for brevity that 
         # spawns a goal object (a red/white target) stored at self.goal_region
 
@@ -157,7 +153,7 @@ class MyPushCubeEnv(BaseEnv):
             self.table_scene.initialize(env_idx)
 
             # Randomize cube position closer to the robot side of the table
-            cube_x_base = torch.rand((b,), device=self.device) * 0.15 + 0.22
+            cube_x_base = torch.rand((b,), device=self.device) * 0.15 + 0.26
             cube_y_base = torch.rand((b,), device=self.device) * 0.42 - 0.30
 
             # Randomize a positive x-offset for the goal so it sits ahead of the cube.
