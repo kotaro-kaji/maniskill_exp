@@ -83,10 +83,10 @@ class MyPushCubeEnv(BaseEnv):
 
     @property
     def _default_human_render_camera_configs(self):
-        # 動画保存・レンダリング用の高解像度カメラ
+        # 動画保存・レンダリング用の一般的な解像度カメラ
         pose = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
         return CameraConfig(
-            "render_camera", pose=pose, width=512, height=512, fov=1, near=0.01, far=100
+            "render_camera", pose=pose, width=1080, height=1080, fov=np.pi / 3, near=0.01, far=100
         )
 
     def _load_scene(self, options: dict):
