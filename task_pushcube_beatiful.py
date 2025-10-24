@@ -157,10 +157,13 @@ class MyPushCubeEnv(BaseEnv):
             self.table_scene.initialize(env_idx)
 
             # Randomize cube position closer to the robot side of the table
-            target_x_base = torch.rand((b,), device=self.device) * 0.15 + 0.32
-            target_y_base = torch.rand((b,), device=self.device) * 0.42 - 0.30
-            cube_x_base = target_x_base - 0.1
-            cube_y_base = target_y_base
+            cube_x_base = torch.rand((b,), device=self.device) * 0.15 + 0.22
+            cube_y_base = torch.rand((b,), device=self.device) * 0.42 - 0.30
+
+            # Randomize a positive x-offset for the goal so it sits ahead of the cube.
+            goal_x_offset = torch.rand((b,), device=self.device) * 0.05 + 0.08
+            goal_x_base = cube_x_base + goal_x_offset
+            goal_y_base = torch.rand((b,), device=self.device) * 0.42 - 0.30
 
             cube_positions_world = torch.stack(
                 (
@@ -185,8 +188,8 @@ class MyPushCubeEnv(BaseEnv):
             # place the visual goal region slightly in front of the cube on the table
             target_positions_world = torch.stack(
                 (
-                    target_x_base + ROBOT_BASE_X_OFFSET,
-                    target_y_base,
+                    goal_x_base + ROBOT_BASE_X_OFFSET,
+                    goal_y_base,
                     torch.full(
                         (b,),
                         1e-3,
@@ -300,15 +303,19 @@ class MyPushCubeEnv(BaseEnv):
         return reward
 
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
-        """Default dense reward encouraging the TCP to align with the ideal push point."""
-        return self._compute_pushpoint_distance_reward(obs=obs, action=action, info=info)
-
-    def _compute_pushpoint_distance_reward(
-        self, obs: Any, action: Array, info: Dict
-    ) -> torch.Tensor:
         """
-        Dense reward that reduces the distance between the TCP and the optimal push point
-        on the cube surface, and penalizes the TCP for hovering too far above the cube.
+        Dense reward composed of the TCP→push-point distance term and a success bonus.
+        """
+        pushpoint_reward = self._tcp_pushpoint_distance_reward()
+        success_bonus = self._success_reward(info)
+        reward = pushpoint_reward + success_bonus
+        reward = torch.clamp(reward, max=4.0)
+        return reward
+
+    def _tcp_pushpoint_distance_reward(self) -> torch.Tensor:
+        """
+        Reward that shrinks the distance between the TCP and the ideal push contact point,
+        including a penalty if the TCP hovers above the cube.
         """
         tcp_pose = self.agent.tcp.pose
         tcp_xy = tcp_pose.p[..., :2]
@@ -343,6 +350,12 @@ class MyPushCubeEnv(BaseEnv):
         z_offset = torch.clamp(tcp_z - cube_top_z, min=0.0)
 
         total_dist = torch.sqrt(xy_dist**2 + z_offset**2)
-        reward = 1 - torch.tanh(5 * total_dist)
-        reward[info["success"]] = 4
-        return reward
+        return 1 - torch.tanh(5 * total_dist)
+
+    def _success_reward(self, info: Dict) -> torch.Tensor:
+        """
+        Returns a tensor that adds a bonus to successful episodes.
+        """
+        bonus = torch.zeros_like(self.obj.pose.p[..., 0])
+        bonus[info["success"]] = 4.0
+        return bonus
