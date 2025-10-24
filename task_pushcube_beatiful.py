@@ -57,7 +57,7 @@ class MyPushCubeEnv(BaseEnv):
     # ★ 型ヒントも自作に
     agent: Xarm7  # Union[Xarm7, Xarm7MJCF] などでもOK
 
-    def __init__(self, *args, robot_uids="panda", **kwargs):
+    def __init__(self, *args, robot_uids="my_xarm7_official", **kwargs):
         # "panda" や "fetch" も許すなら、タプル/リストで受けられるのは元のまま
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
