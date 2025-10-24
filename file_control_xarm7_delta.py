@@ -7,6 +7,7 @@ import mani_skill.envs  # registers built-in envs
 import robotagents.my_xarm7_official  # registers custom URDF robot
 import numpy as np
 import task_marker_align_official
+import task_pushcube_beatiful
 import sapien
 import sapien.render
 
@@ -103,7 +104,7 @@ def main():
     print(f"Using robot_uids='{robot_uid}' (set ROBOT_UID to override)")
 
     env = gym.make(
-        "MyEEAlignMarker-v0",
+        "MyPushCube-v1",
         obs_mode="state",
         control_mode="rate_limited_pd_joint_delta_pos",
         robot_uids=robot_uid,
