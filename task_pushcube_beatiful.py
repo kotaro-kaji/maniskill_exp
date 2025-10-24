@@ -331,7 +331,7 @@ class MyPushCubeEnv(BaseEnv):
             device=self.device,
             dtype=torch.float32,
         )
-        contact_half_extents *= 0.85
+        contact_half_extents *= 0.65
         denom = torch.clamp(torch.abs(safe_dir), min=eps)
         t = torch.min(contact_half_extents / denom, dim=1, keepdim=True).values
         contact_xy = cube_xy - safe_dir * t
