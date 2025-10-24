@@ -36,6 +36,29 @@ def main():
             except Exception as exc:
                 print(f"  {name}: <error reading attribute: {exc}>")
 
+        def resolve_body_name(body):
+            try:
+                entity = body.entity
+                return getattr(entity, "name", "<unnamed>")
+            except Exception:
+                return "<unknown>"
+
+        def resolve_shape_name(shape):
+            try:
+                actor = shape.actor
+                entity = actor.entity
+                return getattr(entity, "name", "<unnamed>")
+            except Exception:
+                return "<unknown>"
+
+        print("body names:")
+        for body in getattr(first, "bodies", []):
+            print(f"  - {resolve_body_name(body)} ({body})")
+
+        print("shape parent names:")
+        for shape in getattr(first, "shapes", []):
+            print(f"  - {resolve_shape_name(shape)} ({shape})")
+
     env.close()
 
 
