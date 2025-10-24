@@ -36,7 +36,7 @@ import robotagents.my_xarm7_mjcf  # registers Xarm7MJCF (uid: "my_xarm7_mjcf")
 # from mani_skill.agents.robots import Fetch, Panda
 
 
-@register_env("MyPushCube-v1", max_episode_steps=300)
+@register_env("MyPushCube-v1", max_episode_steps=100)
 class MyPushCubeEnv(BaseEnv):
 
     goal_radius = 0.1
