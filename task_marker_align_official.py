@@ -24,7 +24,8 @@ ALIGNMENT_TOLERANCE = 0.02
 POSITION_REWARD_LENGTH_SCALE = 0.05
 ALIGNMENT_REWARD_WEIGHT = 1
 
-MAX_SUCCESSES_PER_EPISODE = 4
+MARKER_LIFETIME_MIN_SECONDS = 0.2
+MARKER_LIFETIME_MAX_SECONDS = 4.0
 
 VELOCITY_PENALTY_THRESHOLD = 0.35
 VELOCITY_PENALTY_SCALE = 0.005
@@ -40,7 +41,7 @@ MARKER_GREEN_Y_OFFSET = MARKER_BASE_HALF_SIZE[1] - MARKER_GREEN_HALF_SIZE[1]
 MARKER_GREEN_Z_OFFSET = MARKER_BASE_HALF_SIZE[2] + MARKER_GREEN_HALF_SIZE[2]
 
 
-@register_env("MyEEAlignMarker-v0", max_episode_steps=100)
+@register_env("MyEEAlignMarker-v0", max_episode_steps=200)
 class MyEEAlignMarkerEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_over", "my_xarm7_mjcf"]
     agent: Xarm7Official
@@ -56,7 +57,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
             self._configured_marker_pose_base: Optional[Pose] = None
         else:
             self._configured_marker_pose_base = Pose.create(marker_pose)
-        self._success_counts: Optional[torch.Tensor] = None
+        self._marker_time_remaining: Optional[torch.Tensor] = None
         self._obs_joint_indices: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
@@ -125,7 +126,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         self._human_render_cameras = dict()
         self.scene = None
         self._hidden_objects = []
-        self._success_counts = None
+        self._marker_time_remaining = None
         self._obs_joint_indices = None
         try:
             import gc as _gc
@@ -137,7 +138,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
-            self._initialize_success_counters(env_idx)
             marker_pose_base = self._resolve_marker_pose(env_idx, options)
             if (
                 self._configured_marker_pose_base is None
@@ -145,11 +145,12 @@ class MyEEAlignMarkerEnv(BaseEnv):
             ):
                 marker_pose_base = self._randomize_marker_pose_in_base(
                     marker_pose_base, env_idx
-                )
+            )
             marker_pose_world = self._convert_pose_base_to_world(
                 marker_pose_base, env_idx
             )
             self.marker.set_pose(marker_pose_world)
+            self._initialize_marker_lifetimes(env_idx)
 
     def _get_robot_base_pose_on_device(
         self, env_idx: Optional[torch.Tensor] = None
@@ -240,15 +241,44 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 pose = Pose.create(pose.raw_pose[:batch_size], device=self.device)
         return pose
 
-    def _initialize_success_counters(self, env_idx: torch.Tensor):
-        env_idx = env_idx.to(device=self.device, dtype=torch.long)
-        if self._success_counts is None or len(self._success_counts) != self.num_envs:
-            self._success_counts = torch.zeros(
-                self.num_envs, dtype=torch.long, device=self.device
+    def _ensure_marker_timer_buffer(self):
+        if (
+            self._marker_time_remaining is None
+            or len(self._marker_time_remaining) != self.num_envs
+        ):
+            self._marker_time_remaining = torch.zeros(
+                self.num_envs, dtype=torch.float32, device=self.device
             )
-        elif self._success_counts.device != self.device:
-            self._success_counts = self._success_counts.to(self.device)
-        self._success_counts.index_fill_(0, env_idx, 0)
+        elif self._marker_time_remaining.device != self.device:
+            self._marker_time_remaining = self._marker_time_remaining.to(self.device)
+
+    def _sample_marker_lifetimes(self, batch_size: int) -> torch.Tensor:
+        if batch_size == 0:
+            return torch.empty(0, dtype=torch.float32, device=self.device)
+        lifetime_range = MARKER_LIFETIME_MAX_SECONDS - MARKER_LIFETIME_MIN_SECONDS
+        random_offsets = torch.rand(batch_size, device=self.device, dtype=torch.float32)
+        return random_offsets * lifetime_range + MARKER_LIFETIME_MIN_SECONDS
+
+    def _set_marker_lifetimes(self, env_idx: torch.Tensor):
+        if env_idx.numel() == 0:
+            return
+        env_idx = env_idx.to(device=self.device, dtype=torch.long)
+        self._ensure_marker_timer_buffer()
+        lifetimes = self._sample_marker_lifetimes(env_idx.numel())
+        self._marker_time_remaining.index_copy_(0, env_idx, lifetimes)
+
+    def _initialize_marker_lifetimes(self, env_idx: torch.Tensor):
+        self._set_marker_lifetimes(env_idx)
+
+    def _advance_marker_timers(self) -> torch.Tensor:
+        if self._marker_time_remaining is None:
+            return torch.empty(0, dtype=torch.long, device=self.device)
+        self._marker_time_remaining -= self.control_timestep
+        expired_mask = self._marker_time_remaining <= 0.0
+        if not torch.any(expired_mask):
+            return torch.empty(0, dtype=torch.long, device=self.device)
+        expired_envs = torch.nonzero(expired_mask, as_tuple=False).squeeze(-1)
+        return expired_envs
 
     def _randomize_marker_pose_in_base(
         self, marker_pose_base: Pose, env_idx: torch.Tensor
@@ -328,6 +358,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
             randomized_pose_base, env_idx
         )
         self._set_marker_pose_world(randomized_pose_world, env_idx)
+        self._set_marker_lifetimes(env_idx)
 
     def _get_marker_pose_on_device(self) -> Pose:
         marker_pose = self.marker.pose
@@ -370,9 +401,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         tcp_pose = self._get_tcp_pose_on_device()
         tcp_position = tcp_pose.p
         distance = torch.linalg.norm(tcp_position - target_point, dim=1)
-        success = distance < ALIGNMENT_TOLERANCE
         return {
-            "success": success,
             "target_distance": distance,
         }
 
@@ -421,44 +450,16 @@ class MyEEAlignMarkerEnv(BaseEnv):
         raw_obs = self.get_obs(info, unflattened=True)
         reward = self.get_reward(obs=raw_obs, action=action, info=info)
 
-        success = info.get("success")
-        if success is not None:
-            if not isinstance(success, torch.Tensor):
-                success_tensor = torch.as_tensor(success, device=self.device)
-                if success_tensor.ndim == 0:
-                    success_tensor = success_tensor.unsqueeze(0)
-            else:
-                success_tensor = success.to(device=self.device)
-            if success_tensor.ndim == 0:
-                success_tensor = success_tensor.unsqueeze(0)
-            success_envs = torch.nonzero(success_tensor, as_tuple=False).squeeze(-1)
-            if success_envs.numel() > 0:
-                success_envs = success_envs.to(device=self.device, dtype=torch.long)
-                if self._success_counts is None:
-                    # Should not happen, but guard to avoid crashes.
-                    self._success_counts = torch.zeros(
-                        self.num_envs, dtype=torch.long, device=self.device
-                    )
-                increment = torch.ones(success_envs.shape, dtype=torch.long, device=self.device)
-                self._success_counts.index_add_(0, success_envs, increment)
-                completed_mask = self._success_counts.index_select(0, success_envs) >= MAX_SUCCESSES_PER_EPISODE
-                ongoing_envs = success_envs[~completed_mask]
-                if ongoing_envs.numel() > 0:
-                    # Keep the episode running by respawning the marker when success is achieved.
-                    self._respawn_marker(ongoing_envs)
-                    raw_obs = self.get_obs(info, unflattened=True)
-                # Let termination logic below handle env shutdown after required successes.
+        expired_envs = self._advance_marker_timers()
+        if expired_envs.numel() > 0:
+            self._respawn_marker(expired_envs)
+            raw_obs = self.get_obs(info, unflattened=True)
 
         obs = self._flatten_raw_obs(raw_obs)
         if "fail" in info:
             terminated = info["fail"].clone()
         else:
             terminated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
-        if self._success_counts is not None:
-            success_limit_reached = self._success_counts >= MAX_SUCCESSES_PER_EPISODE
-            if terminated.device != success_limit_reached.device:
-                success_limit_reached = success_limit_reached.to(terminated.device)
-            terminated = torch.logical_or(terminated, success_limit_reached)
         truncated = torch.zeros(self.num_envs, dtype=bool, device=self.device)
         self._last_obs = obs
         return obs, reward, terminated, truncated, info
@@ -473,8 +474,6 @@ class MyEEAlignMarkerEnv(BaseEnv):
             -alignment_error / POSITION_REWARD_LENGTH_SCALE
         ) * ALIGNMENT_REWARD_WEIGHT
         reward = alignment_reward
-        if "success" in info:
-            reward = reward + 5.0*info["success"].to(reward.dtype)
 
         observed_qvel = self._get_observed_qvel()
         speed = torch.linalg.norm(observed_qvel, dim=1)
@@ -490,5 +489,5 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
-        max_reward = ALIGNMENT_REWARD_WEIGHT + 5.0
+        max_reward = ALIGNMENT_REWARD_WEIGHT
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
