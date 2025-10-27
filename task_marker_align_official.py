@@ -378,12 +378,20 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _marker_frame_axes(self):
         marker_pose = self._get_marker_pose_on_device()
         quat = marker_pose.q
+        step_info = getattr(self, "_elapsed_steps", None)
+        if torch.is_tensor(step_info):
+            if step_info.numel() == 1:
+                step_info = step_info.item()
+            else:
+                step_info = step_info.detach().cpu().tolist()
+        if step_info is None:
+            step_info = -1
         if not torch.isfinite(quat).all():
             bad_mask = ~torch.isfinite(quat).all(dim=-1)
             bad_envs = bad_mask.nonzero(as_tuple=False).squeeze(-1)
             print(
                 "[debug] marker quaternion non-finite",
-                {"envs": bad_envs.tolist(), "step": int(getattr(self, "_elapsed_steps", -1))},
+                {"envs": bad_envs.tolist(), "step": step_info},
             )
             print("[debug] marker pose raw quat:", quat[bad_mask])
             print("[debug] marker pose raw pos:", marker_pose.p[bad_mask])
@@ -411,7 +419,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
                     {
                         "axis": name,
                         "envs": bad_envs.tolist(),
-                        "step": int(getattr(self, "_elapsed_steps", -1)),
+                        "step": step_info,
                     },
                 )
                 print("[debug] tensor values:", tensor[bad_mask])
@@ -479,9 +487,17 @@ class MyEEAlignMarkerEnv(BaseEnv):
 
         obs = self._flatten_raw_obs(raw_obs)
         if not torch.isfinite(obs).all():
+            step_info = getattr(self, "_elapsed_steps", None)
+            if torch.is_tensor(step_info):
+                if step_info.numel() == 1:
+                    step_info = step_info.item()
+                else:
+                    step_info = step_info.detach().cpu().tolist()
+            if step_info is None:
+                step_info = -1
             print(
                 "[debug] flattened obs contains non-finite values",
-                {"step": int(self._elapsed_steps)},
+                {"step": step_info},
             )
             flat_mask = torch.isfinite(obs)
             print("[debug] finite mask mean:", flat_mask.float().mean().item())
