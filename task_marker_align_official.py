@@ -378,6 +378,15 @@ class MyEEAlignMarkerEnv(BaseEnv):
     def _marker_frame_axes(self):
         marker_pose = self._get_marker_pose_on_device()
         quat = marker_pose.q
+        if not torch.isfinite(quat).all():
+            bad_mask = ~torch.isfinite(quat).all(dim=-1)
+            bad_envs = bad_mask.nonzero(as_tuple=False).squeeze(-1)
+            print(
+                "[debug] marker quaternion non-finite",
+                {"envs": bad_envs.tolist(), "step": int(getattr(self, "_elapsed_steps", -1))},
+            )
+            print("[debug] marker pose raw quat:", quat[bad_mask])
+            print("[debug] marker pose raw pos:", marker_pose.p[bad_mask])
         quat_norm = torch.linalg.norm(quat, dim=-1, keepdim=True)
         safe_quat = quat / torch.clamp(quat_norm, min=1e-6)
         if torch.any(torch.lt(quat_norm, 1e-6)):
@@ -393,6 +402,19 @@ class MyEEAlignMarkerEnv(BaseEnv):
         x_axis = rotation_matrix[..., :, 0]
         y_axis = rotation_matrix[..., :, 1]
         normal = F.normalize(torch.cross(x_axis, y_axis, dim=-1), dim=-1, eps=1e-6)
+        for name, tensor in (("x_axis", x_axis), ("y_axis", y_axis), ("normal", normal)):
+            if not torch.isfinite(tensor).all():
+                bad_mask = ~torch.isfinite(tensor).all(dim=-1)
+                bad_envs = bad_mask.nonzero(as_tuple=False).squeeze(-1)
+                print(
+                    "[debug] marker axis non-finite",
+                    {
+                        "axis": name,
+                        "envs": bad_envs.tolist(),
+                        "step": int(getattr(self, "_elapsed_steps", -1)),
+                    },
+                )
+                print("[debug] tensor values:", tensor[bad_mask])
         return marker_pose, x_axis, y_axis, normal
 
     def evaluate(self):
@@ -456,6 +478,19 @@ class MyEEAlignMarkerEnv(BaseEnv):
             raw_obs = self.get_obs(info, unflattened=True)
 
         obs = self._flatten_raw_obs(raw_obs)
+        if not torch.isfinite(obs).all():
+            print(
+                "[debug] flattened obs contains non-finite values",
+                {"step": int(self._elapsed_steps)},
+            )
+            flat_mask = torch.isfinite(obs)
+            print("[debug] finite mask mean:", flat_mask.float().mean().item())
+            obs_per_env = obs
+            finite_env_mask = torch.isfinite(obs_per_env).all(dim=1)
+            bad_envs = (~finite_env_mask).nonzero(as_tuple=False).squeeze(-1)
+            print("[debug] bad envs:", bad_envs.tolist())
+            if bad_envs.numel() > 0:
+                print("[debug] sample bad obs:", obs_per_env[bad_envs][:2])
         if "fail" in info:
             terminated = info["fail"].clone()
         else:
