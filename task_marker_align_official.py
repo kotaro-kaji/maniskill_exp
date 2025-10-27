@@ -41,7 +41,7 @@ MARKER_GREEN_Y_OFFSET = MARKER_BASE_HALF_SIZE[1] - MARKER_GREEN_HALF_SIZE[1]
 MARKER_GREEN_Z_OFFSET = MARKER_BASE_HALF_SIZE[2] + MARKER_GREEN_HALF_SIZE[2]
 
 
-@register_env("MyEEAlignMarker-v0", max_episode_steps=200)
+@register_env("MyEEAlignMarker-v0", max_episode_steps=201)
 class MyEEAlignMarkerEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_over", "my_xarm7_mjcf"]
     agent: Xarm7Official
