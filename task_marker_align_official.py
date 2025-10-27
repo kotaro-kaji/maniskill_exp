@@ -518,7 +518,9 @@ class MyEEAlignMarkerEnv(BaseEnv):
             raw_obs = self.get_obs(info, unflattened=True)
 
         obs = self._flatten_raw_obs(raw_obs)
-        if not torch.isfinite(obs).all():
+        finite_mask = torch.isfinite(obs)
+        nonfinite_env_mask = ~finite_mask.all(dim=1)
+        if not finite_mask.all():
             step_info = getattr(self, "_elapsed_steps", None)
             if torch.is_tensor(step_info):
                 if step_info.numel() == 1:
@@ -531,14 +533,25 @@ class MyEEAlignMarkerEnv(BaseEnv):
                 "[debug] flattened obs contains non-finite values",
                 {"step": step_info},
             )
-            flat_mask = torch.isfinite(obs)
-            print("[debug] finite mask mean:", flat_mask.float().mean().item())
+            print("[debug] finite mask mean:", finite_mask.float().mean().item())
             obs_per_env = obs
-            finite_env_mask = torch.isfinite(obs_per_env).all(dim=1)
-            bad_envs = (~finite_env_mask).nonzero(as_tuple=False).squeeze(-1)
+            bad_envs = nonfinite_env_mask.nonzero(as_tuple=False).squeeze(-1)
             print("[debug] bad envs:", bad_envs.tolist())
             if bad_envs.numel() > 0:
                 print("[debug] sample bad obs:", obs_per_env[bad_envs][:2])
+        if torch.any(nonfinite_env_mask):
+            if "fail" in info:
+                info["fail"] = info["fail"] | nonfinite_env_mask
+            else:
+                info["fail"] = nonfinite_env_mask.clone()
+            if "nonfinite_obs" in info:
+                info["nonfinite_obs"] = info["nonfinite_obs"] | nonfinite_env_mask
+            else:
+                info["nonfinite_obs"] = nonfinite_env_mask.clone()
+            obs = obs.clone()
+            obs[nonfinite_env_mask] = 0.0
+            reward = reward.clone()
+            reward[nonfinite_env_mask] = 0.0
         if "fail" in info:
             terminated = info["fail"].clone()
         else:
