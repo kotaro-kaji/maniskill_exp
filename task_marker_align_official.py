@@ -446,10 +446,42 @@ class MyEEAlignMarkerEnv(BaseEnv):
             dim = obs["qpos"].dim() - 1
             idx = indices.to(device=obs["qpos"].device, dtype=torch.long)
             obs["qpos"] = obs["qpos"].index_select(dim, idx)
+            if not torch.isfinite(obs["qpos"]).all():
+                bad_mask = ~torch.isfinite(obs["qpos"]).all(dim=-1)
+                bad_envs = bad_mask.nonzero(as_tuple=False).squeeze(-1)
+                step_info = getattr(self, "_elapsed_steps", None)
+                if torch.is_tensor(step_info):
+                    if step_info.numel() == 1:
+                        step_info = step_info.item()
+                    else:
+                        step_info = step_info.detach().cpu().tolist()
+                if step_info is None:
+                    step_info = -1
+                print(
+                    "[debug] qpos contains non-finite values",
+                    {"envs": bad_envs.tolist(), "step": step_info},
+                )
+                print("[debug] qpos values:", obs["qpos"][bad_mask])
         if "qvel" in obs:
             dim = obs["qvel"].dim() - 1
             idx = indices.to(device=obs["qvel"].device, dtype=torch.long)
             obs["qvel"] = obs["qvel"].index_select(dim, idx)
+            if not torch.isfinite(obs["qvel"]).all():
+                bad_mask = ~torch.isfinite(obs["qvel"]).all(dim=-1)
+                bad_envs = bad_mask.nonzero(as_tuple=False).squeeze(-1)
+                step_info = getattr(self, "_elapsed_steps", None)
+                if torch.is_tensor(step_info):
+                    if step_info.numel() == 1:
+                        step_info = step_info.item()
+                    else:
+                        step_info = step_info.detach().cpu().tolist()
+                if step_info is None:
+                    step_info = -1
+                print(
+                    "[debug] qvel contains non-finite values",
+                    {"envs": bad_envs.tolist(), "step": step_info},
+                )
+                print("[debug] qvel values:", obs["qvel"][bad_mask])
         return obs
 
     def _get_obs_extra(self, info: Dict):
