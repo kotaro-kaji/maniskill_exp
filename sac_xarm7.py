@@ -5,6 +5,8 @@ import random
 import time
 from typing import Optional
 
+import tqdm
+
 import gymnasium as gym
 import numpy as np
 import torch
@@ -430,8 +432,10 @@ if __name__ == "__main__":
 
     global_steps_per_iteration = args.num_envs * args.steps_per_env
     cumulative_times = defaultdict(float)
+    pbar = tqdm.tqdm(total=args.total_timesteps, dynamic_ncols=True)
 
     while global_step < args.total_timesteps:
+        iteration_start_step = global_step
         if args.eval_freq > 0 and (global_step - args.training_freq) // args.eval_freq < global_step // args.eval_freq:
             actor.eval()
             stime = time.perf_counter()
@@ -452,6 +456,14 @@ if __name__ == "__main__":
                 eval_metrics_mean[k] = mean
                 if logger is not None:
                     logger.add_scalar(f"eval/{k}", mean, global_step)
+            if eval_metrics_mean:
+                description_parts = []
+                if "success_once" in eval_metrics_mean:
+                    description_parts.append(f"success_once: {eval_metrics_mean['success_once']:.2f}")
+                if "return" in eval_metrics_mean:
+                    description_parts.append(f"return: {eval_metrics_mean['return']:.2f}")
+                if description_parts:
+                    pbar.set_description(", ".join(description_parts))
             if logger is not None:
                 eval_time = time.perf_counter() - stime
                 cumulative_times["eval_time"] += eval_time
@@ -537,6 +549,10 @@ if __name__ == "__main__":
 
         rollout_time = time.perf_counter() - rollout_time
         cumulative_times["rollout_time"] += rollout_time
+        steps_this_iteration = global_step - iteration_start_step
+        remaining = max(args.total_timesteps - pbar.n, 0)
+        if steps_this_iteration > 0 and remaining > 0:
+            pbar.update(min(steps_this_iteration, remaining))
 
         if global_step >= args.learning_starts:
             update_time = time.perf_counter()
@@ -628,5 +644,6 @@ if __name__ == "__main__":
         print(f"model saved to {model_path}")
     if logger is not None:
         logger.close()
+    pbar.close()
     envs.close()
     eval_envs.close()
