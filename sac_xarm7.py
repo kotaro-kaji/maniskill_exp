@@ -68,11 +68,11 @@ class Args:
     """the id of the environment"""
     sim_backend: str = "physx_cuda"
     """the physics backend to use (cpu or physx_cuda)"""
-    num_envs: int = 512
+    num_envs: int = 16
     """the number of parallel environments"""
-    num_eval_envs: int = 8
+    num_eval_envs: int = 16
     """the number of parallel evaluation environments"""
-    partial_reset: bool = True
+    partial_reset: bool = False
     """whether to let parallel environments reset upon termination instead of truncation"""
     eval_partial_reset: bool = False
     """whether to let parallel evaluation environments reset upon termination instead of truncation"""
@@ -84,14 +84,14 @@ class Args:
     """how often to reconfigure the environment during training"""
     eval_reconfiguration_freq: Optional[int] = 1
     """for benchmarking purposes we want to reconfigure the eval environment each reset to ensure objects are randomized in some tasks"""
-    eval_freq: int = 25_600
+    eval_freq: int = 25
     """evaluation frequency in terms of environment steps"""
     save_train_video_freq: Optional[int] = None
     """frequency to save training videos in terms of iterations"""
-    control_mode: Optional[str] = None
-    """the control mode to use for the environment (defaults per task)"""
+    control_mode: Optional[str] = "pd_joint_delta_pos"
+    """the control mode to use for the environment"""
 
-    total_timesteps: int = 10_000_000
+    total_timesteps: int = 1_000_000
     """total timesteps of the experiments"""
     buffer_size: int = 1_000_000
     """the replay memory buffer size"""
@@ -289,12 +289,11 @@ if __name__ == "__main__":
         sim_backend=args.sim_backend,
         sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
     )
-    if args.control_mode is not None:
-        control_mode = args.control_mode
-    elif args.env_id == "MyEEAlignMarker-v0":
-        control_mode = "official_pd_joint_delta_pos"
-    else:
+    control_mode = args.control_mode
+    if control_mode is None:
         control_mode = "pd_joint_delta_pos"
+    if args.env_id == "MyEEAlignMarker-v0" and control_mode == "pd_joint_delta_pos":
+        control_mode = "official_pd_joint_delta_pos"
     env_kwargs["control_mode"] = control_mode
     envs = gym.make(
         args.env_id,
