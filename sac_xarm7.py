@@ -5,8 +5,6 @@ import random
 import time
 from typing import Optional
 
-import tqdm
-
 import gymnasium as gym
 import numpy as np
 import torch
@@ -497,20 +495,42 @@ if __name__ == "__main__":
                 need_final_obs = truncations | terminations
                 stop_bootstrap = torch.zeros_like(terminations, dtype=torch.bool)
 
-            if need_final_obs.any():
-                final_obs, _ = envs.get_final_observations()
-                real_next_obs[need_final_obs] = final_obs[need_final_obs]
+            if "final_observation" in infos:
+                final_observation = infos["final_observation"]
+                real_next_obs[need_final_obs] = final_observation[need_final_obs]
 
-            rb.add(obs, real_next_obs, actions, rewards.view(-1, 1), stop_bootstrap.view(-1, 1))
+            rb.add(obs, real_next_obs, actions, rewards, stop_bootstrap)
 
             obs = next_obs
             if "final_info" in infos:
                 final_info = infos["final_info"]
-                for info in final_info:
-                    if info is not None and "episode" in info:
-                        for k, v in info["episode"].items():
-                            if logger is not None:
-                                logger.add_scalar(f"train/{k}", v, global_step)
+                done_mask = infos.get("_final_info")
+                if isinstance(final_info, dict) and "episode" in final_info:
+                    episode_info = final_info["episode"]
+                    if logger is not None:
+                        if done_mask is None:
+                            done_mask = torch.ones_like(terminations, dtype=torch.bool)
+                        for k, v in episode_info.items():
+                            if isinstance(v, torch.Tensor):
+                                value = v[done_mask].float().mean()
+                                logger.add_scalar(f"train/{k}", value.item(), global_step)
+                            else:
+                                logger.add_scalar(f"train/{k}", float(v), global_step)
+                else:
+                    if done_mask is None:
+                        done_mask_iter = [True] * len(final_info)
+                    else:
+                        done_mask_iter = done_mask
+                    for info, mask in zip(final_info, done_mask_iter):
+                        if not mask or info is None:
+                            continue
+                        if logger is not None and "episode" in info:
+                            for k, v in info["episode"].items():
+                                if isinstance(v, torch.Tensor):
+                                    scalar = v.float().mean().item()
+                                else:
+                                    scalar = float(v)
+                                logger.add_scalar(f"train/{k}", scalar, global_step)
 
             if global_step >= args.learning_starts:
                 learning_has_started = True
