@@ -18,7 +18,7 @@ import torch
 from mani_skill.utils.building import actors
 from mani_skill.sensors.camera import CameraConfig
 
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Tuple
 import sapien
 
 from mani_skill.envs.sapien_env import BaseEnv
@@ -44,6 +44,7 @@ class MyPushCubeEnv(BaseEnv):
     cube_half_extent_x = 0.072
     cube_half_extent_y = 0.0409
     cube_half_extent_z = 0.0254
+    push_waypoint_threshold = 0.05
 
 
     def __init__(self, *args, **kwargs):
@@ -236,68 +237,30 @@ class MyPushCubeEnv(BaseEnv):
 
     def compute_staged_dense_reward(self, obs: Any, action: Array, info: Dict):
         """
-        Dense reward that first guides the TCP to a pushing waypoint and then,
-        once the waypoint is reached, encourages goal placement and height stability.
+        Dense reward that first guides the TCP to the pushing waypoint and then,
+        once the waypoint is reached, rewards goal alignment and height stability.
         """
-        # Stage 1: approach the preferred pushing waypoint behind the cube.
-        tcp_push_pose = Pose.create_from_pq(
-            p=self.obj.pose.p
-            + torch.tensor(
-                [-self.cube_half_extent_x - 0.005, 0, 0], device=self.device
-            )
-        )
-        tcp_to_push_pose = tcp_push_pose.p - self.agent.tcp.pose.p
-        tcp_to_push_pose_dist = torch.linalg.norm(tcp_to_push_pose, axis=1)
-        pushpoint_reward = 1 - torch.tanh(5 * tcp_to_push_pose_dist)
-        reward = pushpoint_reward
+        push_reward, push_reached = self._push_waypoint_metrics()
+        reached_weight = push_reached.to(push_reward.dtype)
 
-        reached_mask = (tcp_to_push_pose_dist < 0.05).to(pushpoint_reward.dtype)
+        reward = push_reward
+        reward += self._goal_alignment_reward() * reached_weight
+        reward += self._height_stability_reward() * reached_weight
+        reward += self._gripper_closure_reward()
 
-        # Stage 2: after reaching the waypoint, reward moving the cube toward the goal in XY.
-        obj_to_goal_dist = torch.linalg.norm(
-            self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
-        )
-        place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
-        reward += place_reward * reached_mask
-
-        # Stage 3: once pressing from the waypoint, reward keeping the cube flush with the table.
-        desired_obj_z = self.cube_half_extent_z
-        current_obj_z = self.obj.pose.p[..., 2]
-        z_deviation = torch.abs(current_obj_z - desired_obj_z)
-        z_reward = 1 - torch.tanh(5 * z_deviation)
-        reward += z_reward * reached_mask
-
-        # Gentle gripper closure is always encouraged, regardless of stage.
-        drive_joint = self.agent.robot.joints_map.get("drive_joint")
-        if drive_joint is not None and drive_joint.active_index is not None:
-            drive_qpos = drive_joint.qpos
-            grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
-            reward += 0.5 * grip_closure
-
-        # Success dominates all other signals.
-        reward = torch.where(
-            info["success"], torch.full_like(reward, 4.0), reward
-        )
+        success_bonus = self._success_reward(info) * reached_weight 
+        reward = torch.where(info["success"], success_bonus, reward)
         return reward
 
     def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
         # this should be equal to compute_dense_reward / max possible reward
         max_reward = 4.0
-        return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
-
-    def compute_simple_place_reward(self, obs: Any, action: Array, info: Dict):
-        """
-        Minimal alternative reward that only encourages the cube to reach the goal.
-        No waypoint/reaching term and no gating – always evaluates the placement distance.
-        """
-        obj_to_goal_dist = torch.linalg.norm(
-            self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
+        dense = torch.clamp(
+            self.compute_staged_dense_reward(obs=obs, action=action, info=info),
+            max=max_reward,
         )
-        place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
+        return dense / max_reward
 
-        reward = place_reward.clone()
-        reward[info["success"]] = 4
-        return reward
 
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
         """
@@ -306,37 +269,32 @@ class MyPushCubeEnv(BaseEnv):
         reward = self.compute_staged_dense_reward(obs=obs, action=action, info=info)
         return torch.clamp(reward, max=4.0)
 
-    def _tcp_pushpoint_distance_reward(self) -> torch.Tensor:
-        """
-        Reward that shrinks the distance between the TCP and the ideal push contact point,
-        including a penalty if the TCP hovers above the cube.
-        """
+    def _push_waypoint_metrics(self) -> Tuple[torch.Tensor, torch.Tensor]:
         tcp_pose = self.agent.tcp.pose
-        tcp_xy = tcp_pose.p[..., :2]
         cube_pose = self.obj.pose
-        cube_xy = cube_pose.p[..., :2]
         goal_xy = self.goal_region.pose.p[..., :2]
+        cube_xy = cube_pose.p[..., :2]
 
         push_vec = goal_xy - cube_xy
         eps = 1e-6
         push_norm = torch.linalg.norm(push_vec, dim=1, keepdim=True)
-        default_dir = torch.tensor([1.0, 0.0], device=self.device).view(1, 2)
+        default_dir = push_vec.new_tensor([1.0, 0.0]).view(1, 2)
         safe_dir = torch.where(
             (push_norm < eps).expand(-1, 2),
             default_dir.expand_as(push_vec),
             push_vec / torch.clamp(push_norm, min=eps),
         )
 
-        contact_half_extents = torch.tensor(
-            [self.cube_half_extent_x, self.cube_half_extent_y],
-            device=self.device,
-            dtype=torch.float32,
-        )
-        contact_half_extents *= 0.95
+        contact_half_extents = safe_dir.new_tensor(
+            [self.cube_half_extent_x, self.cube_half_extent_y]
+        ).view(1, 2)
+        contact_half_extents = contact_half_extents * 0.95
+        contact_half_extents = contact_half_extents.expand_as(safe_dir)
         denom = torch.clamp(torch.abs(safe_dir), min=eps)
         t = torch.min(contact_half_extents / denom, dim=1, keepdim=True).values
         contact_xy = cube_xy - safe_dir * t
 
+        tcp_xy = tcp_pose.p[..., :2]
         xy_dist = torch.linalg.norm(tcp_xy - contact_xy, dim=1)
 
         cube_top_z = cube_pose.p[..., 2] + self.cube_half_extent_z
@@ -344,7 +302,29 @@ class MyPushCubeEnv(BaseEnv):
         z_offset = torch.clamp(tcp_z - cube_top_z, min=0.0)
 
         total_dist = torch.sqrt(xy_dist**2 + z_offset**2)
-        return 1 - torch.tanh(5 * total_dist)
+        reward = 1 - torch.tanh(5 * total_dist)
+        reached = total_dist < self.push_waypoint_threshold
+        return reward, reached
+
+    def _goal_alignment_reward(self) -> torch.Tensor:
+        delta_xy = self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2]
+        distance = torch.linalg.norm(delta_xy, dim=1)
+        return 1 - torch.tanh(5 * distance)
+
+    def _height_stability_reward(self) -> torch.Tensor:
+        current_obj_z = self.obj.pose.p[..., 2]
+        desired_obj_z = self.cube_half_extent_z
+        z_deviation = torch.abs(current_obj_z - desired_obj_z)
+        return 1 - torch.tanh(5 * z_deviation)
+
+    def _gripper_closure_reward(self) -> torch.Tensor:
+        drive_joint = self.agent.robot.joints_map.get("drive_joint")
+        base = torch.zeros_like(self.obj.pose.p[..., 0])
+        if drive_joint is None or drive_joint.active_index is None:
+            return base
+        drive_qpos = drive_joint.qpos
+        grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
+        return 0.5 * grip_closure
 
     def _success_reward(self, info: Dict) -> torch.Tensor:
         """
