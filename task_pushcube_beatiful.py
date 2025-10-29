@@ -44,7 +44,7 @@ class MyPushCubeEnv(BaseEnv):
     box_half_extent_x = 0.072
     box_half_extent_y = 0.0409
     box_half_extent_z = 0.0254
-    push_waypoint_threshold = 0.05
+    push_waypoint_threshold = 0.04
 
 
     def __init__(self, *args, **kwargs):
@@ -302,7 +302,12 @@ class MyPushCubeEnv(BaseEnv):
         z_offset = torch.clamp(tcp_z - box_top_z, min=0.0)
 
         total_dist = torch.sqrt(xy_dist**2 + z_offset**2)
-        reward = 1 - torch.tanh(5 * total_dist)
+        base_reward = 1 - torch.tanh(5 * total_dist)
+        reward = torch.where(
+            total_dist < self.push_waypoint_threshold,
+            torch.ones_like(base_reward),
+            base_reward,
+        )
         reached = total_dist < self.push_waypoint_threshold
         return reward, reached
 
