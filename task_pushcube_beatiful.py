@@ -50,14 +50,12 @@ class MyPushCubeEnv(BaseEnv):
         super().__init__(*args, **kwargs)
 
     
-    # ★ サポートロボに自作UIDを追加（自作だけにするなら ["my_xarm7"] だけでOK）
-    # my_xarm7 に加えて my_xarm7_mjcf も選択可能に
-    SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_mjcf", "panda"]  # , "panda", "fetch"]
+    SUPPORTED_ROBOTS = ["my_xarm7", "my_xarm7", "panda"]  # , "panda", "fetch"]
 
     # ★ 型ヒントも自作に
     agent: Xarm7  # Union[Xarm7, Xarm7MJCF] などでもOK
 
-    def __init__(self, *args, robot_uids="my_xarm7_official", **kwargs):
+    def __init__(self, *args, robot_uids="my_xarm7", **kwargs):
         # "panda" や "fetch" も許すなら、タプル/リストで受けられるのは元のまま
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
@@ -237,7 +235,11 @@ class MyPushCubeEnv(BaseEnv):
         return obs
 
     def compute_staged_dense_reward(self, obs: Any, action: Array, info: Dict):
-        # We also create a pose marking where the robot should push the cube from that is easiest (pushing from behind the cube)
+        """
+        Dense reward that first guides the TCP to a pushing waypoint and then,
+        once the waypoint is reached, encourages goal placement and height stability.
+        """
+        # Stage 1: approach the preferred pushing waypoint behind the cube.
         tcp_push_pose = Pose.create_from_pq(
             p=self.obj.pose.p
             + torch.tensor(
@@ -246,38 +248,36 @@ class MyPushCubeEnv(BaseEnv):
         )
         tcp_to_push_pose = tcp_push_pose.p - self.agent.tcp.pose.p
         tcp_to_push_pose_dist = torch.linalg.norm(tcp_to_push_pose, axis=1)
-        reaching_reward = 1 - torch.tanh(5 * tcp_to_push_pose_dist)
-        reward = reaching_reward
+        pushpoint_reward = 1 - torch.tanh(5 * tcp_to_push_pose_dist)
+        reward = pushpoint_reward
 
-        # compute a placement reward to encourage robot to move the cube to the center of the goal region
-        # we further multiply the place_reward by a mask reached so we only add the place reward if the robot has reached the desired push pose
-        # This reward design helps train RL agents faster by staging the reward out.
-        reached = tcp_to_push_pose_dist < 0.01
+        reached_mask = (tcp_to_push_pose_dist < 0.05).to(pushpoint_reward.dtype)
+
+        # Stage 2: after reaching the waypoint, reward moving the cube toward the goal in XY.
         obj_to_goal_dist = torch.linalg.norm(
             self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
         )
         place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
-        reward += place_reward * reached
-        
-        # Compute a z reward to encourage the robot to keep the cube on the table
+        reward += place_reward * reached_mask
+
+        # Stage 3: once pressing from the waypoint, reward keeping the cube flush with the table.
         desired_obj_z = self.cube_half_extent_z
         current_obj_z = self.obj.pose.p[..., 2]
         z_deviation = torch.abs(current_obj_z - desired_obj_z)
         z_reward = 1 - torch.tanh(5 * z_deviation)
-        # We multiply the z reward by the place_reward and reached mask so that 
-        #   we only add the z reward if the robot has reached the desired push pose
-        #   and the z reward becomes more important as the robot gets closer to the goal.
-        reward += place_reward * z_reward * reached
+        reward += z_reward * reached_mask
 
-        # Encourage gentle closing of the gripper; 0 rad=open, 0.85 rad=closed.
+        # Gentle gripper closure is always encouraged, regardless of stage.
         drive_joint = self.agent.robot.joints_map.get("drive_joint")
         if drive_joint is not None and drive_joint.active_index is not None:
             drive_qpos = drive_joint.qpos
             grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
             reward += 0.5 * grip_closure
 
-        # assign rewards to parallel environments that achieved success to the maximum of 3.
-        reward[info["success"]] = 4
+        # Success dominates all other signals.
+        reward = torch.where(
+            info["success"], torch.full_like(reward, 4.0), reward
+        )
         return reward
 
     def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
@@ -301,13 +301,10 @@ class MyPushCubeEnv(BaseEnv):
 
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
         """
-        Dense reward composed of the TCP→push-point distance term and a success bonus.
+        Dense reward that mirrors the staged formulation without normalization.
         """
-        pushpoint_reward = self._tcp_pushpoint_distance_reward()
-        success_bonus = self._success_reward(info)
-        reward = pushpoint_reward + success_bonus
-        reward = torch.clamp(reward, max=4.0)
-        return reward
+        reward = self.compute_staged_dense_reward(obs=obs, action=action, info=info)
+        return torch.clamp(reward, max=4.0)
 
     def _tcp_pushpoint_distance_reward(self) -> torch.Tensor:
         """
