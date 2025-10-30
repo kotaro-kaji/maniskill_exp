@@ -14,8 +14,8 @@ from mani_skill.utils.structs.pose import Pose
 
 from robotagents.my_xarm7_official import Xarm7Official
 import robotagents.my_xarm7_mjcf
-from scenebuilders.xarm7_joint_hold_scene_builder import (
-    Xarm7JointHoldSceneBuilder,
+from scenebuilders.xarm7_initial_randomization_scene_builder import (
+    Xarm7InitialRandomizationSceneBuilder,
 )
 
 
@@ -74,7 +74,7 @@ class MyEEAlignMarkerEnv(BaseEnv):
         )
 
     def _load_scene(self, options: dict):
-        self.table_scene: Xarm7JointHoldSceneBuilder = Xarm7JointHoldSceneBuilder(env=self)
+        self.table_scene: Xarm7InitialRandomizationSceneBuilder = Xarm7InitialRandomizationSceneBuilder(env=self)
         self.table_scene.build()
 
         builder = self.scene.create_actor_builder()

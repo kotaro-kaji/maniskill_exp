@@ -3,6 +3,7 @@ import argparse
 import gymnasium as gym
 import mani_skill.envs  # registers envs
 import robotagents.my_xarm7_official  # registers your custom robot
+import robotagents.xarm_ball_ee
 from mani_skill.agents.controllers.base_controller import DictController
 from mani_skill.envs.sapien_env import BaseEnv
 import robotagents.my_xarm7_wo_gripper

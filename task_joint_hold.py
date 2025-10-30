@@ -11,7 +11,7 @@ from mani_skill.utils.registration import register_env
 from robotagents.my_xarm7_over import Xarm7ReducedProprio
 import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
-from scenebuilders.xarm7_joint_hold_scene_builder import Xarm7JointHoldSceneBuilder
+from scenebuilders.xarm7_initial_randomization_scene_builder import Xarm7InitialRandomizationSceneBuilder
 
 HOME_TARGET_QPOS = torch.tensor(
     [
@@ -64,7 +64,7 @@ class MyJointHoldEnv(BaseEnv):
         )
 
     def _load_scene(self, options: dict):
-        self.table_scene: Xarm7TableSceneBuilder = Xarm7JointHoldSceneBuilder(env=self)
+        self.table_scene: Xarm7TableSceneBuilder = Xarm7InitialRandomizationSceneBuilder(env=self)
         self.table_scene.build()
 
     def _clear(self):
