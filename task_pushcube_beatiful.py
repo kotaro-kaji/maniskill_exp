@@ -220,15 +220,22 @@ class MyPushCubeEnv(BaseEnv):
     def _get_obs_extra(self, info: Dict):
         # some useful observation info for solving the task includes the pose of the tcp (tool center point) which is the point between the
         # grippers of the robot
-        obs = dict(
-            tcp_pose=self.agent.tcp.pose.raw_pose,
-        )
+        tcp_pose = self.agent.tcp.pose
+        tcp_matrix = tcp_pose.to_transformation_matrix()[..., :3, :3]
+        tcp_pose_6d = torch.cat([tcp_pose.p, tcp_matrix[..., :, 0], tcp_matrix[..., :, 1]], dim=-1)
+        obs = dict(tcp_pose_6d=tcp_pose_6d)
         if self.obs_mode_struct.use_state:
-            # if the observation mode requests to use state, we provide ground truth information about where the box is.
-            # for visual observation modes one should rely on the sensed visual data to determine where the box is
+            box_pose = self.obj.pose
+            box_matrix = box_pose.to_transformation_matrix()[..., :3, :3]
+            box_pose_6d = torch.cat([box_pose.p, box_matrix[..., :, 0], box_matrix[..., :, 1]], dim=-1)
+
+            goal_pose = self.goal_region.pose
+            goal_matrix = goal_pose.to_transformation_matrix()[..., :3, :3]
+            goal_pose_6d = torch.cat([goal_pose.p, goal_matrix[..., :, 0], goal_matrix[..., :, 1]], dim=-1)
+
             obs.update(
-                goal_pos=self.goal_region.pose.p,
-                obj_pose=self.obj.pose.raw_pose,
+                goal_pose_6d=goal_pose_6d,
+                obj_pose_6d=box_pose_6d,
             )
         return obs
 
