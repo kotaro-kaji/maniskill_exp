@@ -1,3 +1,9 @@
+[submodule "ManiSkill"]
+	path = reference/ManiSkill
+	url = https://github.com/haosulab/ManiSkill.git
 [submodule "RoboManipBaselines"]
-	path = RoboManipBaselines
+	path = reference/RoboManipBaselines
 	url = https://github.com/isri-aist/RoboManipBaselines.git
+[submodule "xArm-Python-SDK"]
+	path = reference/xArm-Python-SDK
+	url = https://github.com/xArm-Developer/xArm-Python-SDK.git
