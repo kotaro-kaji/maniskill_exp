@@ -2,14 +2,6 @@ import sapien
 from mani_skill.utils import sapien_utils, common
 from mani_skill.envs.sapien_env import BaseEnv
 
-####the part which i made#################################
-from scenebuilders.xarm7_table_scene_builder import (
-    Xarm7TableSceneBuilder,
-    ROBOT_BASE_X_OFFSET,
-)
-###############################################################
-
-
 from mani_skill.utils.registration import register_env
 
 from mani_skill.utils.structs.pose import Pose
@@ -27,10 +19,13 @@ from transforms3d.euler import euler2quat
 import numpy as np
 
 
-# ★ 自作ロボットを import（これで登録の副作用が走る）
+# 自作環境
+from scenebuilders.xarm7_initial_randomization_scene_builder import (
+    Xarm7InitialRandomizationSceneBuilder,
+)
+from scenebuilders.xarm7_table_scene_builder import ROBOT_BASE_X_OFFSET
 from robotagents.my_xarm7 import Xarm7  # ← your file/module path に合わせて
 from robotagents.my_xarm7_official import Xarm7Official
-# my_xarm7_mjcf も登録の副作用が必要なので import
 import robotagents.my_xarm7_mjcf  # registers Xarm7MJCF (uid: "my_xarm7_mjcf")
 
 # （必要なら他ロボも残す）
@@ -123,7 +118,7 @@ class MyPushCubeEnv(BaseEnv):
         # PushCube has some other code after this removed for brevity that 
         # spawns a goal object (a red/white target) stored at self.goal_region
 
-        self.table_scene = Xarm7TableSceneBuilder(
+        self.table_scene = Xarm7InitialRandomizationSceneBuilder(
             env=self,
         )
         self.table_scene.build()

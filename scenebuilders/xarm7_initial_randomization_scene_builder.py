@@ -4,8 +4,8 @@ import torch
 from scenebuilders.xarm7_table_scene_builder import Xarm7TableSceneBuilder
 
 
-class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
-    """Scene builder that initializes Xarm7 to the joint-hold fixture pose.
+class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
+    """Scene builder that initializes Xarm7 to a randomized baseline pose.
 
     At every reset the first eight joints (seven arm joints + gripper drive)
     receive independent uniform offsets sampled from per-joint hard-coded bands.
@@ -13,7 +13,7 @@ class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
     """
 
     # Desired joint configuration (arm joints 1-7, gripper drive + mimics)
-    _JOINT_HOLD_QPOS = torch.tensor(
+    _RESET_STATE_OF_ROBOMANIPBASELINES = torch.tensor(
         [
             -0.00451699561347621,
             -0.4779577590016519,
@@ -43,7 +43,7 @@ class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.initial_qpos = self._JOINT_HOLD_QPOS.clone()
+        self.initial_qpos = self._RESET_STATE_OF_ROBOMANIPBASELINES.clone()
         self._offset_low_np = self._OFFSET_LOW.detach().cpu().numpy()
         self._offset_high_np = self._OFFSET_HIGH.detach().cpu().numpy()
 
@@ -118,7 +118,7 @@ class Xarm7JointHoldSceneBuilder(Xarm7TableSceneBuilder):
                 size=(batch_size, self._offset_low_np.shape[0]),
             )
         offsets = torch.zeros(
-            (samples.shape[0], self._JOINT_HOLD_QPOS.numel()),
+            (samples.shape[0], self._RESET_STATE_OF_ROBOMANIPBASELINES.numel()),
             device=self.env.device,
             dtype=torch.float32,
         )
