@@ -44,7 +44,8 @@ class MyPushCubeEnv(BaseEnv):
     box_half_extent_x = 0.072
     box_half_extent_y = 0.0409
     box_half_extent_z = 0.0254
-    push_waypoint_threshold = 0.04
+    push_waypoint_threshold = 0.05
+    max_dense_reward = 3.5
 
 
     def __init__(self, *args, **kwargs):
@@ -208,16 +209,12 @@ class MyPushCubeEnv(BaseEnv):
             )
 
     def evaluate(self):
-        # success: box xy within goal radius of target and box is on table
-        is_obj_placed = (
-            torch.linalg.norm(
-                self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
-            )
-            < self.goal_radius
-        ) & (self.obj.pose.p[..., 2] < self.box_half_extent_z + 5e-3)
-
+        delta_xy = self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2]
+        goal_distance = torch.linalg.norm(delta_xy, axis=1)
+        on_table = self.obj.pose.p[..., 2] < self.box_half_extent_z + 5e-3
         return {
-            "success": is_obj_placed,
+            "goal_distance": goal_distance,
+            "on_table": on_table,
         }
     
     def _get_obs_extra(self, info: Dict):
@@ -248,13 +245,11 @@ class MyPushCubeEnv(BaseEnv):
         reward += self._height_stability_reward() * reached_weight
         reward += self._gripper_closure_reward()
 
-        success_bonus = self._success_reward(info) * reached_weight 
-        reward = torch.where(info["success"], success_bonus, reward)
         return reward
 
     def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
         # this should be equal to compute_dense_reward / max possible reward
-        max_reward = 4.0
+        max_reward = self.max_dense_reward
         dense = torch.clamp(
             self.compute_staged_dense_reward(obs=obs, action=action, info=info),
             max=max_reward,
@@ -267,7 +262,7 @@ class MyPushCubeEnv(BaseEnv):
         Dense reward that mirrors the staged formulation without normalization.
         """
         reward = self.compute_staged_dense_reward(obs=obs, action=action, info=info)
-        return torch.clamp(reward, max=4.0)
+        return torch.clamp(reward, max=self.max_dense_reward)
 
     def _push_waypoint_metrics(self) -> Tuple[torch.Tensor, torch.Tensor]:
         tcp_pose = self.agent.tcp.pose
@@ -330,11 +325,3 @@ class MyPushCubeEnv(BaseEnv):
         drive_qpos = drive_joint.qpos
         grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
         return 0.5 * grip_closure
-
-    def _success_reward(self, info: Dict) -> torch.Tensor:
-        """
-        Returns a tensor that adds a bonus to successful episodes.
-        """
-        bonus = torch.zeros_like(self.obj.pose.p[..., 0])
-        bonus[info["success"]] = 4.0
-        return bonus
