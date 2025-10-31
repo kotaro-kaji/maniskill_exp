@@ -77,7 +77,6 @@ def add_frame(
     )
     builder.initial_pose = pose
     frame = builder.build_static(name=name)
-    frame.set_pose(pose)
     return frame
 
 
