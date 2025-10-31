@@ -22,8 +22,7 @@ class MyDualSimpleEnv(BaseEnv):
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
-        base_pose = sapien.Pose(p=[0.0, 0.0, 0.0])
-        super()._load_agent(options, base_pose=base_pose)
+        super()._load_agent(options)
 
     @property
     def _default_human_render_camera_configs(self):
