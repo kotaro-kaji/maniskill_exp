@@ -67,7 +67,6 @@ class DualXarm7TableSceneBuilder(Xarm7TableSceneBuilder):
         except FileNotFoundError:
             return None
         if robot is not None:
-            self._set_pose_and_qpos(robot, SECONDARY_ARM_Y_OFFSET)
             self.scene_objects.append(robot)
         return robot
 
