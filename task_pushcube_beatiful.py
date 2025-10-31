@@ -285,7 +285,7 @@ class MyPushCubeEnv(BaseEnv):
         contact_half_extents = safe_dir.new_tensor(
             [self.box_half_extent_x, self.box_half_extent_y]
         ).view(1, 2)
-        contact_half_extents = contact_half_extents * 1.0  #ちゃんとBoxと同じ高さにする。
+        contact_half_extents = contact_half_extents * 0.975  
         contact_half_extents = contact_half_extents.expand_as(safe_dir)
         denom = torch.clamp(torch.abs(safe_dir), min=eps)
         t = torch.min(contact_half_extents / denom, dim=1, keepdim=True).values
@@ -294,9 +294,10 @@ class MyPushCubeEnv(BaseEnv):
         tcp_xy = tcp_pose.p[..., :2]
         xy_dist = torch.linalg.norm(tcp_xy - contact_xy, dim=1)
 
-        box_top_z = box_pose.p[..., 2] + self.box_half_extent_z
+        # Encourage the TCP to come down close to the cube sides instead of hovering above the top.
+        box_push_z = self.box_half_extent_z / 4.0
         tcp_z = tcp_pose.p[..., 2]
-        z_offset = torch.clamp(tcp_z - box_top_z, min=0.0)
+        z_offset = torch.clamp(tcp_z - box_push_z, min=0.0)
 
         total_dist = torch.sqrt(xy_dist**2 + z_offset**2)
         base_reward = 1 - torch.tanh(5 * total_dist)
