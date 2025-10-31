@@ -16,7 +16,6 @@ from scenebuilders.dual_xarm7_table_scene_builder import (
 @register_env("MyDualSimple-v0", max_episode_steps=200)
 class MyDualSimpleEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["xarm7_ball_ee"]
-    SUPPORTED_REWARD_MODES = ["none"]
 
     def __init__(self, *args, robot_uids="xarm7_ball_ee", **kwargs):
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
