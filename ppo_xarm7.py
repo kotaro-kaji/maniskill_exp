@@ -349,19 +349,47 @@ if __name__ == "__main__":
 
         rollout_time = time.time()
         for step in range(0, args.num_steps):
-            global_step += args.num_envs
+            attempt = 0
+            while True:
+                attempt += 1
+                # sanitize observations in case a simulator glitch produced NaNs/Infs
+                if not torch.isfinite(next_obs).all():
+                    print(f"[warn] invalid observation detected at global_step={global_step}; resetting environments")
+                    next_obs, _ = envs.reset()
+                    next_done = torch.zeros(args.num_envs, device=device)
+
+                try:
+                    with torch.no_grad():
+                        action, logprob, _, value = agent.get_action_and_value(next_obs)
+                except ValueError as exc:
+                    # Rarely, action_mean may contain NaN/Inf and torch distributions will raise.
+                    if "Expected parameter" in str(exc):
+                        print(f"[warn] invalid action distribution at global_step={global_step}; resetting environments")
+                        next_obs, _ = envs.reset()
+                        next_done = torch.zeros(args.num_envs, device=device)
+                        if attempt >= 5:
+                            raise RuntimeError("Unable to recover from invalid action distribution") from exc
+                        continue
+                    raise
+
+                if not (torch.isfinite(action).all() and torch.isfinite(logprob).all() and torch.isfinite(value).all()):
+                    print(f"[warn] non-finite rollout tensors at global_step={global_step}; resetting environments")
+                    next_obs, _ = envs.reset()
+                    next_done = torch.zeros(args.num_envs, device=device)
+                    if attempt >= 5:
+                        raise RuntimeError("Unable to recover from non-finite rollout tensors")
+                    continue
+                break
+
             obs[step] = next_obs
             dones[step] = next_done
-
-            # ALGO LOGIC: action logic
-            with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(next_obs)
-                values[step] = value.flatten()
+            values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
+            global_step += args.num_envs
             next_done = torch.logical_or(terminations, truncations).to(torch.float32)
             rewards[step] = reward.view(-1) * args.reward_scale
 
