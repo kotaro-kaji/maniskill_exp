@@ -36,6 +36,12 @@ class DualXarm7TableSceneBuilder(Xarm7TableSceneBuilder):
         self._ensure_secondary_robot_created()
         self._place_primary_agent()
         self._initialize_secondary_robot()
+        if self.env.scene.gpu_sim_enabled:
+            try:
+                self.env.scene._gpu_apply_all()
+                self.env.scene._gpu_fetch_all()
+            except Exception:
+                pass
 
     def _place_primary_agent(self):
         agent = getattr(self.env, "agent", None)
