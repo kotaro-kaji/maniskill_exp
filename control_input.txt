@@ -1,0 +1,25 @@
+# XArm7 file control (pd_joint_pos)
+# Edit the last line with 8 numbers then save. The robot follows it.
+# Format: 7 arm joint ABS positions [rad], then 1 GRIPPER value (normalized)
+# Example: 0 0 0 1.0472 0 1.0472 -1.5708 0.0
+#
+# Arm inputs (abs rad):
+#   0:    joint1  min=-6.2832  max= 6.2832
+#   1:    joint2  min=-2.0590  max= 2.0944
+#   2:    joint3  min=-6.2832  max= 6.2832
+#   3:    joint4  min=-0.1920  max= 3.9270
+#   4:    joint5  min=-6.2832  max= 6.2832
+#   5:    joint6  min=-1.6930  max= 3.1416
+#   6:    joint7  min=-6.2832  max= 6.2832
+#
+# Gripper (normalized): set in [-1, 1]  -> mapped to [0.00, 0.85] rad
+#
+# Tips:
+# - Save the file to apply new targets. The script polls this file.
+# - Leave values unchanged to keep the robot at its current pose.
+# - Stop the script with Ctrl+C in the terminal.
+#
+# Current target (will be used if line below is invalid):
+# 0.000000 0.000000 0.000000 1.047198 0.000000 1.047198 -1.570796 0.000000
+# --- Edit the line below: ---
+0.0 0.0 0.0 1.0471975803375244 0.0 1.0471975803375244 -1.5707963705062866 0.8

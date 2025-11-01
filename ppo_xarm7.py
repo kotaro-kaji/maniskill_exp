@@ -17,9 +17,20 @@ from torch.utils.tensorboard import SummaryWriter
 # ManiSkill specific imports
 import mani_skill.envs
 from mani_skill.utils import gym_utils
+from mani_skill.utils.structs.types import SimConfig
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+
+from task_joint_hold import MyJointHoldEnv
+from task_marker_align_official import MyEEAlignMarkerEnv
+import task_simple
+from task_pushcube_beatiful import MyPushCubeEnv
+
+
+#デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
+SIM_FREQUENCY_HZ = 250
+CONTROL_FREQUENCY_HZ = 50
 
 
 @dataclass
@@ -46,9 +57,11 @@ class Args:
     """if toggled, only runs evaluation with the given model checkpoint and saves the evaluation trajectories"""
     checkpoint: Optional[str] = None
     """path to a pretrained checkpoint file to start evaluation/training from"""
+    print_eval_actions: bool = False
+    """if toggled, prints the actions issued during evaluation"""
 
     # Algorithm specific arguments
-    env_id: str = "PickCube-v1"
+    env_id: str = "MyPushCube-v1"
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""
@@ -70,8 +83,8 @@ class Args:
     """how often to reconfigure the environment during training"""
     eval_reconfiguration_freq: Optional[int] = 1
     """for benchmarking purposes we want to reconfigure the eval environment each reset to ensure objects are randomized in some tasks"""
-    control_mode: Optional[str] = "pd_joint_delta_pos"
-    """the control mode to use for the environment"""
+    control_mode: Optional[str] = None
+    """the control mode to use for the environment (defaults per task)"""
     anneal_lr: bool = False
     """Toggle learning rate annealing for policy and value networks"""
     gamma: float = 0.8
@@ -103,6 +116,8 @@ class Args:
     save_train_video_freq: Optional[int] = None
     """frequency to save training videos in terms of iterations"""
     finite_horizon_gae: bool = False
+    # simulation backend: "cpu" or "physx_cuda"
+    sim_backend: str = "physx_cuda"
 
 
     # to be filled in runtime
@@ -193,9 +208,19 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    env_kwargs = dict(obs_mode="state", render_mode="rgb_array", sim_backend="physx_cuda")
+    env_kwargs = dict(
+        obs_mode="state",
+        render_mode="rgb_array",
+        sim_backend=args.sim_backend,
+        sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
+    )
     if args.control_mode is not None:
-        env_kwargs["control_mode"] = args.control_mode
+        control_mode = args.control_mode
+    elif args.env_id == "MyEEAlignMarker-v0":
+        control_mode = "official_pd_joint_delta_pos"
+    else:
+        control_mode = "pd_joint_delta_pos"
+    env_kwargs["control_mode"] = control_mode
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, **env_kwargs)
     if isinstance(envs.action_space, gym.spaces.Dict):
@@ -208,8 +233,22 @@ if __name__ == "__main__":
         print(f"Saving eval videos to {eval_output_dir}")
         if args.save_train_video_freq is not None:
             save_video_trigger = lambda x : (x // args.num_steps) % args.save_train_video_freq == 0
-            envs = RecordEpisode(envs, output_dir=f"runs/{run_name}/train_videos", save_trajectory=False, save_video_trigger=save_video_trigger, max_steps_per_video=args.num_steps, video_fps=30)
-        eval_envs = RecordEpisode(eval_envs, output_dir=eval_output_dir, save_trajectory=args.evaluate, trajectory_name="trajectory", max_steps_per_video=args.num_eval_steps, video_fps=30)
+            envs = RecordEpisode(
+                envs,
+                output_dir=f"runs/{run_name}/train_videos",
+                save_trajectory=False,
+                save_video_trigger=save_video_trigger,
+                max_steps_per_video=args.num_steps,
+                video_fps=CONTROL_FREQUENCY_HZ,
+            )
+        eval_envs = RecordEpisode(
+            eval_envs,
+            output_dir=eval_output_dir,
+            save_trajectory=args.evaluate,
+            trajectory_name="trajectory",
+            max_steps_per_video=args.num_eval_steps,
+            video_fps=CONTROL_FREQUENCY_HZ,
+        )
     envs = ManiSkillVectorEnv(envs, args.num_envs, ignore_terminations=not args.partial_reset, record_metrics=True)
     eval_envs = ManiSkillVectorEnv(eval_envs, args.num_eval_envs, ignore_terminations=not args.eval_partial_reset, record_metrics=True)
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
@@ -279,9 +318,12 @@ if __name__ == "__main__":
             eval_obs, _ = eval_envs.reset()
             eval_metrics = defaultdict(list)
             num_episodes = 0
-            for _ in range(args.num_eval_steps):
+            for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
-                    eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(agent.get_action(eval_obs, deterministic=True))
+                    eval_action = agent.get_action(eval_obs, deterministic=True)
+                    if args.print_eval_actions:
+                        print(f"[eval] step={eval_step} actions={eval_action.detach().cpu().numpy()}")
+                    eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(eval_action)
                     if "final_info" in eval_infos:
                         mask = eval_infos["_final_info"]
                         num_episodes += mask.sum()
@@ -307,19 +349,47 @@ if __name__ == "__main__":
 
         rollout_time = time.time()
         for step in range(0, args.num_steps):
-            global_step += args.num_envs
+            attempt = 0
+            while True:
+                attempt += 1
+                # sanitize observations in case a simulator glitch produced NaNs/Infs
+                if not torch.isfinite(next_obs).all():
+                    print(f"[warn] invalid observation detected at global_step={global_step}; resetting environments")
+                    next_obs, _ = envs.reset()
+                    next_done = torch.zeros(args.num_envs, device=device)
+
+                try:
+                    with torch.no_grad():
+                        action, logprob, _, value = agent.get_action_and_value(next_obs)
+                except ValueError as exc:
+                    # Rarely, action_mean may contain NaN/Inf and torch distributions will raise.
+                    if "Expected parameter" in str(exc):
+                        print(f"[warn] invalid action distribution at global_step={global_step}; resetting environments")
+                        next_obs, _ = envs.reset()
+                        next_done = torch.zeros(args.num_envs, device=device)
+                        if attempt >= 5:
+                            raise RuntimeError("Unable to recover from invalid action distribution") from exc
+                        continue
+                    raise
+
+                if not (torch.isfinite(action).all() and torch.isfinite(logprob).all() and torch.isfinite(value).all()):
+                    print(f"[warn] non-finite rollout tensors at global_step={global_step}; resetting environments")
+                    next_obs, _ = envs.reset()
+                    next_done = torch.zeros(args.num_envs, device=device)
+                    if attempt >= 5:
+                        raise RuntimeError("Unable to recover from non-finite rollout tensors")
+                    continue
+                break
+
             obs[step] = next_obs
             dones[step] = next_done
-
-            # ALGO LOGIC: action logic
-            with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(next_obs)
-                values[step] = value.flatten()
+            values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
+            global_step += args.num_envs
             next_done = torch.logical_or(terminations, truncations).to(torch.float32)
             rewards[step] = reward.view(-1) * args.reward_scale
 
