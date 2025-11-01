@@ -331,6 +331,8 @@
       <mass value="0.54156"/>
       <inertia ixx="0.00047106" ixy="3.9292E-07" ixz="2.6537E-06" iyy="0.00033072" iyz="-1.0975E-05" izz="0.00025642"/>
     </inertial>
+
+    
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
@@ -338,6 +340,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    
 
     <collision>
       <geometry>
