@@ -49,57 +49,27 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
 
     def initialize(self, env_idx: torch.Tensor):
         super().initialize(env_idx)
+        agents = self._get_agent_sequence()
+        if not agents:
+            return
+
         try:
-            b = len(env_idx)
-            base = self.initial_qpos.to(self.env.device)
-            if base.ndim == 1:
-                base = base.unsqueeze(0)
-            if base.shape[0] == 1 and b > 1:
-                base = base.repeat(b, 1)
-
-            offsets = self._sample_joint_offsets(env_idx, b)
-            if offsets.shape[0] == 1 and b > 1:
-                offsets = offsets.repeat(b, 1)
-            qpos = base + offsets
-            qpos[:, 8:] = qpos[:, 7:8]
-            self.env.agent.reset(qpos)
-
             if self.env.scene.gpu_sim_enabled:
                 self.env.scene._gpu_apply_all()
                 self.env.scene._gpu_fetch_all()
 
-            controller = self.env.agent.controller
-            if isinstance(controller, dict):
-                for ctrl in controller.values():
-                    ctrl.reset()
-            else:
-                controller.reset()
+            for agent in agents:
+                controller = getattr(agent, "controller", None)
+                self._reset_controller(controller)
 
-            current_qpos = self.env.agent.robot.get_qpos()
+            for agent in agents:
+                controller = getattr(agent, "controller", None)
+                current_qpos = agent.robot.get_qpos()
+                self._set_controller_drive_targets(controller, current_qpos)
 
-            def _set_targets(ctrl):
-                if hasattr(ctrl, "set_drive_targets"):
-                    ctrl.set_drive_targets(current_qpos)
-
-            if hasattr(controller, "controllers"):
-                for ctrl in controller.controllers.values():
-                    _set_targets(ctrl)
-            else:
-                _set_targets(controller)
-
-            # Issue an explicit zero action so delta controllers anchor to the current pose
-            try:
-                zero_action = controller.action_space.sample()
-
-                def _zero_like(sample):
-                    if isinstance(sample, dict):
-                        return {k: _zero_like(v) for k, v in sample.items()}
-                    return np.zeros_like(sample)
-
-                zero_action = _zero_like(zero_action)
-                controller.set_action(zero_action)
-            except Exception:
-                pass
+            for agent in agents:
+                controller = getattr(agent, "controller", None)
+                self._zero_controller_action(controller)
         except Exception:
             pass
 
@@ -126,3 +96,72 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
             samples, device=self.env.device, dtype=torch.float32
         )
         return offsets
+
+    def _baseline_qpos_tensor(self) -> torch.Tensor:
+        baseline = self.initial_qpos.to(self.env.device)
+        return baseline.clone()
+
+    def _compute_initial_qpos(self, agents, env_idx: torch.Tensor):
+        batch_size = len(env_idx)
+
+        base = self._baseline_qpos_tensor()
+        if base.ndim == 1:
+            base = base.unsqueeze(0)
+        if base.shape[0] == 1 and batch_size > 1:
+            base = base.repeat(batch_size, 1)
+
+        offsets = self._sample_joint_offsets(env_idx, batch_size)
+        if offsets.shape[0] == 1 and batch_size > 1:
+            offsets = offsets.repeat(batch_size, 1)
+
+        qpos = base + offsets.to(self.env.device)
+        qpos[:, 8:] = qpos[:, 7:8]
+        return [qpos.clone() for _ in agents]
+
+    def _reset_controller(self, controller):
+        if controller is None:
+            return
+        if isinstance(controller, dict):
+            for ctrl in controller.values():
+                self._reset_controller(ctrl)
+            return
+        reset_fn = getattr(controller, "reset", None)
+        if callable(reset_fn):
+            reset_fn()
+
+    def _set_controller_drive_targets(self, controller, current_qpos):
+        if controller is None:
+            return
+        if isinstance(controller, dict):
+            for ctrl in controller.values():
+                self._set_controller_drive_targets(ctrl, current_qpos)
+            return
+        if hasattr(controller, "controllers"):
+            for ctrl in controller.controllers.values():
+                self._set_controller_drive_targets(ctrl, current_qpos)
+            return
+        set_targets = getattr(controller, "set_drive_targets", None)
+        if callable(set_targets):
+            set_targets(current_qpos)
+
+    def _zero_controller_action(self, controller):
+        if controller is None:
+            return
+        if isinstance(controller, dict):
+            for ctrl in controller.values():
+                self._zero_controller_action(ctrl)
+            return
+        if not hasattr(controller, "action_space") or not hasattr(
+            controller, "set_action"
+        ):
+            return
+        try:
+            sample = controller.action_space.sample()
+            controller.set_action(self._zero_like(sample))
+        except Exception:
+            pass
+
+    def _zero_like(self, sample):
+        if isinstance(sample, dict):
+            return {k: self._zero_like(v) for k, v in sample.items()}
+        return np.zeros_like(sample)
