@@ -9,18 +9,26 @@ from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils.registration import register_env
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from mani_skill.utils.structs.pose import Pose
 from robotagents.xarm_ball_ee import Xarm7BallEE
 
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
 )
+from scenebuilders.xarm7_table_scene_builder import ROBOT_BASE_X_OFFSET
 
 
 @register_env("MyDualSimple-v0", max_episode_steps=200)
 class MyDualSimpleEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
+
+    BOX_HALF_SIZE = (0.18, 0.12, 0.12)
+    BOX_DENSITY = 200.0
+    BOX_X_OFFSET_FROM_BASE = 0.28
+    BOX_Y_JITTER = 0.05
+    BOX_X_JITTER = 0.03
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -40,10 +48,52 @@ class MyDualSimpleEnv(BaseEnv):
     def _load_scene(self, options: Dict[str, Any]):
         self.table_scene = DualXarm7TableSceneBuilder(env=self)
         self.table_scene.build()
+        builder = self.scene.create_actor_builder()
+        builder.add_box_collision(
+            half_size=self.BOX_HALF_SIZE,
+            density=self.BOX_DENSITY,
+        )
+        # Initial pose will be overwritten during episode init; place safely above table for now.
+        builder.initial_pose = sapien.Pose(
+            [
+                ROBOT_BASE_X_OFFSET + self.BOX_X_OFFSET_FROM_BASE,
+                0.0,
+                self.BOX_HALF_SIZE[2] * 2,
+            ]
+        )
+        self.box = builder.build(name="box_between_arms")
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
+            batch_size = len(env_idx)
+            if batch_size == 0:
+                return
+
+            x_center = (
+                ROBOT_BASE_X_OFFSET
+                + self.BOX_X_OFFSET_FROM_BASE
+                + (torch.rand(batch_size, device=self.device) - 0.5)
+                * 2
+                * self.BOX_X_JITTER
+            )
+            y_center = (
+                (torch.rand(batch_size, device=self.device) - 0.5)
+                * 2
+                * self.BOX_Y_JITTER
+            )
+            z_center = torch.full(
+                (batch_size,),
+                self.BOX_HALF_SIZE[2],
+                device=self.device,
+                dtype=torch.float32,
+            )
+            positions = torch.stack((x_center, y_center, z_center), dim=-1)
+            orientations = torch.zeros(
+                (batch_size, 4), device=self.device, dtype=torch.float32
+            )
+            orientations[..., 0] = 1.0
+            self.box.set_pose(Pose.create_from_pq(positions, orientations))
 
 
     def compute_normalized_dense_reward(self, obs, action, info):
