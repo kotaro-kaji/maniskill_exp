@@ -1,106 +1,68 @@
-import os
-
 import sapien
-import torch
+import sapien.render
 
-from scenebuilders.xarm7_table_scene_builder import (
-    Xarm7TableSceneBuilder,
-    PEDESTAL_HEIGHT,
-    ROBOT_BASE_X_OFFSET,
-)
 from scenebuilders.xarm7_initial_randomization_scene_builder import (
     Xarm7InitialRandomizationSceneBuilder,
 )
-
-
-BALL_EE_URDF_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "xarm7_ball_ee.urdf")
+from scenebuilders.xarm7_table_scene_builder import (
+    PEDESTAL_HEIGHT,
+    PEDESTAL_HALF_EXTENT_X,
+    ROBOT_BASE_X_OFFSET,
 )
+
+
 PRIMARY_ARM_Y_OFFSET = -0.3
 SECONDARY_ARM_Y_OFFSET = 0.3
 
 
-class DualXarm7TableSceneBuilder(Xarm7TableSceneBuilder):
-    """Table scene builder that spawns a second xArm7 Ball-EE beside the agent."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.secondary_robot = None
+class DualXarm7TableSceneBuilder(Xarm7InitialRandomizationSceneBuilder):
+    """Table scene builder that positions two xArm7 Ball-EE robots on the table."""
 
     def build(self):
         super().build()
-        self._ensure_secondary_robot_created()
+        self._reposition_primary_pedestal()
+        self.secondary_pedestal = self._build_additional_pedestal(
+            SECONDARY_ARM_Y_OFFSET, name="robot_pedestal_secondary"
+        )
 
-    def initialize(self, env_idx: torch.Tensor):
-        super().initialize(env_idx)
-        self._ensure_secondary_robot_created()
-        self._place_primary_agent()
-        self._initialize_secondary_robot()
-        if self.env.scene.gpu_sim_enabled:
-            try:
-                self.env.scene._gpu_apply_all()
-                self.env.scene._gpu_fetch_all()
-            except Exception:
-                pass
-
-    def _place_primary_agent(self):
-        agent = getattr(self.env, "agent", None)
-        if agent is None or getattr(agent, "robot", None) is None:
+    def _reposition_primary_pedestal(self):
+        pedestal = getattr(self, "robot_pedestal", None)
+        if pedestal is None:
             return
-        self._reset_agent_to_baseline()
-        agent.robot.set_pose(
+        pedestal.set_pose(
             sapien.Pose(
-                p=[ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
-                q=[1, 0, 0, 0],
+                [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT / 2.0]
             )
         )
 
-    def _initialize_secondary_robot(self):
-        if self.secondary_robot is None:
-            return
-        self._set_pose_and_qpos(self.secondary_robot, SECONDARY_ARM_Y_OFFSET)
-
-    def _ensure_secondary_robot_created(self):
-        if self.secondary_robot is None:
-            self.secondary_robot = self._load_ball_ee_robot("xarm7_ball_ee_right")
-
-    def _load_ball_ee_robot(self, name: str):
-        loader = self.scene.create_urdf_loader()
-        loader.fix_root_link = True
-        loader.name = name
-        try:
-            robot = loader.load(BALL_EE_URDF_PATH)
-        except FileNotFoundError:
-            return None
-        if robot is not None:
-            self.scene_objects.append(robot)
-        return robot
-
-    def _set_pose_and_qpos(self, robot, y_offset: float):
-        robot.set_pose(
-            sapien.Pose(
-                p=[ROBOT_BASE_X_OFFSET, y_offset, PEDESTAL_HEIGHT],
-                q=[1, 0, 0, 0],
-            )
+    def _build_additional_pedestal(self, y_offset: float, name: str):
+        pedestal_half_size = (
+            PEDESTAL_HALF_EXTENT_X,
+            self.table_width / 2,
+            PEDESTAL_HEIGHT / 2,
         )
-        try:
-            baseline = self._baseline_qpos_tensor()
-            if baseline.shape[-1] == robot.dof:
-                robot.set_qpos(baseline.detach().cpu().numpy())
-        except Exception:
-            pass
+        builder = self.scene.create_actor_builder()
+        builder.add_box_collision(half_size=pedestal_half_size)
+        builder.add_box_visual(
+            half_size=pedestal_half_size,
+            material=sapien.render.RenderMaterial(
+                base_color=[0.75, 0.75, 0.8, 1.0],
+                metallic=0.9,
+                roughness=0.3,
+            ),
+        )
+        builder.initial_pose = sapien.Pose(
+            p=[ROBOT_BASE_X_OFFSET, y_offset, PEDESTAL_HEIGHT / 2.0]
+        )
+        pedestal = builder.build_static(name=name)
+        self.scene_objects.append(pedestal)
+        return pedestal
 
-    def _baseline_qpos_tensor(self) -> torch.Tensor:
-        baseline = Xarm7InitialRandomizationSceneBuilder._RESET_STATE_OF_ROBOMANIPBASELINES
-        if baseline.ndim > 1:
-            baseline = baseline[0]
-        return baseline.clone()
-
-    def _reset_agent_to_baseline(self):
-        baseline = self._baseline_qpos_tensor()
-        agent = getattr(self.env, "agent", None)
-        if agent is None:
-            return
-        device = getattr(self.env, "device", torch.device("cpu"))
-        baseline = baseline.to(device)
-        agent.reset(baseline.unsqueeze(0))
+    def _initial_agent_pose(self, agent_index: int) -> sapien.Pose:
+        if agent_index == 0:
+            y_offset = PRIMARY_ARM_Y_OFFSET
+        elif agent_index == 1:
+            y_offset = SECONDARY_ARM_Y_OFFSET
+        else:
+            y_offset = 0.0
+        return sapien.Pose([ROBOT_BASE_X_OFFSET, y_offset, PEDESTAL_HEIGHT])
