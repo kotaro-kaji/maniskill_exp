@@ -7,6 +7,7 @@ from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils.registration import register_env
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from robotagents.xarm_ball_ee import Xarm7BallEE
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
@@ -37,3 +38,7 @@ class MyDualSimpleEnv(BaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
             self.table_scene.initialize(env_idx)
+
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        return 0.0
