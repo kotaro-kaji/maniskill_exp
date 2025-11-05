@@ -37,7 +37,7 @@ class MyDualSimpleEnv(BaseEnv):
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
-        super()._load_agent(options)
+        super()._load_agent(options, [sapien.Pose(p=[0,-1,0]), sapien.Pose(p=[0,1,0])])
         #super()._load_agent(options, sapien.Pose[p=])
 
     @property
