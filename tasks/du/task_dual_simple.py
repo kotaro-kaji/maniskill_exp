@@ -10,6 +10,8 @@ from mani_skill.utils.registration import register_env
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from robotagents.xarm_ball_ee import Xarm7BallEE
+from 
+
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
@@ -26,7 +28,7 @@ class MyDualSimpleEnv(BaseEnv):
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
-        super()._load_agent(options)
+        super()._load_agent(options, sapien.Pose[p=])
 
     @property
     def _default_human_render_camera_configs(self):
