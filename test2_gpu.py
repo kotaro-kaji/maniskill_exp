@@ -1,12 +1,13 @@
 import gymnasium as gym
 import mani_skill.envs
 
+
 import task_pushcube_beatiful
 import tasks.du.task_dual_simple
 
 #env_id = "MyPushCube-v1"
-#env_id = "MyDualSimple-v0"
-env_id = "TwoRobotPickCube-v1"
+env_id = "MyDualSimple-v0"
+#env_id = "TwoRobotPickCube-v1"
 
 env = gym.make(
     env_id,
