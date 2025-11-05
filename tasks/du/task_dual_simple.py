@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, Tuple
 
 import torch
@@ -13,9 +14,7 @@ from mani_skill.utils.structs.pose import Pose
 from robotagents.xarm_ball_ee import Xarm7BallEE
 
 
-from scenebuilders.dual_xarm7_table_scene_builder import (
-    DualXarm7TableSceneBuilder,
-)
+from scenebuilders.dual_xarm7_table_scene_builder import DualXarm7TableSceneBuilder
 from scenebuilders.xarm7_table_scene_builder import ROBOT_BASE_X_OFFSET
 
 
@@ -52,6 +51,21 @@ class MyDualSimpleEnv(BaseEnv):
         builder.add_box_collision(
             half_size=self.BOX_HALF_SIZE,
             density=self.BOX_DENSITY,
+        )
+        visual_file = os.path.normpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "assets",
+                "cardboard_box",
+                "textured.obj",
+            )
+        )
+        builder.add_visual_from_file(
+            filename=visual_file,
+            scale=[0.12, 0.12, 0.12],
+            pose=sapien.Pose(),
         )
         # Initial pose will be overwritten during episode init; place safely above table for now.
         builder.initial_pose = sapien.Pose(
