@@ -184,7 +184,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     def compute_normalized_dense_reward(self, obs, action, info):
 
         if not isinstance(self.agent, MultiAgent):
-            return torch.zeros(self.num_envs, device=self.device)
+            raise ValueError("Agent must be a MultiAgent")
 
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
