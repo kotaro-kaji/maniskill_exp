@@ -29,8 +29,8 @@ class MyDualSimpleEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.28
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.03
-    LEFT_TARGET_POS = (0.5, -0.3, 0.5)
-    RIGHT_TARGET_POS = (0.5, 0.3, 0.5)
+    LEFT_TARGET_POS = (0.5, 0.3, 0.5)
+    RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
     DISTANCE_SCALE = 4.0
     TARGET_RADIUS = 0.02
     LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0)
