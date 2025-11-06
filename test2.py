@@ -18,7 +18,7 @@ CUSTOM_ENV_MODULES: Tuple[str, ...] = (
     "task_pushcube_beatiful",
     "task_joint_hold",
     "task_marker_align_official",
-    "tasks.du.task_dual_simple",
+    "tasks.dual.task_dual_simple",
 )
 for _module_name in CUSTOM_ENV_MODULES:
     importlib.import_module(_module_name)
