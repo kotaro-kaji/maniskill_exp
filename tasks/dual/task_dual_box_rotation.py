@@ -23,7 +23,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
 
-    BOX_HALF_SIZE = (0.09, 0.06, 0.06)
+    BOX_HALF_SIZE = (0.06, 0.09, 0.06)
     BOX_DENSITY = 200.0
     BOX_X_OFFSET_FROM_BASE = 0.43
     BOX_Y_JITTER = 0.05
