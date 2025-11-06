@@ -19,20 +19,12 @@ class DualXarm7TableSceneBuilder(Xarm7InitialRandomizationSceneBuilder):
     """Table scene builder that positions two xArm7 Ball-EE robots on the table."""
 
     def build(self):
+        self._primary_pedestal_pose = sapien.Pose(
+            [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT / 2.0]
+        )
         super().build()
-        self._reposition_primary_pedestal()
         self.secondary_pedestal = self._build_additional_pedestal(
             SECONDARY_ARM_Y_OFFSET, name="robot_pedestal_secondary"
-        )
-
-    def _reposition_primary_pedestal(self):
-        pedestal = getattr(self, "robot_pedestal", None)
-        if pedestal is None:
-            return
-        pedestal.set_pose(
-            sapien.Pose(
-                [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT / 2.0]
-            )
         )
 
     def _build_additional_pedestal(self, y_offset: float, name: str):
