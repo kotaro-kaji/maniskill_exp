@@ -34,6 +34,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
+    BOX_CENTER_PENALTY_SCALE = 5.0
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
@@ -111,6 +112,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_forward_side_center = zeros.clone()
         self.initial_pushpoint_by_right = zeros.clone()
         self.initial_pushpoint_by_left = zeros.clone()
+        self.initial_box_center = zeros.clone()
 
     def _theta_to_quaternion(self, theta_deg: torch.Tensor) -> torch.Tensor:
         """Convert planar angle in degrees (around z) to quaternion."""
@@ -176,6 +178,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_forward_side_center[env_idx_long] = initial_forward_side_center
         self.initial_pushpoint_by_right[env_idx_long] = initial_pushpoint_by_right
         self.initial_pushpoint_by_left[env_idx_long] = initial_pushpoint_by_left
+        self.initial_box_center[env_idx_long] = positions
         if getattr(self, "_enable_pushpoint_debug", False):
             left_vis = self.initial_pushpoint_by_left.clone()
             right_vis = self.initial_pushpoint_by_right.clone()
@@ -294,6 +297,17 @@ class MyDualBoxRotationEnv(BaseEnv):
         reached_right = distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD
         reward = 0.5 * (reward_left + reward_right)
 
+        box_pose = Pose.create(self.box.pose, device=self.device)
+        current_box_center = box_pose.p
+        if current_box_center.ndim == 1:
+            current_box_center = current_box_center.unsqueeze(0)
+        translation_vector = current_box_center - self.initial_box_center
+        translation_distance = torch.linalg.norm(translation_vector, dim=-1)
+        translation_penalty = torch.tanh(
+            self.BOX_CENTER_PENALTY_SCALE * translation_distance
+        )
+        reward = reward - translation_penalty
+
         info["box_theta_deg"] = theta.detach().cpu()
         info["box_theta_region_is_upper_half"] = is_upper_half.detach().cpu()
         info["pushpoint_use_initial_mask"] = use_initial_mask.detach().cpu()
@@ -312,6 +326,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["pushpoint_left_reached"] = reached_left.detach().cpu()
         info["pushpoint_right_distance"] = distance_right.detach().cpu()
         info["pushpoint_right_reached"] = reached_right.detach().cpu()
+        info["box_translation_distance"] = translation_distance.detach().cpu()
+        info["box_translation_penalty"] = translation_penalty.detach().cpu()
         if getattr(self, "_enable_pushpoint_debug", False):
             if self.pushpoint_left_site is not None:
                 self.pushpoint_left_site.set_pose(
