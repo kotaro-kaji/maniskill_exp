@@ -18,8 +18,8 @@ from scenebuilders.dual_xarm7_table_scene_builder import DualXarm7TableSceneBuil
 from scenebuilders.xarm7_table_scene_builder import ROBOT_BASE_X_OFFSET
 
 
-@register_env("MyDualSimple-v0", max_episode_steps=200)
-class MyDualSimpleEnv(BaseEnv):
+@register_env("MyDualBoxRotation-v0", max_episode_steps=200)
+class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
 
