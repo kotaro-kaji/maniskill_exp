@@ -98,3 +98,8 @@ python sac_xarm7.py --env_id="MyPushCube-v1" \
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
   --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99
+
+
+python ppo_dual_xarm7.py \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=50_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99
