@@ -228,6 +228,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
+        is_upper_half = theta >= 180.0
         self._ensure_pushpoint_buffers()
         use_initial_mask = (theta >= 0.0) & (theta < 180.0)
         current_pushpoint_by_right = torch.where(
