@@ -36,7 +36,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
-        self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -141,31 +141,32 @@ class MyDualBoxRotationEnv(BaseEnv):
         if batch_size == 0:
             return
         rotations = quaternion_to_matrix(orientations)
-        half_sizes = torch.tensor(
-            self.BOX_HALF_SIZE, device=self.device, dtype=torch.float32
-        )
-        hy = half_sizes[1]
-        side_offsets_local = torch.tensor(
-            [[0.0, 1.0, 0.0], [0.0, -1.0, 0.0]],
+        hx = float(self.BOX_HALF_SIZE[0])
+        hy = float(self.BOX_HALF_SIZE[1])
+
+        long_side_offsets_local = torch.tensor(
+            [[hx, 0.0, 0.0], [-hx, 0.0, 0.0]],
             device=self.device,
             dtype=torch.float32,
-        ) * hy
-        side_offsets_local = side_offsets_local.transpose(0, 1)  # (3, 2)
-        side_offsets_world = torch.matmul(
-            rotations, side_offsets_local.unsqueeze(0).expand(batch_size, -1, -1)
+        )
+        long_side_offsets_local = long_side_offsets_local.transpose(0, 1)  # (3, 2)
+        long_side_offsets_world = torch.matmul(
+            rotations, long_side_offsets_local.unsqueeze(0).expand(batch_size, -1, -1)
         )  # (batch, 3, 2)
-        side_offsets_world = side_offsets_world.transpose(1, 2)  # (batch, 2, 3)
-        side_centers_world = positions.unsqueeze(1) + side_offsets_world
-        mask = side_centers_world[:, 0, 0] >= side_centers_world[:, 1, 0]
+        long_side_offsets_world = long_side_offsets_world.transpose(1, 2)  # (batch, 2, 3)
+        long_side_centers_world = positions.unsqueeze(1) + long_side_offsets_world
+        mask = long_side_centers_world[:, 0, 0] >= long_side_centers_world[:, 1, 0]
         initial_forward_side_center = torch.where(
-            mask.unsqueeze(-1), side_centers_world[:, 0, :], side_centers_world[:, 1, :]
+            mask.unsqueeze(-1),
+            long_side_centers_world[:, 0, :],
+            long_side_centers_world[:, 1, :],
         )
 
         push_offset_local = torch.tensor(
-            [0.0, -0.8, 0.0],
+            [0.0, -0.8 * hy, 0.0],
             device=self.device,
             dtype=torch.float32,
-        ) * hy
+        )
         push_offset_world = torch.einsum("bij,j->bi", rotations, push_offset_local)
         initial_pushpoint_by_right = initial_forward_side_center + push_offset_world
         initial_pushpoint_by_left = (
@@ -244,6 +245,10 @@ class MyDualBoxRotationEnv(BaseEnv):
             self.agent.agents[1].tcp.pose, device=self.device
         ).p
         left_tcp_pos = left_tcp_pos.squeeze(0) if left_tcp_pos.ndim == 2 and left_tcp_pos.shape[0] == 1 else left_tcp_pos
+        right_tcp_pos = Pose.create(
+            self.agent.agents[0].tcp.pose, device=self.device
+        ).p
+        right_tcp_pos = right_tcp_pos.squeeze(0) if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1 else right_tcp_pos
 
         target_pushpoint_left = current_pushpoint_by_left.clone()
         target_pushpoint_left[..., 2] = self.BOX_HALF_SIZE[2]
@@ -251,6 +256,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         target_pushpoint_right[..., 2] = self.BOX_HALF_SIZE[2]
 
         left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
+        right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
         target_pushpoint_left = target_pushpoint_left.to(
             device=self.device, dtype=torch.float32
         )
@@ -260,19 +266,35 @@ class MyDualBoxRotationEnv(BaseEnv):
 
         if left_tcp_pos.ndim == 1:
             left_tcp_pos = left_tcp_pos.unsqueeze(0)
+        if right_tcp_pos.ndim == 1:
+            right_tcp_pos = right_tcp_pos.unsqueeze(0)
 
         distance_left = torch.linalg.norm(
             left_tcp_pos - target_pushpoint_left, dim=-1
         )
-        base_reward = 1 - torch.tanh(self.PUSHPOINT_DISTANCE_SCALE * distance_left)
-        reward = torch.where(
+        base_reward_left = 1 - torch.tanh(self.PUSHPOINT_DISTANCE_SCALE * distance_left)
+        reward_left = torch.where(
             distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD,
-            torch.ones_like(base_reward),
-            base_reward,
+            torch.ones_like(base_reward_left),
+            base_reward_left,
         )
-        reached = distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD
+        reached_left = distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD
+        distance_right = torch.linalg.norm(
+            right_tcp_pos - target_pushpoint_right, dim=-1
+        )
+        base_reward_right = 1 - torch.tanh(
+            self.PUSHPOINT_DISTANCE_SCALE * distance_right
+        )
+        reward_right = torch.where(
+            distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD,
+            torch.ones_like(base_reward_right),
+            base_reward_right,
+        )
+        reached_right = distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD
+        reward = 0.5 * (reward_left + reward_right)
 
         info["box_theta_deg"] = theta.detach().cpu()
+        info["box_theta_region_is_upper_half"] = is_upper_half.detach().cpu()
         info["pushpoint_use_initial_mask"] = use_initial_mask.detach().cpu()
         info["initial_forward_side_center"] = (
             self.initial_forward_side_center.detach().cpu()
@@ -286,7 +308,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["current_pushpoint_by_right"] = target_pushpoint_right.detach().cpu()
         info["current_pushpoint_by_left"] = target_pushpoint_left.detach().cpu()
         info["pushpoint_left_distance"] = distance_left.detach().cpu()
-        info["pushpoint_left_reached"] = reached.detach().cpu()
+        info["pushpoint_left_reached"] = reached_left.detach().cpu()
+        info["pushpoint_right_distance"] = distance_right.detach().cpu()
+        info["pushpoint_right_reached"] = reached_right.detach().cpu()
         if getattr(self, "_enable_pushpoint_debug", False):
             if self.pushpoint_left_site is not None:
                 self.pushpoint_left_site.set_pose(
