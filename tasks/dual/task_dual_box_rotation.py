@@ -9,6 +9,7 @@ from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils.registration import register_env
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from mani_skill.utils.building import actors
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 from mani_skill.utils.structs.pose import Pose
 from robotagents.xarm_ball_ee import Xarm7BallEE
@@ -57,6 +58,9 @@ class MyDualBoxRotationEnv(BaseEnv):
             half_size=self.BOX_HALF_SIZE,
             density=self.BOX_DENSITY,
         )
+        self._enable_pushpoint_debug = False
+        if True:
+            self._enable_pushpoint_debug = True
         box_material = sapien.render.RenderMaterial()
         box_material.set_base_color([1.0, 1.0, 1.0, 1.0])
         builder.add_box_visual(
@@ -72,6 +76,29 @@ class MyDualBoxRotationEnv(BaseEnv):
             ]
         )
         self.box = builder.build(name="box_between_arms")
+        if self._enable_pushpoint_debug:
+            pushpoint_radius = 0.012
+            self.pushpoint_left_site = actors.build_sphere(
+                self.scene,
+                radius=pushpoint_radius,
+                color=(0.9, 0.3, 0.3, 0.8),
+                name="pushpoint_left_site",
+                body_type="kinematic",
+                add_collision=False,
+                initial_pose=sapien.Pose(p=[0.0, 0.0, self.BOX_HALF_SIZE[2]]),
+            )
+            self.pushpoint_right_site = actors.build_sphere(
+                self.scene,
+                radius=pushpoint_radius,
+                color=(0.3, 0.3, 0.9, 0.8),
+                name="pushpoint_right_site",
+                body_type="kinematic",
+                add_collision=False,
+                initial_pose=sapien.Pose(p=[0.0, 0.0, self.BOX_HALF_SIZE[2]]),
+            )
+        else:
+            self.pushpoint_left_site = None
+            self.pushpoint_right_site = None
 
     def _ensure_pushpoint_buffers(self):
         num_envs = getattr(self, "num_envs", 1)
@@ -148,6 +175,15 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_forward_side_center[env_idx_long] = initial_forward_side_center
         self.initial_pushpoint_by_right[env_idx_long] = initial_pushpoint_by_right
         self.initial_pushpoint_by_left[env_idx_long] = initial_pushpoint_by_left
+        if getattr(self, "_enable_pushpoint_debug", False):
+            left_vis = self.initial_pushpoint_by_left.clone()
+            right_vis = self.initial_pushpoint_by_right.clone()
+            left_vis[..., 2] = self.BOX_HALF_SIZE[2]
+            right_vis[..., 2] = self.BOX_HALF_SIZE[2]
+            if self.pushpoint_left_site is not None:
+                self.pushpoint_left_site.set_pose(Pose.create_from_pq(p=left_vis))
+            if self.pushpoint_right_site is not None:
+                self.pushpoint_right_site.set_pose(Pose.create_from_pq(p=right_vis))
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -186,23 +222,22 @@ class MyDualBoxRotationEnv(BaseEnv):
     def compute_normalized_dense_reward(self, obs, action, info):
 
         if not isinstance(self.agent, MultiAgent):
-            raise ValueError("Agent must be a MultiAgent")
+            return torch.zeros(self.num_envs, device=self.device)
 
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
-        is_upper_half = theta >= 180.0
         self._ensure_pushpoint_buffers()
-        use_initial_mask = (theta > 0.0) & (theta < 180.0)
+        use_initial_mask = (theta >= 0.0) & (theta < 180.0)
         current_pushpoint_by_right = torch.where(
             use_initial_mask.unsqueeze(-1),
             self.initial_pushpoint_by_right,
-            self.initial_pushpoint_by_right,
+            self.initial_pushpoint_by_left,
         )
         current_pushpoint_by_left = torch.where(
             use_initial_mask.unsqueeze(-1),
             self.initial_pushpoint_by_left,
-            self.initial_pushpoint_by_left,
+            self.initial_pushpoint_by_right,
         )
 
         left_tcp_pos = Pose.create(
@@ -212,9 +247,14 @@ class MyDualBoxRotationEnv(BaseEnv):
 
         target_pushpoint_left = current_pushpoint_by_left.clone()
         target_pushpoint_left[..., 2] = self.BOX_HALF_SIZE[2]
+        target_pushpoint_right = current_pushpoint_by_right.clone()
+        target_pushpoint_right[..., 2] = self.BOX_HALF_SIZE[2]
 
         left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
         target_pushpoint_left = target_pushpoint_left.to(
+            device=self.device, dtype=torch.float32
+        )
+        target_pushpoint_right = target_pushpoint_right.to(
             device=self.device, dtype=torch.float32
         )
 
@@ -233,7 +273,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         reached = distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD
 
         info["box_theta_deg"] = theta.detach().cpu()
-        info["box_theta_region_is_upper_half"] = is_upper_half.detach().cpu()
         info["pushpoint_use_initial_mask"] = use_initial_mask.detach().cpu()
         info["initial_forward_side_center"] = (
             self.initial_forward_side_center.detach().cpu()
@@ -244,10 +283,19 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["initial_pushpoint_by_left"] = (
             self.initial_pushpoint_by_left.detach().cpu()
         )
-        info["current_pushpoint_by_right"] = current_pushpoint_by_right.detach().cpu()
+        info["current_pushpoint_by_right"] = target_pushpoint_right.detach().cpu()
         info["current_pushpoint_by_left"] = target_pushpoint_left.detach().cpu()
         info["pushpoint_left_distance"] = distance_left.detach().cpu()
         info["pushpoint_left_reached"] = reached.detach().cpu()
+        if getattr(self, "_enable_pushpoint_debug", False):
+            if self.pushpoint_left_site is not None:
+                self.pushpoint_left_site.set_pose(
+                    Pose.create_from_pq(p=target_pushpoint_left)
+                )
+            if self.pushpoint_right_site is not None:
+                self.pushpoint_right_site.set_pose(
+                    Pose.create_from_pq(p=target_pushpoint_right)
+                )
 
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
