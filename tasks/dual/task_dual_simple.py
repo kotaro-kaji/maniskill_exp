@@ -33,8 +33,8 @@ class MyDualSimpleEnv(BaseEnv):
     RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
     DISTANCE_SCALE = 4.0
     TARGET_RADIUS = 0.02
-    LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0)
-    RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0)
+    LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0) #緑色
+    RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0) #青色
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
