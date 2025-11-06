@@ -28,6 +28,9 @@ class MyDualSimpleEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.28
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.03
+    LEFT_TARGET_POS = (0.5, 0.3, 0.5)
+    RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
+    DISTANCE_SCALE = 4.0
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -109,6 +112,23 @@ class MyDualSimpleEnv(BaseEnv):
             orientations[..., 0] = 1.0
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
 
-
     def compute_normalized_dense_reward(self, obs, action, info):
-        return 0.0
+        if not isinstance(self.agent, MultiAgent):
+            return torch.zeros(self.num_envs, device=self.device)
+
+        left_tcp_pos = self.agent.agents[0].tcp.pose.p
+        right_tcp_pos = self.agent.agents[1].tcp.pose.p
+
+        left_target = left_tcp_pos.new_tensor(self.LEFT_TARGET_POS)
+        right_target = right_tcp_pos.new_tensor(self.RIGHT_TARGET_POS)
+
+        left_dist = torch.linalg.norm(left_tcp_pos - left_target, dim=-1)
+        right_dist = torch.linalg.norm(right_tcp_pos - right_target, dim=-1)
+
+        left_reward = 1 - torch.tanh(self.DISTANCE_SCALE * left_dist)
+        right_reward = 1 - torch.tanh(self.DISTANCE_SCALE * right_dist)
+
+        reward = 0.5 * (left_reward + right_reward)
+        if reward.ndim == 0:
+            reward = reward.unsqueeze(0)
+        return reward
