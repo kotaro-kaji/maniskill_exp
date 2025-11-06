@@ -57,9 +57,11 @@ class MyDualBoxRotationEnv(BaseEnv):
             half_size=self.BOX_HALF_SIZE,
             density=self.BOX_DENSITY,
         )
+        box_material = sapien.render.RenderMaterial()
+        box_material.set_base_color([1.0, 1.0, 1.0, 1.0])
         builder.add_box_visual(
             half_size=self.BOX_HALF_SIZE,
-            color=[1.0, 1.0, 1.0, 1.0],
+            material=box_material,
         )
         # Initial pose will be overwritten during episode init; place safely above table for now.
         builder.initial_pose = sapien.Pose(
