@@ -113,22 +113,5 @@ class MyDualSimpleEnv(BaseEnv):
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        if not isinstance(self.agent, MultiAgent):
-            return torch.zeros(self.num_envs, device=self.device)
 
-        left_tcp_pos = self.agent.agents[0].tcp.pose.p
-        right_tcp_pos = self.agent.agents[1].tcp.pose.p
-
-        left_target = left_tcp_pos.new_tensor(self.LEFT_TARGET_POS)
-        right_target = right_tcp_pos.new_tensor(self.RIGHT_TARGET_POS)
-
-        left_dist = torch.linalg.norm(left_tcp_pos - left_target, dim=-1)
-        right_dist = torch.linalg.norm(right_tcp_pos - right_target, dim=-1)
-
-        left_reward = 1 - torch.tanh(self.DISTANCE_SCALE * left_dist)
-        right_reward = 1 - torch.tanh(self.DISTANCE_SCALE * right_dist)
-
-        reward = 0.5 * (left_reward + right_reward)
-        if reward.ndim == 0:
-            reward = reward.unsqueeze(0)
         return reward

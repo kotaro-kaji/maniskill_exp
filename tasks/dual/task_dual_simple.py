@@ -1,15 +1,16 @@
 import os
 from typing import Any, Dict, Tuple
 
-import torch
 import sapien
+import torch
 
 from mani_skill.agents.multi_agent import MultiAgent
 
 from mani_skill.envs.sapien_env import BaseEnv
-from mani_skill.utils.registration import register_env
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from mani_skill.utils.building import actors
+from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 from robotagents.xarm_ball_ee import Xarm7BallEE
 
@@ -31,6 +32,9 @@ class MyDualSimpleEnv(BaseEnv):
     LEFT_TARGET_POS = (0.5, 0.3, 0.5)
     RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
     DISTANCE_SCALE = 4.0
+    TARGET_RADIUS = 0.02
+    LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0)
+    RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0)
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -79,6 +83,24 @@ class MyDualSimpleEnv(BaseEnv):
             ]
         )
         self.box = builder.build(name="box_between_arms")
+        self.left_target_site = actors.build_sphere(
+            self.scene,
+            radius=self.TARGET_RADIUS,
+            color=self.LEFT_TARGET_COLOR,
+            name="left_target_site",
+            body_type="kinematic",
+            add_collision=False,
+            initial_pose=sapien.Pose(p=self.LEFT_TARGET_POS),
+        )
+        self.right_target_site = actors.build_sphere(
+            self.scene,
+            radius=self.TARGET_RADIUS,
+            color=self.RIGHT_TARGET_COLOR,
+            name="right_target_site",
+            body_type="kinematic",
+            add_collision=False,
+            initial_pose=sapien.Pose(p=self.RIGHT_TARGET_POS),
+        )
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -111,6 +133,44 @@ class MyDualSimpleEnv(BaseEnv):
             )
             orientations[..., 0] = 1.0
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
+            left_override = None if options is None else options.get("left_target_pos")
+            right_override = None if options is None else options.get("right_target_pos")
+            left_target = (
+                torch.tensor(
+                    self.LEFT_TARGET_POS,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                if left_override is None
+                else torch.as_tensor(
+                    left_override,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+            )
+            right_target = (
+                torch.tensor(
+                    self.RIGHT_TARGET_POS,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                if right_override is None
+                else torch.as_tensor(
+                    right_override,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+            )
+            if left_target.ndim == 1:
+                left_target = left_target.unsqueeze(0).repeat(batch_size, 1)
+            elif left_target.shape[0] != batch_size:
+                left_target = left_target[0:1].repeat(batch_size, 1)
+            if right_target.ndim == 1:
+                right_target = right_target.unsqueeze(0).repeat(batch_size, 1)
+            elif right_target.shape[0] != batch_size:
+                right_target = right_target[0:1].repeat(batch_size, 1)
+            self.left_target_site.set_pose(Pose.create_from_pq(p=left_target))
+            self.right_target_site.set_pose(Pose.create_from_pq(p=right_target))
 
     def compute_normalized_dense_reward(self, obs, action, info):
         if not isinstance(self.agent, MultiAgent):
@@ -119,8 +179,8 @@ class MyDualSimpleEnv(BaseEnv):
         left_tcp_pos = self.agent.agents[0].tcp.pose.p
         right_tcp_pos = self.agent.agents[1].tcp.pose.p
 
-        left_target = left_tcp_pos.new_tensor(self.LEFT_TARGET_POS)
-        right_target = right_tcp_pos.new_tensor(self.RIGHT_TARGET_POS)
+        left_target = self.left_target_site.pose.p
+        right_target = self.right_target_site.pose.p
 
         left_dist = torch.linalg.norm(left_tcp_pos - left_target, dim=-1)
         right_dist = torch.linalg.norm(right_tcp_pos - right_target, dim=-1)
