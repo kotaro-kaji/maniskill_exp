@@ -19,6 +19,12 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
     customizes the robot initialization for the custom agent uid "my_xarm7".
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._primary_pedestal_pose = sapien.Pose(
+            p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT / 2]
+        )
+
     def build(self):
         super().build()
 
@@ -38,7 +44,7 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
                 roughness=0.3,
             ),
         )
-        builder.initial_pose = sapien.Pose(p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT / 2])
+        builder.initial_pose = self._primary_pedestal_pose
         self.robot_pedestal = builder.build_static(name="robot_pedestal")
         self.scene_objects.append(self.robot_pedestal)
 

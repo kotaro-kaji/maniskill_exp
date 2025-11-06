@@ -1,0 +1,134 @@
+import os
+from typing import Any, Dict, Tuple
+
+import torch
+import sapien
+
+from mani_skill.agents.multi_agent import MultiAgent
+
+from mani_skill.envs.sapien_env import BaseEnv
+from mani_skill.utils.registration import register_env
+from mani_skill.sensors.camera import CameraConfig
+from mani_skill.utils import sapien_utils
+from mani_skill.utils.structs.pose import Pose
+from robotagents.xarm_ball_ee import Xarm7BallEE
+
+
+from scenebuilders.dual_xarm7_table_scene_builder import DualXarm7TableSceneBuilder
+from scenebuilders.xarm7_table_scene_builder import ROBOT_BASE_X_OFFSET
+
+
+@register_env("MyDualSimple-v0", max_episode_steps=200)
+class MyDualSimpleEnv(BaseEnv):
+    SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
+    agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
+
+    BOX_HALF_SIZE = (0.18, 0.12, 0.12)
+    BOX_DENSITY = 200.0
+    BOX_X_OFFSET_FROM_BASE = 0.28
+    BOX_Y_JITTER = 0.05
+    BOX_X_JITTER = 0.03
+    LEFT_TARGET_POS = (0.5, 0.3, 0.5)
+    RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
+    DISTANCE_SCALE = 4.0
+
+    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
+        self.robot_init_qpos_noise = robot_init_qpos_noise
+        super().__init__(*args, robot_uids=robot_uids, **kwargs)
+
+    def _load_agent(self, options: Dict[str, Any]):
+        super()._load_agent(options, [sapien.Pose(p=[0,-1,0]), sapien.Pose(p=[0,1,0])])
+        #super()._load_agent(options, sapien.Pose[p=])
+
+    @property
+    def _default_human_render_camera_configs(self):
+        pose = sapien_utils.look_at([1.2, 1.0, 1.0], [0.0, 0.0, 0.4])
+        return CameraConfig(
+            "render_camera", pose=pose, width=800, height=800, fov=1.0, near=0.01, far=5.0
+        )
+
+    def _load_scene(self, options: Dict[str, Any]):
+        self.table_scene = DualXarm7TableSceneBuilder(env=self)
+        self.table_scene.build()
+        builder = self.scene.create_actor_builder()
+        builder.add_box_collision(
+            half_size=self.BOX_HALF_SIZE,
+            density=self.BOX_DENSITY,
+        )
+        visual_file = os.path.normpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "assets",
+                "cardboard_box",
+                "textured.obj",
+            )
+        )
+        builder.add_visual_from_file(
+            filename=visual_file,
+            scale=[0.12, 0.12, 0.12],
+            pose=sapien.Pose(),
+        )
+        # Initial pose will be overwritten during episode init; place safely above table for now.
+        builder.initial_pose = sapien.Pose(
+            [
+                ROBOT_BASE_X_OFFSET + self.BOX_X_OFFSET_FROM_BASE,
+                0.0,
+                self.BOX_HALF_SIZE[2] * 2,
+            ]
+        )
+        self.box = builder.build(name="box_between_arms")
+
+    def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
+        with torch.device(self.device):
+            self.table_scene.initialize(env_idx)
+            batch_size = len(env_idx)
+            if batch_size == 0:
+                return
+
+            x_center = (
+                ROBOT_BASE_X_OFFSET
+                + self.BOX_X_OFFSET_FROM_BASE
+                + (torch.rand(batch_size, device=self.device) - 0.5)
+                * 2
+                * self.BOX_X_JITTER
+            )
+            y_center = (
+                (torch.rand(batch_size, device=self.device) - 0.5)
+                * 2
+                * self.BOX_Y_JITTER
+            )
+            z_center = torch.full(
+                (batch_size,),
+                self.BOX_HALF_SIZE[2],
+                device=self.device,
+                dtype=torch.float32,
+            )
+            positions = torch.stack((x_center, y_center, z_center), dim=-1)
+            orientations = torch.zeros(
+                (batch_size, 4), device=self.device, dtype=torch.float32
+            )
+            orientations[..., 0] = 1.0
+            self.box.set_pose(Pose.create_from_pq(positions, orientations))
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        if not isinstance(self.agent, MultiAgent):
+            return torch.zeros(self.num_envs, device=self.device)
+
+        left_tcp_pos = self.agent.agents[0].tcp.pose.p
+        right_tcp_pos = self.agent.agents[1].tcp.pose.p
+
+        left_target = left_tcp_pos.new_tensor(self.LEFT_TARGET_POS)
+        right_target = right_tcp_pos.new_tensor(self.RIGHT_TARGET_POS)
+
+        left_dist = torch.linalg.norm(left_tcp_pos - left_target, dim=-1)
+        right_dist = torch.linalg.norm(right_tcp_pos - right_target, dim=-1)
+
+        left_reward = 1 - torch.tanh(self.DISTANCE_SCALE * left_dist)
+        right_reward = 1 - torch.tanh(self.DISTANCE_SCALE * right_dist)
+
+        reward = 0.5 * (left_reward + right_reward)
+        if reward.ndim == 0:
+            reward = reward.unsqueeze(0)
+        return reward
