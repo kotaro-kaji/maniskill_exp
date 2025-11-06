@@ -113,6 +113,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_pushpoint_by_right = zeros.clone()
         self.initial_pushpoint_by_left = zeros.clone()
         self.initial_box_center = zeros.clone()
+        self.pushpoint_local_right = zeros.clone()
+        self.pushpoint_local_left = zeros.clone()
 
     def _theta_to_quaternion(self, theta_deg: torch.Tensor) -> torch.Tensor:
         """Convert planar angle in degrees (around z) to quaternion."""
@@ -179,6 +181,15 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_pushpoint_by_right[env_idx_long] = initial_pushpoint_by_right
         self.initial_pushpoint_by_left[env_idx_long] = initial_pushpoint_by_left
         self.initial_box_center[env_idx_long] = positions
+        rotations_T = rotations.transpose(1, 2)
+        local_right = torch.einsum(
+            "bij,bj->bi", rotations_T, initial_pushpoint_by_right - positions
+        )
+        local_left = torch.einsum(
+            "bij,bj->bi", rotations_T, initial_pushpoint_by_left - positions
+        )
+        self.pushpoint_local_right[env_idx_long] = local_right
+        self.pushpoint_local_left[env_idx_long] = local_left
         if getattr(self, "_enable_pushpoint_debug", False):
             left_vis = self.initial_pushpoint_by_left.clone()
             right_vis = self.initial_pushpoint_by_right.clone()
@@ -233,16 +244,27 @@ class MyDualBoxRotationEnv(BaseEnv):
             theta = theta.unsqueeze(0)
         is_upper_half = theta >= 180.0
         self._ensure_pushpoint_buffers()
-        use_initial_mask = (theta >= 0.0) & (theta < 180.0)
+        box_pose = Pose.create(self.box.pose, device=self.device)
+        current_box_center = box_pose.p
+        if current_box_center.ndim == 1:
+            current_box_center = current_box_center.unsqueeze(0)
+        rotation_current = quaternion_to_matrix(box_pose.q)
+        world_pushpoint_right = current_box_center + torch.einsum(
+            "bij,bj->bi", rotation_current, self.pushpoint_local_right
+        )
+        world_pushpoint_left = current_box_center + torch.einsum(
+            "bij,bj->bi", rotation_current, self.pushpoint_local_left
+        )
+        use_initial_mask = (theta > 0.0) & (theta < 180.0)
         current_pushpoint_by_right = torch.where(
             use_initial_mask.unsqueeze(-1),
-            self.initial_pushpoint_by_right,
-            self.initial_pushpoint_by_left,
+            world_pushpoint_right,
+            world_pushpoint_left,
         )
         current_pushpoint_by_left = torch.where(
             use_initial_mask.unsqueeze(-1),
-            self.initial_pushpoint_by_left,
-            self.initial_pushpoint_by_right,
+            world_pushpoint_left,
+            world_pushpoint_right,
         )
 
         left_tcp_pos = Pose.create(
@@ -255,9 +277,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         right_tcp_pos = right_tcp_pos.squeeze(0) if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1 else right_tcp_pos
 
         target_pushpoint_left = current_pushpoint_by_left.clone()
-        target_pushpoint_left[..., 2] = self.BOX_HALF_SIZE[2]
+        target_pushpoint_left[..., 2] = current_box_center[..., 2] + self.BOX_HALF_SIZE[2]
         target_pushpoint_right = current_pushpoint_by_right.clone()
-        target_pushpoint_right[..., 2] = self.BOX_HALF_SIZE[2]
+        target_pushpoint_right[..., 2] = current_box_center[..., 2] + self.BOX_HALF_SIZE[2]
 
         left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
         right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
@@ -296,11 +318,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
         reached_right = distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD
         reward = 0.5 * (reward_left + reward_right)
-
-        box_pose = Pose.create(self.box.pose, device=self.device)
-        current_box_center = box_pose.p
-        if current_box_center.ndim == 1:
-            current_box_center = current_box_center.unsqueeze(0)
         translation_vector = current_box_center - self.initial_box_center
         translation_distance = torch.linalg.norm(translation_vector, dim=-1)
         translation_penalty = torch.tanh(
