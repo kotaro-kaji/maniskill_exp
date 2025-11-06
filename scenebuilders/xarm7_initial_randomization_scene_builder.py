@@ -33,11 +33,11 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
     )
 
     _OFFSET_LOW = torch.tensor(
-        [-0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.01],
+        [-0.01, -0.05, -0.05, -0.05, -0.05, -0.05, -0.05, -0.01],
         dtype=torch.float32,
     )
     _OFFSET_HIGH = torch.tensor(
-        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.05, 0.01],
+        [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.01],
         dtype=torch.float32,
     )
 
