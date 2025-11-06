@@ -176,11 +176,13 @@ class MyDualSimpleEnv(BaseEnv):
         if not isinstance(self.agent, MultiAgent):
             return torch.zeros(self.num_envs, device=self.device)
 
-        left_tcp_pos = self.agent.agents[0].tcp.pose.p
-        right_tcp_pos = self.agent.agents[1].tcp.pose.p
+        # Swapped indices to match actual left/right agents
+        left_tcp_pos = self.agent.agents[1].tcp.pose.p  # Right agent is at index 1
+        right_tcp_pos = self.agent.agents[0].tcp.pose.p  # Left agent is at index 0
 
-        left_target = self.left_target_site.pose.p
-        right_target = self.right_target_site.pose.p
+        # Update target positions to match the correct agent
+        left_target = self.right_target_site.pose.p  # Right target for right agent
+        right_target = self.left_target_site.pose.p  # Left target for left agent
 
         left_dist = torch.linalg.norm(left_tcp_pos - left_target, dim=-1)
         right_dist = torch.linalg.norm(right_tcp_pos - right_target, dim=-1)
