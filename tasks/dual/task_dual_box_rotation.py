@@ -31,6 +31,8 @@ class MyDualSimpleEnv(BaseEnv):
     LEFT_TARGET_POS = (0.5, 0.3, 0.5)
     RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
     DISTANCE_SCALE = 4.0
+    PUSHPOINT_DISTANCE_SCALE = 5.0
+    PUSHPOINT_DISTANCE_THRESHOLD = 0.05
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -70,9 +72,12 @@ class MyDualSimpleEnv(BaseEnv):
         self.box = builder.build(name="box_between_arms")
 
     def _ensure_pushpoint_buffers(self):
-        if hasattr(self, "initial_forward_side_center"):
-            return
         num_envs = getattr(self, "num_envs", 1)
+        needs_init = not hasattr(self, "initial_forward_side_center")
+        if not needs_init:
+            needs_init = self.initial_forward_side_center.shape[0] != num_envs
+        if not needs_init:
+            return
         zeros = torch.zeros((num_envs, 3), device=self.device, dtype=torch.float32)
         self.initial_forward_side_center = zeros.clone()
         self.initial_pushpoint_by_right = zeros.clone()
@@ -178,14 +183,53 @@ class MyDualSimpleEnv(BaseEnv):
 
     def compute_normalized_dense_reward(self, obs, action, info):
 
+        if not isinstance(self.agent, MultiAgent):
+            return torch.zeros(self.num_envs, device=self.device)
+
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
         is_upper_half = theta >= 180.0
         self._ensure_pushpoint_buffers()
         use_initial_mask = (theta > 0.0) & (theta < 180.0)
-        current_pushpoint_by_right = self.initial_pushpoint_by_right.clone()
-        current_pushpoint_by_left = self.initial_pushpoint_by_left.clone()
+        current_pushpoint_by_right = torch.where(
+            use_initial_mask.unsqueeze(-1),
+            self.initial_pushpoint_by_right,
+            self.initial_pushpoint_by_right,
+        )
+        current_pushpoint_by_left = torch.where(
+            use_initial_mask.unsqueeze(-1),
+            self.initial_pushpoint_by_left,
+            self.initial_pushpoint_by_left,
+        )
+
+        left_tcp_pos = Pose.create(
+            self.agent.agents[1].tcp.pose, device=self.device
+        ).p
+        left_tcp_pos = left_tcp_pos.squeeze(0) if left_tcp_pos.ndim == 2 and left_tcp_pos.shape[0] == 1 else left_tcp_pos
+
+        target_pushpoint_left = current_pushpoint_by_left.clone()
+        target_pushpoint_left[..., 2] = self.BOX_HALF_SIZE[2]
+
+        left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
+        target_pushpoint_left = target_pushpoint_left.to(
+            device=self.device, dtype=torch.float32
+        )
+
+        if left_tcp_pos.ndim == 1:
+            left_tcp_pos = left_tcp_pos.unsqueeze(0)
+
+        distance_left = torch.linalg.norm(
+            left_tcp_pos - target_pushpoint_left, dim=-1
+        )
+        base_reward = 1 - torch.tanh(self.PUSHPOINT_DISTANCE_SCALE * distance_left)
+        reward = torch.where(
+            distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD,
+            torch.ones_like(base_reward),
+            base_reward,
+        )
+        reached = distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD
+
         info["box_theta_deg"] = theta.detach().cpu()
         info["box_theta_region_is_upper_half"] = is_upper_half.detach().cpu()
         info["pushpoint_use_initial_mask"] = use_initial_mask.detach().cpu()
@@ -199,5 +243,10 @@ class MyDualSimpleEnv(BaseEnv):
             self.initial_pushpoint_by_left.detach().cpu()
         )
         info["current_pushpoint_by_right"] = current_pushpoint_by_right.detach().cpu()
-        info["current_pushpoint_by_left"] = current_pushpoint_by_left.detach().cpu()
-        return torch.zeros_like(theta, device=self.device)
+        info["current_pushpoint_by_left"] = target_pushpoint_left.detach().cpu()
+        info["pushpoint_left_distance"] = distance_left.detach().cpu()
+        info["pushpoint_left_reached"] = reached.detach().cpu()
+
+        if reward.ndim == 0:
+            reward = reward.unsqueeze(0)
+        return reward.to(self.device)
