@@ -3,7 +3,7 @@ import mani_skill.envs
 
 
 import task_pushcube_beatiful
-import tasks.du.task_dual_simple
+import tasks.dual.task_dual_simple
 
 #env_id = "MyPushCube-v1"
 env_id = "MyDualSimple-v0"
