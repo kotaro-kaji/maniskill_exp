@@ -255,17 +255,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         world_pushpoint_left = current_box_center + torch.einsum(
             "bij,bj->bi", rotation_current, self.pushpoint_local_left
         )
-        use_initial_mask = (theta >= -0.01) & (theta < 179.9)
-        current_pushpoint_by_right = torch.where(
-            use_initial_mask.unsqueeze(-1),
-            world_pushpoint_right,
-            world_pushpoint_left,
-        )
-        current_pushpoint_by_left = torch.where(
-            use_initial_mask.unsqueeze(-1),
-            world_pushpoint_left,
-            world_pushpoint_right,
-        )
+        use_initial_mask = (theta >= -1.0) & (theta < 179.0)
+        current_pushpoint_by_right = world_pushpoint_right
+        current_pushpoint_by_left = world_pushpoint_left
 
         left_tcp_pos = Pose.create(
             self.agent.agents[1].tcp.pose, device=self.device
