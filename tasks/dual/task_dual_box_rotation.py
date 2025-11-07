@@ -276,6 +276,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
         theta = theta.to(device=self.device, dtype=torch.float32)
+        theta = torch.remainder(-theta, 360.0)
         self._ensure_pushpoint_buffers()
         box_pose = Pose.create(self.box.pose, device=self.device)
         current_box_center = box_pose.p
