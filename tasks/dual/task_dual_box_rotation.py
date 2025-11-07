@@ -39,7 +39,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
     BOX_INTRUSION_MARGIN = 0.025
     BOX_INTRUSION_SCALE = 2.0
-    TCP_LEAD_SATURATION = 0.05
+    TCP_LEAD_SATURATION = 0.03
+    TCP_LEAD_WEIGHT = 0.25
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
@@ -563,9 +564,12 @@ class MyDualBoxRotationEnv(BaseEnv):
             direction = torch.sign(push_x)
             progress = direction * (tcp_x - push_x)
             progress = progress * direction.abs()
-            return torch.clamp(
-                progress / self.TCP_LEAD_SATURATION, min=-1.0, max=1.0
+            progress = torch.clamp(
+                progress,
+                min=-self.TCP_LEAD_SATURATION,
+                max=self.TCP_LEAD_SATURATION,
             )
+            return progress / self.TCP_LEAD_SATURATION
 
         lead_right = _lead(push_right_local, right_local)
         lead_left = _lead(push_left_local, left_local)
@@ -615,7 +619,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             + rotation_reward* pushpoint_stage
             - translation_penalty
             - intrusion_penalty* (1.0 - pushpoint_stage)
-            + tcp_lead_reward
+            + self.TCP_LEAD_WEIGHT * tcp_lead_reward *(1.0 - pushpoint_stage)
         )
 
 
@@ -647,7 +651,10 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["box_rotation_target_delta"] = rotation_info[
             "yaw_rotation_target_delta_deg"
         ].detach().cpu()
-        info["tcp_lead_reward"] = tcp_lead_info["tcp_lead_reward"].detach().cpu()
+        info["tcp_lead_reward_raw"] = tcp_lead_info["tcp_lead_reward"].detach().cpu()
+        info["tcp_lead_reward"] = (
+            self.TCP_LEAD_WEIGHT * tcp_lead_info["tcp_lead_reward"]
+        ).detach().cpu()
         info["tcp_lead_right_component"] = tcp_lead_info[
             "tcp_lead_right_component"
         ].detach().cpu()
