@@ -263,6 +263,14 @@ class MyDualBoxRotationEnv(BaseEnv):
             self._update_initial_pushpoints(env_idx, positions, orientations)
             self._reset_rotation_buffers(env_idx, theta)
 
+    def _pose_to_6d(self, pose: Pose) -> torch.Tensor:
+        matrix = pose.to_transformation_matrix()[..., :3, :3]
+        position = pose.p
+        if position.ndim == 1:
+            position = position.unsqueeze(0)
+            matrix = matrix.unsqueeze(0)
+        return torch.cat([position, matrix[..., :, 0], matrix[..., :, 1]], dim=-1)
+
     @dataclass
     class RewardContext:
         current_box_center: torch.Tensor
@@ -349,6 +357,36 @@ class MyDualBoxRotationEnv(BaseEnv):
             box_theta_deg=theta,
             box_rotation_matrix=rotation_current,
         )
+
+    def _get_obs_extra(self, info: Dict[str, Any]):
+        obs = {}
+        if not isinstance(self.agent, MultiAgent):
+            return obs
+
+        def _ensure_batch(t: torch.Tensor) -> torch.Tensor:
+            return t.unsqueeze(0) if t.ndim == 1 else t
+
+        left_tcp_pose = Pose.create(self.agent.agents[1].tcp.pose, device=self.device)
+        right_tcp_pose = Pose.create(self.agent.agents[0].tcp.pose, device=self.device)
+        obs["left_tcp_pose_6d"] = self._pose_to_6d(left_tcp_pose)
+        obs["right_tcp_pose_6d"] = self._pose_to_6d(right_tcp_pose)
+
+        self._ensure_pushpoint_buffers()
+        box_pose = Pose.create(self.box.pose, device=self.device)
+        obs["box_pose_6d"] = self._pose_to_6d(box_pose)
+
+        box_center = box_pose.p
+        box_center = _ensure_batch(box_center)
+        rotation_current = quaternion_to_matrix(box_pose.q)
+        world_pushpoint_right = box_center + torch.einsum(
+            "bij,bj->bi", rotation_current, self.pushpoint_local_right
+        )
+        world_pushpoint_left = box_center + torch.einsum(
+            "bij,bj->bi", rotation_current, self.pushpoint_local_left
+        )
+        obs["pushpoint_left_world"] = world_pushpoint_left
+        obs["pushpoint_right_world"] = world_pushpoint_right
+        return obs
 
     def _pushpoint_tracking_reward(
         self,
