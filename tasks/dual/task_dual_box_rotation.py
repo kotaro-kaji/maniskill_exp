@@ -37,6 +37,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
     BOX_CENTER_PENALTY_SCALE = 5.0
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
+    BOX_INTRUSION_MARGIN = 0.04
+    BOX_INTRUSION_SCALE = 2.0
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
@@ -446,8 +448,38 @@ class MyDualBoxRotationEnv(BaseEnv):
         }
         return rotation_reward, info
 
+    def _box_intrusion_penalty(
+        self,
+        current_box_center: torch.Tensor,
+        left_tcp_pos: torch.Tensor,
+        right_tcp_pos: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        half_sizes = torch.tensor(
+            self.BOX_HALF_SIZE, device=self.device, dtype=torch.float32
+        )
+        inflated_half = half_sizes + self.BOX_INTRUSION_MARGIN
 
-    
+        def _intrusion(tcp_pos: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            delta = torch.abs(tcp_pos - current_box_center)
+            inside = torch.all(delta <= inflated_half, dim=-1)
+            penetration = torch.clamp(inflated_half - delta, min=0.0)
+            depth = torch.linalg.norm(penetration, dim=-1)
+            return inside, depth
+
+        inside_left, depth_left = _intrusion(left_tcp_pos)
+        inside_right, depth_right = _intrusion(right_tcp_pos)
+        penalty = self.BOX_INTRUSION_SCALE * (depth_left + depth_right)
+        info = {
+            "intrusion_left": inside_left,
+            "intrusion_right": inside_right,
+            "intrusion_depth_left": depth_left,
+            "intrusion_depth_right": depth_right,
+            "intrusion_penalty": penalty,
+        }
+        return penalty, info
+
+
+
     def compute_normalized_dense_reward(self, obs, action, info):
 
         if not isinstance(self.agent, MultiAgent):
@@ -466,8 +498,17 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.current_box_center
         )
         rotation_reward, rotation_info = self._box_yaw_rotation(context.box_theta_deg)
+        intrusion_penalty, intrusion_info = self._box_intrusion_penalty(
+            context.current_box_center, context.left_tcp_pos, context.right_tcp_pos
+        )
+        gated_intrusion_penalty = intrusion_penalty * (1.0 - pushpoint_stage)
         gated_rotation = rotation_reward * pushpoint_stage
-        reward = pushpoint_reward + gated_rotation - translation_penalty
+        reward = (
+            pushpoint_reward
+            + gated_rotation
+            - translation_penalty
+            - gated_intrusion_penalty
+        )
 
 
 
@@ -490,6 +531,10 @@ class MyDualBoxRotationEnv(BaseEnv):
             "yaw_rotation_reward"
         ].detach().cpu()
         info["box_rotation_reward_gated"] = gated_rotation.detach().cpu()
+        info["box_intrusion_penalty"] = intrusion_info["intrusion_penalty"].detach().cpu()
+        info["box_intrusion_penalty_gated"] = gated_intrusion_penalty.detach().cpu()
+        info["box_intrusion_left"] = intrusion_info["intrusion_left"].detach().cpu()
+        info["box_intrusion_right"] = intrusion_info["intrusion_right"].detach().cpu()
         info["box_rotation_progress"] = rotation_info[
             "yaw_rotation_progress_deg"
         ].detach().cpu()
@@ -499,3 +544,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
         return reward.to(self.device)
+        info["box_intrusion_depth_left"] = intrusion_info[
+            "intrusion_depth_left"
+        ].detach().cpu()
+        info["box_intrusion_depth_right"] = intrusion_info[
+            "intrusion_depth_right"
+        ].detach().cpu()
