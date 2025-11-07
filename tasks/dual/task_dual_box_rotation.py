@@ -351,7 +351,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         right_tcp_pos: torch.Tensor,
         target_pushpoint_left: torch.Tensor,
         target_pushpoint_right: torch.Tensor,
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
         left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
         right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
         target_pushpoint_left = target_pushpoint_left.to(
@@ -387,13 +387,17 @@ class MyDualBoxRotationEnv(BaseEnv):
             base_reward_right,
         )
         reward = 0.5 * (reward_left + reward_right)
+        reached_left = distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD
+        reached_right = distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD
+        pushpoint_stage_complete = (reached_left & reached_right).float()
         info = {
             "distance_left": distance_left,
             "distance_right": distance_right,
-            "reached_left": distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD,
-            "reached_right": distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD,
+            "reached_left": reached_left,
+            "reached_right": reached_right,
+            "pushpoint_stage_complete": pushpoint_stage_complete,
         }
-        return reward, info
+        return reward, info, pushpoint_stage_complete
 
     def _box_translation_penalty(
         self, current_box_center: torch.Tensor
@@ -449,7 +453,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         context = self._gather_reward_context(info)
 
 
-        pushpoint_reward, push_info = self._pushpoint_tracking_reward(
+        pushpoint_reward, push_info, pushpoint_stage = self._pushpoint_tracking_reward(
             context.left_tcp_pos,
             context.right_tcp_pos,
             context.target_pushpoint_left,
@@ -459,7 +463,8 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.current_box_center
         )
         rotation_reward, rotation_info = self._box_yaw_rotation(context.box_theta_deg)
-        reward = pushpoint_reward + rotation_reward - translation_penalty
+        gated_rotation = rotation_reward * pushpoint_stage
+        reward = pushpoint_reward + gated_rotation - translation_penalty
 
 
 
@@ -468,6 +473,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["pushpoint_left_reached"] = push_info["reached_left"].detach().cpu()
         info["pushpoint_right_distance"] = push_info["distance_right"].detach().cpu()
         info["pushpoint_right_reached"] = push_info["reached_right"].detach().cpu()
+        info["pushpoint_stage_complete"] = push_info[
+            "pushpoint_stage_complete"
+        ].detach().cpu()
         info["box_translation_distance"] = translation_info[
             "translation_distance"
         ].detach().cpu()
@@ -478,6 +486,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["box_rotation_reward"] = rotation_info[
             "yaw_rotation_reward"
         ].detach().cpu()
+        info["box_rotation_reward_gated"] = gated_rotation.detach().cpu()
         info["box_rotation_progress"] = rotation_info[
             "yaw_rotation_progress_deg"
         ].detach().cpu()
