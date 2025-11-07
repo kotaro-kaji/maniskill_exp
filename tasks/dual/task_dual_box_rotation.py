@@ -37,7 +37,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
     BOX_CENTER_PENALTY_SCALE = 5.0
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
-    BOX_INTRUSION_MARGIN = 0.04
+    BOX_INTRUSION_MARGIN = 0.025
     BOX_INTRUSION_SCALE = 2.0
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
@@ -511,13 +511,12 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.right_tcp_pos,
             context.box_rotation_matrix,
         )
-        gated_intrusion_penalty = intrusion_penalty * (1.0 - pushpoint_stage)
-        gated_rotation = rotation_reward * pushpoint_stage
+
         reward = (
             pushpoint_reward
-            + gated_rotation
+            + rotation_reward* pushpoint_stage
             - translation_penalty
-            - gated_intrusion_penalty
+            - intrusion_penalty* (1.0 - pushpoint_stage)
         )
 
 
@@ -540,9 +539,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["box_rotation_reward"] = rotation_info[
             "yaw_rotation_reward"
         ].detach().cpu()
-        info["box_rotation_reward_gated"] = gated_rotation.detach().cpu()
         info["box_intrusion_penalty"] = intrusion_info["intrusion_penalty"].detach().cpu()
-        info["box_intrusion_penalty_gated"] = gated_intrusion_penalty.detach().cpu()
         info["box_intrusion_left"] = intrusion_info["intrusion_left"].detach().cpu()
         info["box_intrusion_right"] = intrusion_info["intrusion_right"].detach().cpu()
         info["box_rotation_progress"] = rotation_info[
