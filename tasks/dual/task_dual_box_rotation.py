@@ -271,6 +271,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         left_tcp_pos: torch.Tensor
         right_tcp_pos: torch.Tensor
         box_theta_deg: torch.Tensor
+        box_rotation_matrix: torch.Tensor
 
     def _gather_reward_context(
         self, info: Dict[str, Any]
@@ -346,6 +347,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             left_tcp_pos=left_tcp_pos,
             right_tcp_pos=right_tcp_pos,
             box_theta_deg=theta,
+            box_rotation_matrix=rotation_current,
         )
 
     def _pushpoint_tracking_reward(
@@ -453,6 +455,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         current_box_center: torch.Tensor,
         left_tcp_pos: torch.Tensor,
         right_tcp_pos: torch.Tensor,
+        rotation_matrix: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         half_sizes = torch.tensor(
             self.BOX_HALF_SIZE, device=self.device, dtype=torch.float32
@@ -460,9 +463,13 @@ class MyDualBoxRotationEnv(BaseEnv):
         inflated_half = half_sizes + self.BOX_INTRUSION_MARGIN
 
         def _intrusion(tcp_pos: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-            delta = torch.abs(tcp_pos - current_box_center)
-            inside = torch.all(delta <= inflated_half, dim=-1)
-            penetration = torch.clamp(inflated_half - delta, min=0.0)
+            delta_world = tcp_pos - current_box_center
+            delta_local = torch.einsum(
+                "bij,bj->bi", rotation_matrix.transpose(1, 2), delta_world
+            )
+            delta_abs = torch.abs(delta_local)
+            inside = torch.all(delta_abs <= inflated_half, dim=-1)
+            penetration = torch.clamp(inflated_half - delta_abs, min=0.0)
             depth = torch.linalg.norm(penetration, dim=-1)
             return inside, depth
 
@@ -499,7 +506,10 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
         rotation_reward, rotation_info = self._box_yaw_rotation(context.box_theta_deg)
         intrusion_penalty, intrusion_info = self._box_intrusion_penalty(
-            context.current_box_center, context.left_tcp_pos, context.right_tcp_pos
+            context.current_box_center,
+            context.left_tcp_pos,
+            context.right_tcp_pos,
+            context.box_rotation_matrix,
         )
         gated_intrusion_penalty = intrusion_penalty * (1.0 - pushpoint_stage)
         gated_rotation = rotation_reward * pushpoint_stage
