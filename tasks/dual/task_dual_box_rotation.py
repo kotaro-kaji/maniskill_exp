@@ -36,6 +36,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     PUSHPOINT_DISTANCE_SCALE = 5.0
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
     BOX_CENTER_PENALTY_SCALE = 5.0
+    MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
@@ -116,6 +117,29 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_box_center = zeros.clone()
         self.pushpoint_local_right = zeros.clone()
         self.pushpoint_local_left = zeros.clone()
+
+    def _ensure_rotation_buffers(self) -> bool:
+        num_envs = getattr(self, "num_envs", 1)
+        needs_init = not hasattr(self, "_prev_box_theta")
+        if not needs_init:
+            needs_init = self._prev_box_theta.shape[0] != num_envs
+        if not needs_init:
+            return False
+        zeros = torch.zeros((num_envs,), device=self.device, dtype=torch.float32)
+        self._prev_box_theta = zeros.clone()
+        self._positive_yaw_progress = zeros.clone()
+        return True
+
+    def _reset_rotation_buffers(
+        self, env_idx: torch.Tensor, theta_deg: torch.Tensor
+    ):
+        self._ensure_rotation_buffers()
+        if env_idx.numel() == 0:
+            return
+        env_idx_long = env_idx.long()
+        theta_deg = theta_deg.to(device=self.device, dtype=torch.float32)
+        self._prev_box_theta[env_idx_long] = theta_deg
+        self._positive_yaw_progress[env_idx_long] = 0.0
 
     def _theta_to_quaternion(self, theta_deg: torch.Tensor) -> torch.Tensor:
         """Convert planar angle in degrees (around z) to quaternion."""
@@ -234,6 +258,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             orientations = self._theta_to_quaternion(theta)
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
             self._update_initial_pushpoints(env_idx, positions, orientations)
+            self._reset_rotation_buffers(env_idx, theta)
 
     @dataclass
     class RewardContext:
@@ -242,6 +267,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         target_pushpoint_right: torch.Tensor
         left_tcp_pos: torch.Tensor
         right_tcp_pos: torch.Tensor
+        box_theta_deg: torch.Tensor
 
     def _gather_reward_context(
         self, info: Dict[str, Any]
@@ -249,6 +275,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
+        theta = theta.to(device=self.device, dtype=torch.float32)
         self._ensure_pushpoint_buffers()
         box_pose = Pose.create(self.box.pose, device=self.device)
         current_box_center = box_pose.p
@@ -315,6 +342,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             target_pushpoint_right=target_pushpoint_right,
             left_tcp_pos=left_tcp_pos,
             right_tcp_pos=right_tcp_pos,
+            box_theta_deg=theta,
         )
 
     def _pushpoint_tracking_reward(
@@ -381,6 +409,38 @@ class MyDualBoxRotationEnv(BaseEnv):
         }
         return translation_penalty, info
 
+    def _box_yaw_rotation(
+        self, theta_deg: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        buffers_reset = self._ensure_rotation_buffers()
+        theta_deg = theta_deg.to(device=self.device, dtype=torch.float32)
+        if buffers_reset:
+            self._prev_box_theta = theta_deg.clone()
+            delta = torch.zeros_like(theta_deg)
+        else:
+            prev_theta = self._prev_box_theta
+            delta = torch.remainder(theta_deg - prev_theta + 180.0, 360.0) - 180.0
+        positive_delta = torch.clamp(delta, min=0.0)
+        self._prev_box_theta = theta_deg
+        self._positive_yaw_progress += positive_delta
+        target_delta_value = max(self.MAX_ROTATION_PACE * self.control_timestep, 1e-6)
+        target_delta = torch.tensor(
+            target_delta_value, device=self.device, dtype=torch.float32
+        )
+        step_reward = positive_delta / target_delta
+        rotation_reward = torch.clamp(step_reward, max=1.0)
+        info = {
+            "yaw_delta_deg": positive_delta,
+            "yaw_rotation_reward": rotation_reward,
+            "yaw_rotation_progress_deg": self._positive_yaw_progress,
+            "yaw_rotation_target_delta_deg": positive_delta.new_full(
+                positive_delta.shape, target_delta_value
+            ),
+        }
+        return rotation_reward, info
+
+
+    
     def compute_normalized_dense_reward(self, obs, action, info):
 
         if not isinstance(self.agent, MultiAgent):
@@ -398,7 +458,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         translation_penalty, translation_info = self._box_translation_penalty(
             context.current_box_center
         )
-        reward = pushpoint_reward - translation_penalty
+        rotation_reward, rotation_info = self._box_yaw_rotation(context.box_theta_deg)
+        reward = pushpoint_reward + rotation_reward - translation_penalty
 
 
 
@@ -412,6 +473,16 @@ class MyDualBoxRotationEnv(BaseEnv):
         ].detach().cpu()
         info["box_translation_penalty"] = translation_info[
             "translation_penalty"
+        ].detach().cpu()
+        info["box_rotation_delta"] = rotation_info["yaw_delta_deg"].detach().cpu()
+        info["box_rotation_reward"] = rotation_info[
+            "yaw_rotation_reward"
+        ].detach().cpu()
+        info["box_rotation_progress"] = rotation_info[
+            "yaw_rotation_progress_deg"
+        ].detach().cpu()
+        info["box_rotation_target_delta"] = rotation_info[
+            "yaw_rotation_target_delta_deg"
         ].detach().cpu()
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
