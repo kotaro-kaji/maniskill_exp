@@ -108,3 +108,9 @@ python ppo_dual_xarm7.py --env_id="MyDualSimple-v0" \
 python ppo_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
   --num_minibatches=32   --total_timesteps=50_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99
+
+
+python sac_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
+  --num_envs=128 --utd=0.5 --buffer_size=500_000 \
+  --total_timesteps=5_000_000 --eval_freq=50_000 --control-mode="pd_joint_delta_pos" \
+  --num_eval_envs 4 --num-steps=200 --num_eval_steps=200
