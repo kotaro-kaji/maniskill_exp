@@ -242,7 +242,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
-        is_upper_half = theta >= 180.0
         self._ensure_pushpoint_buffers()
         box_pose = Pose.create(self.box.pose, device=self.device)
         current_box_center = box_pose.p
@@ -255,7 +254,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         world_pushpoint_left = current_box_center + torch.einsum(
             "bij,bj->bi", rotation_current, self.pushpoint_local_left
         )
-        use_initial_mask = (theta >= -1.0) & (theta < 179.0)
+        inversion_conditions = (theta >= 0.0) & (theta < 179.0) | (theta >= 359.0)
+        #print(theta)
         current_pushpoint_by_right = world_pushpoint_right
         current_pushpoint_by_left = world_pushpoint_left
 
@@ -316,8 +316,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         reward = reward - translation_penalty
 
         info["box_theta_deg"] = theta.detach().cpu()
-        info["box_theta_region_is_upper_half"] = is_upper_half.detach().cpu()
-        info["pushpoint_use_initial_mask"] = use_initial_mask.detach().cpu()
+
+        info["pushpoint_inversion_conditions"] = inversion_conditions.detach().cpu()
         info["initial_forward_side_center"] = (
             self.initial_forward_side_center.detach().cpu()
         )
