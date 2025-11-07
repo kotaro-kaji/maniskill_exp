@@ -277,9 +277,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         right_tcp_pos = right_tcp_pos.squeeze(0) if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1 else right_tcp_pos
 
         target_pushpoint_left = current_pushpoint_by_left.clone()
-        target_pushpoint_left[..., 2] = current_box_center[..., 2] + self.BOX_HALF_SIZE[2]
+        target_pushpoint_left[..., 2] = current_box_center[..., 2] 
         target_pushpoint_right = current_pushpoint_by_right.clone()
-        target_pushpoint_right[..., 2] = current_box_center[..., 2] + self.BOX_HALF_SIZE[2]
+        target_pushpoint_right[..., 2] = current_box_center[..., 2]
 
         left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
         right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
