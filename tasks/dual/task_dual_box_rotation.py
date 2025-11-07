@@ -39,6 +39,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
     BOX_INTRUSION_MARGIN = 0.025
     BOX_INTRUSION_SCALE = 2.0
+    TCP_LEAD_SATURATION = 0.05
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
@@ -523,6 +524,59 @@ class MyDualBoxRotationEnv(BaseEnv):
         }
         return penalty, info
 
+    def _tcp_leading_reward(
+        self,
+        current_box_center: torch.Tensor,
+        rotation_matrix: torch.Tensor,
+        left_tcp_pos: torch.Tensor,
+        right_tcp_pos: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Reward when TCP passes the pushpoint along +/-X on the box surface."""
+        self._ensure_pushpoint_buffers()
+
+        def _ensure_batch(t: torch.Tensor) -> torch.Tensor:
+            return t.unsqueeze(0) if t.ndim == 1 else t
+
+        current_box_center = _ensure_batch(current_box_center)
+        left_tcp_pos = _ensure_batch(left_tcp_pos)
+        right_tcp_pos = _ensure_batch(right_tcp_pos)
+        if rotation_matrix.ndim == 2:
+            rotation_matrix = rotation_matrix.unsqueeze(0)
+
+        rot_T = rotation_matrix.transpose(1, 2)
+        left_local = torch.einsum(
+            "bij,bj->bi", rot_T, left_tcp_pos - current_box_center
+        )
+        right_local = torch.einsum(
+            "bij,bj->bi", rot_T, right_tcp_pos - current_box_center
+        )
+        push_left_local = self.pushpoint_local_left.to(
+            device=self.device, dtype=torch.float32
+        )
+        push_right_local = self.pushpoint_local_right.to(
+            device=self.device, dtype=torch.float32
+        )
+
+        def _lead(push_local: torch.Tensor, tcp_local: torch.Tensor) -> torch.Tensor:
+            push_x = push_local[..., 0]
+            tcp_x = tcp_local[..., 0]
+            direction = torch.sign(push_x)
+            progress = direction * (tcp_x - push_x)
+            progress = progress * direction.abs()
+            return torch.clamp(
+                progress / self.TCP_LEAD_SATURATION, min=-1.0, max=1.0
+            )
+
+        lead_right = _lead(push_right_local, right_local)
+        lead_left = _lead(push_left_local, left_local)
+        reward = 0.5 * (lead_right + lead_left)
+        info = {
+            "tcp_lead_reward": reward,
+            "tcp_lead_right_component": lead_right,
+            "tcp_lead_left_component": lead_left,
+        }
+        return reward, info
+
 
 
     def compute_normalized_dense_reward(self, obs, action, info):
@@ -549,12 +603,19 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.right_tcp_pos,
             context.box_rotation_matrix,
         )
+        tcp_lead_reward, tcp_lead_info = self._tcp_leading_reward(
+            context.current_box_center,
+            context.box_rotation_matrix,
+            context.left_tcp_pos,
+            context.right_tcp_pos,
+        )
 
         reward = (
             pushpoint_reward
             + rotation_reward* pushpoint_stage
             - translation_penalty
             - intrusion_penalty* (1.0 - pushpoint_stage)
+            + tcp_lead_reward
         )
 
 
@@ -585,6 +646,13 @@ class MyDualBoxRotationEnv(BaseEnv):
         ].detach().cpu()
         info["box_rotation_target_delta"] = rotation_info[
             "yaw_rotation_target_delta_deg"
+        ].detach().cpu()
+        info["tcp_lead_reward"] = tcp_lead_info["tcp_lead_reward"].detach().cpu()
+        info["tcp_lead_right_component"] = tcp_lead_info[
+            "tcp_lead_right_component"
+        ].detach().cpu()
+        info["tcp_lead_left_component"] = tcp_lead_info[
+            "tcp_lead_left_component"
         ].detach().cpu()
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
