@@ -1,4 +1,5 @@
 from typing import Any, Dict, Tuple
+from dataclasses import dataclass
 
 import torch
 import sapien
@@ -234,11 +235,17 @@ class MyDualBoxRotationEnv(BaseEnv):
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
             self._update_initial_pushpoints(env_idx, positions, orientations)
 
-    def compute_normalized_dense_reward(self, obs, action, info):
+    @dataclass
+    class RewardContext:
+        current_box_center: torch.Tensor
+        target_pushpoint_left: torch.Tensor
+        target_pushpoint_right: torch.Tensor
+        left_tcp_pos: torch.Tensor
+        right_tcp_pos: torch.Tensor
 
-        if not isinstance(self.agent, MultiAgent):
-            return torch.zeros(self.num_envs, device=self.device)
-
+    def _gather_reward_context(
+        self, info: Dict[str, Any]
+    ) -> "MyDualBoxRotationEnv.RewardContext":
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
@@ -255,68 +262,30 @@ class MyDualBoxRotationEnv(BaseEnv):
             "bij,bj->bi", rotation_current, self.pushpoint_local_left
         )
         inversion_conditions = (theta >= 0.0) & (theta < 179.0) | (theta >= 359.0)
-        #print(theta)
         current_pushpoint_by_right = world_pushpoint_right
         current_pushpoint_by_left = world_pushpoint_left
 
         left_tcp_pos = Pose.create(
             self.agent.agents[1].tcp.pose, device=self.device
         ).p
-        left_tcp_pos = left_tcp_pos.squeeze(0) if left_tcp_pos.ndim == 2 and left_tcp_pos.shape[0] == 1 else left_tcp_pos
+        left_tcp_pos = (
+            left_tcp_pos.squeeze(0)
+            if left_tcp_pos.ndim == 2 and left_tcp_pos.shape[0] == 1
+            else left_tcp_pos
+        )
         right_tcp_pos = Pose.create(
             self.agent.agents[0].tcp.pose, device=self.device
         ).p
-        right_tcp_pos = right_tcp_pos.squeeze(0) if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1 else right_tcp_pos
+        right_tcp_pos = (
+            right_tcp_pos.squeeze(0)
+            if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1
+            else right_tcp_pos
+        )
 
         target_pushpoint_left = current_pushpoint_by_left.clone()
         target_pushpoint_right = current_pushpoint_by_right.clone()
 
-        left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
-        right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
-        target_pushpoint_left = target_pushpoint_left.to(
-            device=self.device, dtype=torch.float32
-        )
-        target_pushpoint_right = target_pushpoint_right.to(
-            device=self.device, dtype=torch.float32
-        )
-
-        if left_tcp_pos.ndim == 1:
-            left_tcp_pos = left_tcp_pos.unsqueeze(0)
-        if right_tcp_pos.ndim == 1:
-            right_tcp_pos = right_tcp_pos.unsqueeze(0)
-
-        distance_left = torch.linalg.norm(
-            left_tcp_pos - target_pushpoint_left, dim=-1
-        )
-        base_reward_left = 1 - torch.tanh(self.PUSHPOINT_DISTANCE_SCALE * distance_left)
-        reward_left = torch.where(
-            distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD,
-            torch.ones_like(base_reward_left),
-            base_reward_left,
-        )
-        reached_left = distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD
-        distance_right = torch.linalg.norm(
-            right_tcp_pos - target_pushpoint_right, dim=-1
-        )
-        base_reward_right = 1 - torch.tanh(
-            self.PUSHPOINT_DISTANCE_SCALE * distance_right
-        )
-        reward_right = torch.where(
-            distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD,
-            torch.ones_like(base_reward_right),
-            base_reward_right,
-        )
-        reached_right = distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD
-        reward = 0.5 * (reward_left + reward_right)
-        translation_vector = current_box_center - self.initial_box_center
-        translation_distance = torch.linalg.norm(translation_vector, dim=-1)
-        translation_penalty = torch.tanh(
-            self.BOX_CENTER_PENALTY_SCALE * translation_distance
-        )
-        reward = reward - translation_penalty
-
         info["box_theta_deg"] = theta.detach().cpu()
-
         info["pushpoint_inversion_conditions"] = inversion_conditions.detach().cpu()
         info["initial_forward_side_center"] = (
             self.initial_forward_side_center.detach().cpu()
@@ -329,12 +298,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
         info["current_pushpoint_by_right"] = target_pushpoint_right.detach().cpu()
         info["current_pushpoint_by_left"] = target_pushpoint_left.detach().cpu()
-        info["pushpoint_left_distance"] = distance_left.detach().cpu()
-        info["pushpoint_left_reached"] = reached_left.detach().cpu()
-        info["pushpoint_right_distance"] = distance_right.detach().cpu()
-        info["pushpoint_right_reached"] = reached_right.detach().cpu()
-        info["box_translation_distance"] = translation_distance.detach().cpu()
-        info["box_translation_penalty"] = translation_penalty.detach().cpu()
+
         if getattr(self, "_enable_pushpoint_debug", False):
             if self.pushpoint_left_site is not None:
                 self.pushpoint_left_site.set_pose(
@@ -345,6 +309,110 @@ class MyDualBoxRotationEnv(BaseEnv):
                     Pose.create_from_pq(p=target_pushpoint_right)
                 )
 
+        return self.RewardContext(
+            current_box_center=current_box_center,
+            target_pushpoint_left=target_pushpoint_left,
+            target_pushpoint_right=target_pushpoint_right,
+            left_tcp_pos=left_tcp_pos,
+            right_tcp_pos=right_tcp_pos,
+        )
+
+    def _pushpoint_tracking_reward(
+        self,
+        left_tcp_pos: torch.Tensor,
+        right_tcp_pos: torch.Tensor,
+        target_pushpoint_left: torch.Tensor,
+        target_pushpoint_right: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
+        right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
+        target_pushpoint_left = target_pushpoint_left.to(
+            device=self.device, dtype=torch.float32
+        )
+        target_pushpoint_right = target_pushpoint_right.to(
+            device=self.device, dtype=torch.float32
+        )
+        if left_tcp_pos.ndim == 1:
+            left_tcp_pos = left_tcp_pos.unsqueeze(0)
+        if right_tcp_pos.ndim == 1:
+            right_tcp_pos = right_tcp_pos.unsqueeze(0)
+        distance_left = torch.linalg.norm(
+            left_tcp_pos - target_pushpoint_left, dim=-1
+        )
+        distance_right = torch.linalg.norm(
+            right_tcp_pos - target_pushpoint_right, dim=-1
+        )
+        base_reward_left = 1 - torch.tanh(
+            self.PUSHPOINT_DISTANCE_SCALE * distance_left
+        )
+        reward_left = torch.where(
+            distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD,
+            torch.ones_like(base_reward_left),
+            base_reward_left,
+        )
+        base_reward_right = 1 - torch.tanh(
+            self.PUSHPOINT_DISTANCE_SCALE * distance_right
+        )
+        reward_right = torch.where(
+            distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD,
+            torch.ones_like(base_reward_right),
+            base_reward_right,
+        )
+        reward = 0.5 * (reward_left + reward_right)
+        info = {
+            "distance_left": distance_left,
+            "distance_right": distance_right,
+            "reached_left": distance_left < self.PUSHPOINT_DISTANCE_THRESHOLD,
+            "reached_right": distance_right < self.PUSHPOINT_DISTANCE_THRESHOLD,
+        }
+        return reward, info
+
+    def _box_translation_penalty(
+        self, current_box_center: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        translation_vector = current_box_center - self.initial_box_center
+        translation_distance = torch.linalg.norm(translation_vector, dim=-1)
+        translation_penalty = torch.tanh(
+            self.BOX_CENTER_PENALTY_SCALE * translation_distance
+        )
+        info = {
+            "translation_distance": translation_distance,
+            "translation_penalty": translation_penalty,
+        }
+        return translation_penalty, info
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+
+        if not isinstance(self.agent, MultiAgent):
+            return torch.zeros(self.num_envs, device=self.device)
+
+        context = self._gather_reward_context(info)
+
+
+        pushpoint_reward, push_info = self._pushpoint_tracking_reward(
+            context.left_tcp_pos,
+            context.right_tcp_pos,
+            context.target_pushpoint_left,
+            context.target_pushpoint_right,
+        )
+        translation_penalty, translation_info = self._box_translation_penalty(
+            context.current_box_center
+        )
+        reward = pushpoint_reward - translation_penalty
+
+
+
+
+        info["pushpoint_left_distance"] = push_info["distance_left"].detach().cpu()
+        info["pushpoint_left_reached"] = push_info["reached_left"].detach().cpu()
+        info["pushpoint_right_distance"] = push_info["distance_right"].detach().cpu()
+        info["pushpoint_right_reached"] = push_info["reached_right"].detach().cpu()
+        info["box_translation_distance"] = translation_info[
+            "translation_distance"
+        ].detach().cpu()
+        info["box_translation_penalty"] = translation_info[
+            "translation_penalty"
+        ].detach().cpu()
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
         return reward.to(self.device)
