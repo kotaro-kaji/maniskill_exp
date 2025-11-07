@@ -161,6 +161,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         yaw = torch.atan2(rotation[..., 1, 0], rotation[..., 0, 0])
         theta = torch.rad2deg(yaw)
         theta = torch.remainder(theta, 360.0)
+        theta = torch.remainder(-theta, 360.0)
         return theta
 
     def _update_initial_pushpoints(
@@ -276,7 +277,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
         theta = theta.to(device=self.device, dtype=torch.float32)
-        theta = torch.remainder(-theta, 360.0)
         self._ensure_pushpoint_buffers()
         box_pose = Pose.create(self.box.pose, device=self.device)
         current_box_center = box_pose.p
