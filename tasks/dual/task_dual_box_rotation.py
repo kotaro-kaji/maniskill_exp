@@ -78,11 +78,11 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
         self.box = builder.build(name="box_between_arms")
         if self._enable_pushpoint_debug:
-            pushpoint_radius = 0.012
+            pushpoint_radius = 0.02
             self.pushpoint_left_site = actors.build_sphere(
                 self.scene,
                 radius=pushpoint_radius,
-                color=(0.9, 0.3, 0.3, 0.8),
+                color=(1.0, 0.0, 0.0, 1.0),
                 name="pushpoint_left_site",
                 body_type="kinematic",
                 add_collision=False,
@@ -191,14 +191,14 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.pushpoint_local_right[env_idx_long] = local_right
         self.pushpoint_local_left[env_idx_long] = local_left
         if getattr(self, "_enable_pushpoint_debug", False):
-            left_vis = self.initial_pushpoint_by_left.clone()
-            right_vis = self.initial_pushpoint_by_right.clone()
-            left_vis[..., 2] = self.BOX_HALF_SIZE[2]
-            right_vis[..., 2] = self.BOX_HALF_SIZE[2]
             if self.pushpoint_left_site is not None:
-                self.pushpoint_left_site.set_pose(Pose.create_from_pq(p=left_vis))
+                self.pushpoint_left_site.set_pose(
+                    Pose.create_from_pq(p=self.initial_pushpoint_by_left)
+                )
             if self.pushpoint_right_site is not None:
-                self.pushpoint_right_site.set_pose(Pose.create_from_pq(p=right_vis))
+                self.pushpoint_right_site.set_pose(
+                    Pose.create_from_pq(p=self.initial_pushpoint_by_right)
+                )
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -277,9 +277,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         right_tcp_pos = right_tcp_pos.squeeze(0) if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1 else right_tcp_pos
 
         target_pushpoint_left = current_pushpoint_by_left.clone()
-        target_pushpoint_left[..., 2] = current_box_center[..., 2] 
         target_pushpoint_right = current_pushpoint_by_right.clone()
-        target_pushpoint_right[..., 2] = current_box_center[..., 2]
 
         left_tcp_pos = left_tcp_pos.to(device=self.device, dtype=torch.float32)
         right_tcp_pos = right_tcp_pos.to(device=self.device, dtype=torch.float32)
