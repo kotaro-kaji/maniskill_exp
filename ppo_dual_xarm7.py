@@ -32,8 +32,8 @@ from tasks.dual.task_dual_simple import MyDualSimpleEnv
 from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
-SIM_FREQUENCY_HZ = 250
-CONTROL_FREQUENCY_HZ = 50
+SIM_FREQUENCY_HZ = 100
+CONTROL_FREQUENCY_HZ = 20
 
 
 class InfoDirectoryLogger:
