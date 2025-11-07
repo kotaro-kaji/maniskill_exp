@@ -424,21 +424,23 @@ class MyDualBoxRotationEnv(BaseEnv):
         else:
             prev_theta = self._prev_box_theta
             delta = torch.remainder(theta_deg - prev_theta + 180.0, 360.0) - 180.0
-        positive_delta = torch.clamp(delta, min=0.0)
+        signed_delta = delta
         self._prev_box_theta = theta_deg
-        self._positive_yaw_progress += positive_delta
+        self._positive_yaw_progress = torch.clamp(
+            self._positive_yaw_progress + signed_delta, min=0.0
+        )
         target_delta_value = max(self.MAX_ROTATION_PACE * self.control_timestep, 1e-6)
         target_delta = torch.tensor(
             target_delta_value, device=self.device, dtype=torch.float32
         )
-        step_reward = positive_delta / target_delta
-        rotation_reward = torch.clamp(step_reward, max=1.0)
+        step_reward = signed_delta / target_delta
+        rotation_reward = torch.clamp(step_reward, min=-1.0, max=1.0)
         info = {
-            "yaw_delta_deg": positive_delta,
+            "yaw_delta_deg": signed_delta,
             "yaw_rotation_reward": rotation_reward,
             "yaw_rotation_progress_deg": self._positive_yaw_progress,
-            "yaw_rotation_target_delta_deg": positive_delta.new_full(
-                positive_delta.shape, target_delta_value
+            "yaw_rotation_target_delta_deg": signed_delta.new_full(
+                signed_delta.shape, target_delta_value
             ),
         }
         return rotation_reward, info

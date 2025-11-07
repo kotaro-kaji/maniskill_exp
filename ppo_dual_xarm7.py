@@ -1,8 +1,10 @@
+import csv
 from collections import defaultdict
 import os
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import gymnasium as gym
@@ -32,6 +34,63 @@ from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
 SIM_FREQUENCY_HZ = 250
 CONTROL_FREQUENCY_HZ = 50
+
+
+class InfoDirectoryLogger:
+    """Utility to dump per-key info streams into CSV files."""
+
+    def __init__(self, root_dir: str, num_envs: int):
+        self.root_dir = Path(root_dir)
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.num_envs = num_envs
+        self._files = {}
+        self._writers = {}
+
+    def log(self, infos: dict, step_idx: int):
+        for key, value in infos.items():
+            if key.startswith("_") or key in ("final_info", "final_observation"):
+                continue
+            array = self._to_numpy(value)
+            if array is None:
+                continue
+            if array.ndim == 0:
+                array = np.repeat(array[None], self.num_envs, axis=0)
+            if array.shape[0] != self.num_envs:
+                continue
+            array = array.reshape(self.num_envs, -1)
+            for env_id in range(self.num_envs):
+                self._write_row(key, env_id, step_idx, array[env_id])
+
+    def close(self):
+        for file in self._files.values():
+            file.close()
+        self._files.clear()
+        self._writers.clear()
+
+    def _write_row(self, key: str, env_id: int, step_idx: int, row):
+        directory = self.root_dir / key
+        directory.mkdir(parents=True, exist_ok=True)
+        handle_key = (key, env_id)
+        row_array = np.asarray(row).reshape(-1)
+        if handle_key not in self._writers:
+            file_path = directory / f"env_{env_id:03d}.csv"
+            f = open(file_path, "w", newline="")
+            writer = csv.writer(f)
+            headers = ["step"] + [f"value_{i}" for i in range(len(row_array))]
+            writer.writerow(headers)
+            self._files[handle_key] = f
+            self._writers[handle_key] = writer
+        writer = self._writers[handle_key]
+        row_values = row_array.tolist()
+        writer.writerow([step_idx] + row_values)
+
+    @staticmethod
+    def _to_numpy(value):
+        if isinstance(value, torch.Tensor):
+            return value.detach().cpu().numpy()
+        if isinstance(value, np.ndarray):
+            return value
+        return None
 
 
 @dataclass
@@ -227,6 +286,7 @@ if __name__ == "__main__":
     if isinstance(envs.action_space, gym.spaces.Dict):
         envs = FlattenActionSpaceWrapper(envs)
         eval_envs = FlattenActionSpaceWrapper(eval_envs)
+    info_output_root = None
     if args.capture_video:
         eval_output_dir = f"runs/{run_name}/videos"
         if args.evaluate:
@@ -250,6 +310,7 @@ if __name__ == "__main__":
             max_steps_per_video=args.num_eval_steps,
             video_fps=CONTROL_FREQUENCY_HZ,
         )
+        info_output_root = os.path.join(os.path.dirname(eval_output_dir), "info")
     envs = ManiSkillVectorEnv(envs, args.num_envs, ignore_terminations=not args.partial_reset, record_metrics=True)
     eval_envs = ManiSkillVectorEnv(eval_envs, args.num_eval_envs, ignore_terminations=not args.eval_partial_reset, record_metrics=True)
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
@@ -318,6 +379,10 @@ if __name__ == "__main__":
             print("Evaluating")
             eval_obs, _ = eval_envs.reset()
             eval_metrics = defaultdict(list)
+            eval_info_logger = None
+            if info_output_root is not None:
+                iter_info_dir = os.path.join(info_output_root, f"iter_{iteration:04d}")
+                eval_info_logger = InfoDirectoryLogger(iter_info_dir, args.num_eval_envs)
             num_episodes = 0
             for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
@@ -325,11 +390,15 @@ if __name__ == "__main__":
                     if args.print_eval_actions:
                         print(f"[eval] step={eval_step} actions={eval_action.detach().cpu().numpy()}")
                     eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(eval_action)
+                    if eval_info_logger is not None:
+                        eval_info_logger.log(eval_infos, eval_step)
                     if "final_info" in eval_infos:
                         mask = eval_infos["_final_info"]
                         num_episodes += mask.sum()
                         for k, v in eval_infos["final_info"]["episode"].items():
                             eval_metrics[k].append(v)
+            if eval_info_logger is not None:
+                eval_info_logger.close()
             print(f"Evaluated {args.num_eval_steps * args.num_eval_envs} steps resulting in {num_episodes} episodes")
             for k, v in eval_metrics.items():
                 mean = torch.stack(v).float().mean()
