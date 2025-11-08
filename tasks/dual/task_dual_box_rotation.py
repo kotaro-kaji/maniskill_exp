@@ -16,8 +16,15 @@ from mani_skill.utils.structs.pose import Pose
 from robotagents.xarm_ball_ee import Xarm7BallEE
 
 
-from scenebuilders.dual_xarm7_table_scene_builder import DualXarm7TableSceneBuilder
-from scenebuilders.xarm7_table_scene_builder import ROBOT_BASE_X_OFFSET
+from scenebuilders.dual_xarm7_table_scene_builder import (
+    DualXarm7TableSceneBuilder,
+    PRIMARY_ARM_Y_OFFSET,
+    SECONDARY_ARM_Y_OFFSET,
+)
+from scenebuilders.xarm7_table_scene_builder import (
+    PEDESTAL_HEIGHT,
+    ROBOT_BASE_X_OFFSET,
+)
 
 
 @register_env("MyDualBoxRotation-v0", max_episode_steps=200)
@@ -30,8 +37,6 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.43
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.03
-    LEFT_TARGET_POS = (0.5, 0.3, 0.5)
-    RIGHT_TARGET_POS = (0.5, -0.3, 0.5)
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
@@ -40,7 +45,6 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_INTRUSION_MARGIN = 0.025
     BOX_INTRUSION_SCALE = 2.0
     TCP_LEAD_SATURATION = 0.03
-    TCP_LEAD_WEIGHT = 0.25
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
@@ -60,6 +64,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     def _load_scene(self, options: Dict[str, Any]):
         self.table_scene = DualXarm7TableSceneBuilder(env=self)
         self.table_scene.build()
+        self.bimanual_center_pose = self._compute_bimanual_center_pose()
         builder = self.scene.create_actor_builder()
         builder.add_box_collision(
             half_size=self.BOX_HALF_SIZE,
@@ -76,11 +81,13 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
         # Initial pose will be overwritten during episode init; place safely above table for now.
         builder.initial_pose = sapien.Pose(
-            [
-                ROBOT_BASE_X_OFFSET + self.BOX_X_OFFSET_FROM_BASE,
-                0.0,
-                self.BOX_HALF_SIZE[2] * 2,
-            ]
+            p=self._bimanual_center_point_to_world(
+                [
+                    self.BOX_X_OFFSET_FROM_BASE,
+                    0.0,
+                    self.BOX_HALF_SIZE[2] * 2,
+                ]
+            )
         )
         self.box = builder.build(name="box_between_arms")
         if self._enable_pushpoint_debug:
@@ -92,7 +99,11 @@ class MyDualBoxRotationEnv(BaseEnv):
                 name="pushpoint_left_site",
                 body_type="kinematic",
                 add_collision=False,
-                initial_pose=sapien.Pose(p=[0.0, 0.0, self.BOX_HALF_SIZE[2]]),
+                initial_pose=sapien.Pose(
+                    p=self._bimanual_center_point_to_world(
+                        [0.0, 0.0, self.BOX_HALF_SIZE[2]]
+                    )
+                ),
             )
             self.pushpoint_right_site = actors.build_sphere(
                 self.scene,
@@ -101,7 +112,11 @@ class MyDualBoxRotationEnv(BaseEnv):
                 name="pushpoint_right_site",
                 body_type="kinematic",
                 add_collision=False,
-                initial_pose=sapien.Pose(p=[0.0, 0.0, self.BOX_HALF_SIZE[2]]),
+                initial_pose=sapien.Pose(
+                    p=self._bimanual_center_point_to_world(
+                        [0.0, 0.0, self.BOX_HALF_SIZE[2]]
+                    )
+                ),
             )
         else:
             self.pushpoint_left_site = None
@@ -239,8 +254,7 @@ class MyDualBoxRotationEnv(BaseEnv):
 
             self._ensure_pushpoint_buffers()
             x_center = (
-                ROBOT_BASE_X_OFFSET
-                + self.BOX_X_OFFSET_FROM_BASE
+                self.BOX_X_OFFSET_FROM_BASE
                 + (torch.rand(batch_size, device=self.device) - 0.5)
                 * 2
                 * self.BOX_X_JITTER
@@ -257,6 +271,7 @@ class MyDualBoxRotationEnv(BaseEnv):
                 dtype=torch.float32,
             )
             positions = torch.stack((x_center, y_center, z_center), dim=-1)
+            positions = self._bimanual_center_tensor_to_world(positions)
             theta = torch.zeros(
                 batch_size, device=self.device, dtype=torch.float32
             )
@@ -265,12 +280,19 @@ class MyDualBoxRotationEnv(BaseEnv):
             self._update_initial_pushpoints(env_idx, positions, orientations)
             self._reset_rotation_buffers(env_idx, theta)
 
-    def _pose_to_6d(self, pose: Pose) -> torch.Tensor:
+    def _pose_to_6d(self, pose: Pose, *, center_frame: bool = False) -> torch.Tensor:
         matrix = pose.to_transformation_matrix()[..., :3, :3]
         position = pose.p
         if position.ndim == 1:
             position = position.unsqueeze(0)
             matrix = matrix.unsqueeze(0)
+        if center_frame:
+            center = torch.tensor(
+                self.bimanual_center_pose.p,
+                dtype=position.dtype,
+                device=position.device,
+            )
+            position = position - center
         return torch.cat([position, matrix[..., :, 0], matrix[..., :, 1]], dim=-1)
 
     @dataclass
@@ -370,12 +392,18 @@ class MyDualBoxRotationEnv(BaseEnv):
 
         left_tcp_pose = Pose.create(self.agent.agents[1].tcp.pose, device=self.device)
         right_tcp_pose = Pose.create(self.agent.agents[0].tcp.pose, device=self.device)
-        obs["left_tcp_pose_6d"] = self._pose_to_6d(left_tcp_pose)
-        obs["right_tcp_pose_6d"] = self._pose_to_6d(right_tcp_pose)
+        obs["left_tcp_pose_6d_from_bimanual_center"] = self._pose_to_6d(
+            left_tcp_pose, center_frame=True
+        )
+        obs["right_tcp_pose_6d_from_bimanual_center"] = self._pose_to_6d(
+            right_tcp_pose, center_frame=True
+        )
 
         self._ensure_pushpoint_buffers()
         box_pose = Pose.create(self.box.pose, device=self.device)
-        obs["box_pose_6d"] = self._pose_to_6d(box_pose)
+        obs["box_pose_6d_from_bimanual_center"] = self._pose_to_6d(
+            box_pose, center_frame=True
+        )
 
         box_center = box_pose.p
         box_center = _ensure_batch(box_center)
@@ -386,9 +414,48 @@ class MyDualBoxRotationEnv(BaseEnv):
         world_pushpoint_left = box_center + torch.einsum(
             "bij,bj->bi", rotation_current, self.pushpoint_local_left
         )
-        obs["pushpoint_left_world"] = world_pushpoint_left
-        obs["pushpoint_right_world"] = world_pushpoint_right
+        center_vec = torch.tensor(
+            self.bimanual_center_pose.p,
+            dtype=world_pushpoint_left.dtype,
+            device=world_pushpoint_left.device,
+        )
+        obs["pushpoint_left_from_bimanual_center"] = (
+            world_pushpoint_left - center_vec
+        )
+        obs["pushpoint_right_from_bimanual_center"] = (
+            world_pushpoint_right - center_vec
+        )
         return obs
+
+    def _compute_bimanual_center_pose(self) -> sapien.Pose:
+        base_right = torch.tensor(
+            [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
+            dtype=torch.float32,
+        )
+        base_left = torch.tensor(
+            [ROBOT_BASE_X_OFFSET, SECONDARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
+            dtype=torch.float32,
+        )
+        center = 0.5 * (base_right + base_left)
+        return sapien.Pose(p=center.tolist())
+
+    def _bimanual_center_point_to_world(self, point):
+        center = self.bimanual_center_pose.p
+        return [
+            center[0] + point[0],
+            center[1] + point[1],
+            center[2] + point[2],
+        ]
+
+    def _bimanual_center_tensor_to_world(self, tensor: torch.Tensor) -> torch.Tensor:
+        center = torch.tensor(
+            self.bimanual_center_pose.p, dtype=tensor.dtype, device=tensor.device
+        )
+        if tensor.ndim == 1:
+            return tensor + center
+        if tensor.ndim == 2:
+            return tensor + center.unsqueeze(0)
+        raise ValueError("Expected tensor to have rank 1 or 2.")
 
     def _pushpoint_tracking_reward(
         self,
@@ -564,12 +631,9 @@ class MyDualBoxRotationEnv(BaseEnv):
             direction = torch.sign(push_x)
             progress = direction * (tcp_x - push_x)
             progress = progress * direction.abs()
-            progress = torch.clamp(
-                progress,
-                min=-self.TCP_LEAD_SATURATION,
-                max=self.TCP_LEAD_SATURATION,
-            )
-            return progress / self.TCP_LEAD_SATURATION
+            progress = torch.clamp(progress, max=self.TCP_LEAD_SATURATION)
+            scale = self.TCP_LEAD_SATURATION + 1e-8
+            return torch.tanh((progress / scale)*0.35) #最高でも0.35点に
 
         lead_right = _lead(push_right_local, right_local)
         lead_left = _lead(push_left_local, left_local)
@@ -614,15 +678,21 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.right_tcp_pos,
         )
 
-        reward = (
-            pushpoint_reward
-            + rotation_reward* pushpoint_stage
-            - translation_penalty
-            - intrusion_penalty* (1.0 - pushpoint_stage)
-            + self.TCP_LEAD_WEIGHT * tcp_lead_reward *(1.0 - pushpoint_stage)
-        )
+        reward_pushpoint = pushpoint_reward
+        reward_rotation = rotation_reward * pushpoint_stage
+        reward_translation = -translation_penalty
+        reward_intrusion = -intrusion_penalty * (1.0 - pushpoint_stage)
+        reward_tcp_lead = tcp_lead_reward * (1.0 - pushpoint_stage)
 
+        reward = reward_pushpoint + reward_rotation + reward_translation + reward_tcp_lead
+        # reward_intrusion is tracked in info but currently excluded from the final sum.
 
+        info["reward_pushpoint"] = reward_pushpoint.detach().cpu()
+        info["reward_rotation"] = reward_rotation.detach().cpu()
+        info["reward_translation"] = reward_translation.detach().cpu()
+        info["reward_intrusion"] = reward_intrusion.detach().cpu()
+        info["reward_tcp_lead"] = reward_tcp_lead.detach().cpu()
+        info["reward_total"] = reward.detach().cpu()
 
 
         info["pushpoint_left_distance"] = push_info["distance_left"].detach().cpu()
@@ -651,22 +721,19 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["box_rotation_target_delta"] = rotation_info[
             "yaw_rotation_target_delta_deg"
         ].detach().cpu()
-        info["tcp_lead_reward_raw"] = tcp_lead_info["tcp_lead_reward"].detach().cpu()
-        info["tcp_lead_reward"] = (
-            self.TCP_LEAD_WEIGHT * tcp_lead_info["tcp_lead_reward"]
-        ).detach().cpu()
+        info["tcp_lead_reward"] = tcp_lead_info["tcp_lead_reward"].detach().cpu()
         info["tcp_lead_right_component"] = tcp_lead_info[
             "tcp_lead_right_component"
         ].detach().cpu()
         info["tcp_lead_left_component"] = tcp_lead_info[
             "tcp_lead_left_component"
         ].detach().cpu()
-        if reward.ndim == 0:
-            reward = reward.unsqueeze(0)
-        return reward.to(self.device)
         info["box_intrusion_depth_left"] = intrusion_info[
             "intrusion_depth_left"
         ].detach().cpu()
         info["box_intrusion_depth_right"] = intrusion_info[
             "intrusion_depth_right"
         ].detach().cpu()
+        if reward.ndim == 0:
+            reward = reward.unsqueeze(0)
+        return reward.to(self.device)

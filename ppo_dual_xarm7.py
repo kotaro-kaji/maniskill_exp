@@ -386,11 +386,23 @@ if __name__ == "__main__":
             num_episodes = 0
             for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
+                    if eval_info_logger is not None:
+                        eval_info_logger.log({"obs": eval_obs}, eval_step)
                     eval_action = agent.get_action(eval_obs, deterministic=True)
                     if args.print_eval_actions:
                         print(f"[eval] step={eval_step} actions={eval_action.detach().cpu().numpy()}")
                     eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(eval_action)
                     if eval_info_logger is not None:
+                        eval_info_logger.log({"actions": eval_action}, eval_step)
+                        eval_info_logger.log(
+                            {
+                                "rewards": eval_rew,
+                                "terminations": eval_terminations,
+                                "truncations": eval_truncations,
+                                "next_obs": eval_obs,
+                            },
+                            eval_step,
+                        )
                         eval_info_logger.log(eval_infos, eval_step)
                     if "final_info" in eval_infos:
                         mask = eval_infos["_final_info"]
