@@ -679,7 +679,12 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
 
         reward_pushpoint = pushpoint_reward
-        reward_rotation = rotation_reward * pushpoint_stage
+
+        #負の回転は常に抑制、正の回転はpushpoint_stageのときだけ
+        if rotation_reward > 0.0:
+            reward_rotation = rotation_reward * pushpoint_stage
+        else:
+            reward_rotation = rotation_reward
         reward_translation = -translation_penalty
         reward_intrusion = -intrusion_penalty * (1.0 - pushpoint_stage)
         reward_tcp_lead = tcp_lead_reward * (1.0 - pushpoint_stage)
