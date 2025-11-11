@@ -12,7 +12,7 @@ from mani_skill.utils import sapien_utils
 @register_agent()
 class Xarm7BallEE(BaseAgent):
     uid = "xarm7_ball_ee"
-    urdf_path = "xarm7_ball_ee.urdf"
+    urdf_path = "xarm7_1305_realsense.urdf"
     # Use the ball link we added in the URDF as the TCP
     ee_link_name = "link_tcp_ball"
 

@@ -27,6 +27,22 @@ from scenebuilders.xarm7_table_scene_builder import (
 )
 
 
+def smoothstep(x: torch.Tensor) -> torch.Tensor:
+    """
+    Smootherstep function (0 < x < 1)
+    f(x) = 6x^5 - 15x^4 + 10x^3
+    Properties:
+      f(0)=0, f(1)=1
+      f'(0)=f'(1)=0
+      f''(x) changes sign at x=0.5
+      smoother near endpoints than smoothstep
+    """
+    if not torch.is_tensor(x):
+        x = torch.tensor(x, dtype=torch.float32)
+    x = torch.clamp(x, 0.0, 1.0)
+    return 6 * x**5 - 15 * x**4 + 10 * x**3
+
+
 @register_env("MyDualBoxRotation-v0", max_episode_steps=200)
 class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
@@ -40,7 +56,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
-    BOX_CENTER_PENALTY_SCALE = 5.0
+    BOX_CENTER_MAX_OFFSET = 0.15
+    BOX_CENTER_PENALTY_WEIGHT = 0.5
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
     BOX_INTRUSION_MARGIN = 0.025
     BOX_INTRUSION_SCALE = 2.0
@@ -324,9 +341,16 @@ class MyDualBoxRotationEnv(BaseEnv):
         world_pushpoint_left = current_box_center + torch.einsum(
             "bij,bj->bi", rotation_current, self.pushpoint_local_left
         )
-        inversion_conditions = (theta >= 0.0) & (theta < 179.0) | (theta >= 359.0)
-        current_pushpoint_by_right = world_pushpoint_right
-        current_pushpoint_by_left = world_pushpoint_left
+        normal_conditions = (theta >= 0.0) & (theta < 179.0) | (theta >= 359.0)
+        inversion_conditions = ~normal_conditions 
+        inversion_conditions_mask = inversion_conditions.unsqueeze(-1)
+        current_pushpoint_by_right = torch.where(
+            inversion_conditions_mask, world_pushpoint_left,  world_pushpoint_right
+        )
+
+        current_pushpoint_by_left = torch.where(
+            inversion_conditions_mask, world_pushpoint_right, world_pushpoint_left
+        )
 
         left_tcp_pos = Pose.create(
             self.agent.agents[1].tcp.pose, device=self.device
@@ -516,11 +540,15 @@ class MyDualBoxRotationEnv(BaseEnv):
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         translation_vector = current_box_center - self.initial_box_center
         translation_distance = torch.linalg.norm(translation_vector, dim=-1)
-        translation_penalty = torch.tanh(
-            self.BOX_CENTER_PENALTY_SCALE * translation_distance
+        normalized_distance = torch.clamp(
+            translation_distance / self.BOX_CENTER_MAX_OFFSET, 0.0, 1.0
         )
+        normalized_penalty = smoothstep(normalized_distance)
+        translation_penalty = self.BOX_CENTER_PENALTY_WEIGHT * normalized_penalty
         info = {
             "translation_distance": translation_distance,
+            "normalized_translation_distance": normalized_distance,
+            "normalized_translation_penalty": normalized_penalty,
             "translation_penalty": translation_penalty,
         }
         return translation_penalty, info
@@ -680,16 +708,21 @@ class MyDualBoxRotationEnv(BaseEnv):
 
         reward_pushpoint = pushpoint_reward
 
-        #負の回転は常に抑制、正の回転はpushpoint_stageのときだけ
-        if rotation_reward > 0.0:
-            reward_rotation = rotation_reward * pushpoint_stage
-        else:
-            reward_rotation = rotation_reward
+        # 負の回転は常に抑制、正の回転はpushpoint_stageのときだけ（envごとに判定）
+        positive_rotation = rotation_reward > 0.0
+        reward_rotation = torch.where(
+            positive_rotation, rotation_reward * pushpoint_stage, rotation_reward
+        )
         reward_translation = -translation_penalty
         reward_intrusion = -intrusion_penalty * (1.0 - pushpoint_stage)
         reward_tcp_lead = tcp_lead_reward * (1.0 - pushpoint_stage)
 
-        reward = reward_pushpoint + reward_rotation + reward_translation + reward_tcp_lead
+        #腕を振り回すというだけの報酬も用意してみました。
+        #reward = (torch.linalg.norm(self.agent.agents[0].tcp.get_linear_velocity(), dim = -1) + torch.linalg.norm(self.agent.agents[1].tcp.get_linear_velocity(), dim = -1))/20.0 
+        
+        #このreward_rotationとrotation_rewardは異なる。後者のほうが生の報酬です。
+        reward = rotation_reward + reward_pushpoint
+        #reward = reward_pushpoint + reward_rotation + reward_translation + reward_tcp_lead
         # reward_intrusion is tracked in info but currently excluded from the final sum.
 
         info["reward_pushpoint"] = reward_pushpoint.detach().cpu()
@@ -697,7 +730,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["reward_translation"] = reward_translation.detach().cpu()
         info["reward_intrusion"] = reward_intrusion.detach().cpu()
         info["reward_tcp_lead"] = reward_tcp_lead.detach().cpu()
-        info["reward_total"] = reward.detach().cpu()
+        info["rewards_t"] = reward.detach().cpu()
 
 
         info["pushpoint_left_distance"] = push_info["distance_left"].detach().cpu()
@@ -707,6 +740,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["pushpoint_stage_complete"] = push_info[
             "pushpoint_stage_complete"
         ].detach().cpu()
+        info["pushpoint_left_world"] = context.target_pushpoint_left.detach().cpu()
+        info["pushpoint_right_world"] = context.target_pushpoint_right.detach().cpu()
         info["box_translation_distance"] = translation_info[
             "translation_distance"
         ].detach().cpu()

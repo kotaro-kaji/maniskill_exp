@@ -36,6 +36,7 @@ warnings.filterwarnings(
 
 import meshcat
 import meshcat.geometry as g
+import trimesh
 from urdfpy import URDF, utils as urdf_utils, urdf as urdf_module
 import argparse
 
@@ -62,6 +63,23 @@ def _patch_get_filename(package_map):
     urdf_module.get_filename = _patched
 
 
+def _patch_cylinder_mesh_generation():
+    """Work around urdfpy<=0.0.22 bug where Cylinder.meshes is broken."""
+
+    cylinder_cls = getattr(urdf_module, "Cylinder", None)
+    if cylinder_cls is None:
+        return
+
+    def _fixed_meshes(self):
+        if self._meshes is None or len(self._meshes) == 0:
+            self._meshes = [
+                trimesh.creation.cylinder(radius=self.radius, height=self.length)
+            ]
+        return self._meshes
+
+    cylinder_cls.meshes = property(_fixed_meshes)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Visualize a URDF with Meshcat.")
     parser.add_argument(
@@ -79,6 +97,7 @@ def main():
 
     package_map = {"xarm_description": str(base_dir / "xarm_description")}
     _patch_get_filename(package_map)
+    _patch_cylinder_mesh_generation()
 
     robot = URDF.load(str(urdf_path))
     vis = meshcat.Visualizer().open()
