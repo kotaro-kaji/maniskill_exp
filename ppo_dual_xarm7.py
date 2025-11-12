@@ -45,11 +45,24 @@ class InfoDirectoryLogger:
         self.num_envs = num_envs
         self._files = {}
         self._writers = {}
+        self._column_names = {}
+
+    def register_field(self, key: str, column_names):
+        """Register human-readable column names for a specific key."""
+        if column_names is None:
+            self._column_names.pop(key, None)
+            return
+        self._column_names[key] = list(column_names)
 
     def log(self, infos: dict, step_idx: int):
         for key, value in infos.items():
             if key.startswith("_") or key in ("final_info", "final_observation"):
                 continue
+            column_names = None
+            if isinstance(value, tuple) and len(value) == 2:
+                value, column_names = value
+                if column_names is not None:
+                    self.register_field(key, column_names)
             array = self._to_numpy(value)
             if array is None:
                 continue
@@ -72,11 +85,14 @@ class InfoDirectoryLogger:
         directory.mkdir(parents=True, exist_ok=True)
         handle_key = (key, env_id)
         row_array = np.asarray(row).reshape(-1)
+        column_headers = self._column_names.get(key)
+        if column_headers is None or len(column_headers) != len(row_array):
+            column_headers = [f"{key}_{i}" for i in range(len(row_array))]
         if handle_key not in self._writers:
             file_path = directory / f"env_{env_id:03d}.csv"
             f = open(file_path, "w", newline="")
             writer = csv.writer(f)
-            headers = ["step"] + [f"value_{i}" for i in range(len(row_array))]
+            headers = ["step"] + column_headers
             writer.writerow(headers)
             self._files[handle_key] = f
             self._writers[handle_key] = writer
@@ -386,8 +402,6 @@ if __name__ == "__main__":
             num_episodes = 0
             for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
-                    if eval_info_logger is not None:
-                        eval_info_logger.log({"obs": eval_obs}, eval_step)
                     eval_action = agent.get_action(eval_obs, deterministic=True)
                     if args.print_eval_actions:
                         print(f"[eval] step={eval_step} actions={eval_action.detach().cpu().numpy()}")
@@ -470,9 +484,24 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
+            candidate_next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
             global_step += args.num_envs
-            next_done = torch.logical_or(terminations, truncations).to(torch.float32)
+
+            # Validate rollout tensors before committing them to buffers.
+            invalid_obs = ~torch.isfinite(candidate_next_obs).view(args.num_envs, -1).all(dim=1)
+            invalid_reward = ~torch.isfinite(reward.view(args.num_envs, -1)).all(dim=1)
+            if invalid_obs.any() or invalid_reward.any():
+                print(f"[warn] rollout step produced invalid tensors at global_step={global_step}; resetting environments")
+                candidate_next_obs, _ = envs.reset()
+                reward = torch.zeros_like(reward)
+                terminations = torch.zeros_like(terminations)
+                truncations = torch.zeros_like(truncations)
+                infos = {}
+                next_done = torch.zeros(args.num_envs, device=device)
+            else:
+                next_done = torch.logical_or(terminations, truncations).to(torch.float32)
+
+            next_obs = candidate_next_obs
             rewards[step] = reward.view(-1) * args.reward_scale
 
             if "final_info" in infos:
@@ -533,6 +562,14 @@ if __name__ == "__main__":
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
+
+        # Final sanity check before optimization to avoid silently propagating NaNs/Infs.
+        if not torch.isfinite(b_obs).all():
+            raise RuntimeError("non-finite observations detected in rollout buffer")
+        if not torch.isfinite(b_actions).all():
+            raise RuntimeError("non-finite actions detected in rollout buffer")
+        if not torch.isfinite(b_returns).all() or not torch.isfinite(b_advantages).all():
+            raise RuntimeError("non-finite returns/advantages detected in rollout buffer")
 
         # Optimizing the policy and value network
         agent.train()
