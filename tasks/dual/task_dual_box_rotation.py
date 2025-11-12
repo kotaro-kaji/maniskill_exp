@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 import torch
@@ -13,6 +13,7 @@ from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 from mani_skill.utils.structs.pose import Pose
+from mani_skill.utils.common import flatten_dict_keys, flatten_state_dict, to_tensor
 from robotagents.xarm_ball_ee import Xarm7BallEE
 
 
@@ -65,6 +66,7 @@ class MyDualBoxRotationEnv(BaseEnv):
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
+        self._flat_obs_column_names: Optional[List[str]] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -406,6 +408,56 @@ class MyDualBoxRotationEnv(BaseEnv):
             box_rotation_matrix=rotation_current,
         )
 
+    def _log_observation_to_info(self, info: Dict[str, Any]):
+        """Copy structured observation entries into info so they can be logged with names."""
+        if info is None:
+            return
+        try:
+            obs_state = self._get_obs_state_dict(info)
+        except Exception:
+            return
+        flat_tensor = flatten_state_dict(obs_state, use_torch=True, device=self.device)
+        column_names = self._get_obs_column_names(obs_state)
+        info["obs_flat"] = (flat_tensor.detach().cpu(), column_names)
+        flat_obs = flatten_dict_keys(obs_state)
+        for key, value in flat_obs.items():
+            if value is None:
+                continue
+            if isinstance(value, torch.Tensor):
+                tensor = value
+            else:
+                try:
+                    tensor = torch.as_tensor(value, device=self.device)
+                except Exception:
+                    continue
+            info[f"obs/{key}"] = tensor.detach().cpu()
+
+    def _get_obs_column_names(self, obs_state: Dict[str, Any]) -> List[str]:
+        if self._flat_obs_column_names is None:
+            columns: List[str] = []
+            self._collect_obs_columns(obs_state, prefix="", out=columns)
+            self._flat_obs_column_names = columns
+        return self._flat_obs_column_names
+
+    def _collect_obs_columns(self, value: Any, prefix: str, out: List[str]):
+        if isinstance(value, dict):
+            for key, subvalue in value.items():
+                new_prefix = f"{prefix}{key}" if not prefix else f"{prefix}/{key}"
+                self._collect_obs_columns(subvalue, new_prefix, out)
+            return
+        tensor = to_tensor(value, device=self.device)
+        if tensor.numel() == 0:
+            return
+        if tensor.ndim <= 1:
+            out.append(prefix)
+            return
+        feature_dim = tensor.shape[-1]
+        if feature_dim == 1:
+            out.append(prefix)
+            return
+        for i in range(feature_dim):
+            out.append(f"{prefix}_{i}")
+
     def _get_obs_extra(self, info: Dict[str, Any]):
         obs = {}
         if not isinstance(self.agent, MultiAgent):
@@ -681,6 +733,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             return torch.zeros(self.num_envs, device=self.device)
 
         context = self._gather_reward_context(info)
+        self._log_observation_to_info(info)
 
 
         pushpoint_reward, push_info, pushpoint_stage = self._pushpoint_tracking_reward(

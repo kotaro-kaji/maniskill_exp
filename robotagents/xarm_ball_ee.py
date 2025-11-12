@@ -16,9 +16,7 @@ class Xarm7BallEE(BaseAgent):
     # Use the ball link we added in the URDF as the TCP
     ee_link_name = "link_tcp_ball"
 
-    # 初期位置これで。
-    # Note: This articulation has 13 active DOFs (7 arm + 6 gripper joints).
-    # We set all gripper joints to the same opening value.
+    # ここでinit_qposを設定。これに基づいてhome姿勢を設定。 
     init_qpos = np.asarray(
         [
             0.0,
@@ -39,7 +37,7 @@ class Xarm7BallEE(BaseAgent):
         dtype=np.float32,
     )
 
-    # Provide a convenient keyframe for test.py visualization
+    #RoboManipBaselineにおける初期姿勢との関連性はなし。
     keyframes = dict(
         home=Keyframe(qpos=init_qpos.copy(), pose=sapien.Pose([0, 0, 0]))
     )
@@ -55,25 +53,12 @@ class Xarm7BallEE(BaseAgent):
             "joint6",
             "joint7",
         ]
-        # Active gripper joints in this URDF
-        self.gripper_joint_names = [
-            "drive_joint",
-            "left_inner_knuckle_joint",
-            "right_outer_knuckle_joint",
-            "right_inner_knuckle_joint",
-            "left_finger_joint",
-            "right_finger_joint",
-        ]
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
         self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 110))
         self.arm_damping = float(os.getenv("XARM_ARM_KD", 8))
         self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 100))
-        # Gripper (driver + mimics)
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1.5))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 0.5))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.3)) #when it's bigger than 1.0, the robot arm goes out of control.
 
         super().__init__(*args, **kwargs)
 
@@ -172,45 +157,13 @@ class Xarm7BallEE(BaseAgent):
             use_delta=True,
         )
 
-        # 1-DOF gripper via mimic controller
-        gripper_mimic_map = {
-            # mimic_joint: {"joint": control_joint}
-            "left_inner_knuckle_joint": {"joint": "drive_joint"},
-            "right_outer_knuckle_joint": {"joint": "drive_joint"},
-            "right_inner_knuckle_joint": {"joint": "drive_joint"},
-            "left_finger_joint": {"joint": "drive_joint"},
-            "right_finger_joint": {"joint": "drive_joint"},
-        }
-        gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
-            self.gripper_joint_names,
-            0.05,
-            0.84,
-            self.gripper_stiffness,
-            self.gripper_damping,
-            self.gripper_force_limit,
-            normalize_action=False,
-        )
-        gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
-        gripper_pd_joint_delta_pos_mimic = PDJointPosMimicControllerConfig(
-            self.gripper_joint_names,
-            lower = -0.1,
-            upper = 0.1,
-            stiffness = self.gripper_stiffness,
-            damping =  self.gripper_damping,
-            force_limit = self.gripper_force_limit,
-            use_delta=True,
-        )
-        gripper_pd_joint_delta_pos_mimic.mimic = gripper_mimic_map
-
         controller_configs = dict(
             pd_joint_pos=dict(
-                arm=arm_pd_joint_pos,
-                gripper=gripper_pd_joint_pos_mimic,
+                arm=arm_pd_joint_pos
                 #balance_passive_force=False
             ),
             pd_joint_delta_pos=dict(
-                arm=arm_pd_joint_delta_pos,
-                gripper=gripper_pd_joint_delta_pos_mimic,
+                arm=arm_pd_joint_delta_pos
                 #balance_passive_force=False
             ),
         )
