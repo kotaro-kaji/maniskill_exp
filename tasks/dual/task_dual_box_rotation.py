@@ -5,6 +5,7 @@ import torch
 import sapien
 
 from mani_skill.agents.multi_agent import MultiAgent
+from mani_skill.agents.utils import get_active_joint_indices
 
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils.registration import register_env
@@ -49,7 +50,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
 
-    BOX_HALF_SIZE = (0.06, 0.09, 0.06)
+    
+    BOX_HALF_SIZE = (0.2178*0.5, 0.2882*0.5, 0.1125*0.5)
     BOX_DENSITY = 200.0
     BOX_X_OFFSET_FROM_BASE = 0.43
     BOX_Y_JITTER = 0.05
@@ -67,10 +69,12 @@ class MyDualBoxRotationEnv(BaseEnv):
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
         self._flat_obs_column_names: Optional[List[str]] = None
+        self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
         super()._load_agent(options, [sapien.Pose(p=[0,-1,0]), sapien.Pose(p=[0,1,0])])
+        self._configure_observed_joint_indices()
         #super()._load_agent(options, sapien.Pose[p=])
 
     @property
@@ -104,7 +108,7 @@ class MyDualBoxRotationEnv(BaseEnv):
                 [
                     self.BOX_X_OFFSET_FROM_BASE,
                     0.0,
-                    self.BOX_HALF_SIZE[2] * 2,
+                    self.BOX_HALF_SIZE[2] + 1e-2,
                 ]
             )
         )
@@ -140,6 +144,40 @@ class MyDualBoxRotationEnv(BaseEnv):
         else:
             self.pushpoint_left_site = None
             self.pushpoint_right_site = None
+
+    def _configure_observed_joint_indices(self):
+        self._agent_obs_joint_indices = dict()
+        if not isinstance(self.agent, MultiAgent):
+            return
+        for idx, sub_agent in enumerate(self.agent.agents):
+            key = f"{sub_agent.uid}-{idx}"
+            indices = self._build_agent_joint_indices(sub_agent)
+            if indices is None:
+                if hasattr(sub_agent, "_obs_joint_indices"):
+                    delattr(sub_agent, "_obs_joint_indices")
+                continue
+            self._agent_obs_joint_indices[key] = indices
+            sub_agent._obs_joint_indices = indices
+
+    def _build_agent_joint_indices(self, sub_agent) -> Optional[torch.Tensor]:
+        observed_joint_names: List[str] = []
+        arm_joint_names = getattr(sub_agent, "arm_joint_names", None)
+        if arm_joint_names is not None:
+            observed_joint_names.extend(list(arm_joint_names))
+        gripper_joint_names = getattr(sub_agent, "gripper_joint_names", None)
+        if gripper_joint_names:
+            drive_joint = gripper_joint_names[0]  # mimicチェーンの代表として0番目を観測へ残す
+            if drive_joint not in observed_joint_names:
+                observed_joint_names.append(drive_joint)
+        if not observed_joint_names:
+            return None
+        return get_active_joint_indices(
+            sub_agent.robot, observed_joint_names
+        ).long()
+
+    def _clear(self):
+        super()._clear()
+        self._agent_obs_joint_indices = dict()
 
     def _ensure_pushpoint_buffers(self):
         num_envs = getattr(self, "num_envs", 1)
@@ -457,6 +495,47 @@ class MyDualBoxRotationEnv(BaseEnv):
             return
         for i in range(feature_dim):
             out.append(f"{prefix}_{i}")
+
+    def _get_obs_agent(self):
+        obs = super()._get_obs_agent()
+        if not isinstance(obs, dict):
+            return obs
+        index_map = getattr(self, "_agent_obs_joint_indices", None)
+        if not index_map:
+            return obs
+        filtered = {}
+        for key, value in obs.items():
+            indices = index_map.get(key)
+            if indices is None:
+                filtered[key] = value
+                continue
+            filtered[key] = self._filter_agent_obs_entry(value, indices)
+        return filtered
+
+    def _filter_agent_obs_entry(
+        self, obs_entry: Any, indices: torch.Tensor
+    ) -> Any:
+        if not isinstance(obs_entry, dict):
+            return obs_entry
+        filtered_entry = dict(obs_entry)
+        if "qpos" in obs_entry and obs_entry["qpos"] is not None:
+            filtered_entry["qpos"] = self._index_select_joint_tensor(
+                obs_entry["qpos"], indices
+            )
+        if "qvel" in obs_entry and obs_entry["qvel"] is not None:
+            filtered_entry["qvel"] = self._index_select_joint_tensor(
+                obs_entry["qvel"], indices
+            )
+        return filtered_entry
+
+    def _index_select_joint_tensor(
+        self, tensor: torch.Tensor, indices: torch.Tensor
+    ) -> torch.Tensor:
+        if tensor is None:
+            return tensor
+        idx = indices.to(device=tensor.device, dtype=torch.long)
+        dim = tensor.dim() - 1
+        return tensor.index_select(dim, idx)
 
     def _get_obs_extra(self, info: Dict[str, Any]):
         obs = {}

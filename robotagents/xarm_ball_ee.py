@@ -12,7 +12,7 @@ from mani_skill.utils import sapien_utils
 @register_agent()
 class Xarm7BallEE(BaseAgent):
     uid = "xarm7_ball_ee"
-    urdf_path = "xarm7_1305_realsense.urdf"
+    urdf_path = "xarm7_1305_left_ball_ee.urdf"
     # Use the ball link we added in the URDF as the TCP
     ee_link_name = "link_tcp_ball"
 
@@ -53,7 +53,15 @@ class Xarm7BallEE(BaseAgent):
             "joint6",
             "joint7",
         ]
-
+        
+        self.gripper_joint_names = [
+            "drive_joint",
+            "left_inner_knuckle_joint",
+            "right_outer_knuckle_joint",
+            "right_inner_knuckle_joint",
+            "left_finger_joint",
+            "right_finger_joint",
+        ]
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
         self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 110))
