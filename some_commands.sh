@@ -109,6 +109,13 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
   --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99
 
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99
+
+python ppo_rollout_dual_xarm7.py \
+--checkpoint path/to/ckpt.pt --env-id MyDualBoxRotation-v0
+
 
 python sac_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
   --num_envs=128 --utd=0.5 --buffer_size=500_000 \
