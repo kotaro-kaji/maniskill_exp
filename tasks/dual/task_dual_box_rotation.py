@@ -27,6 +27,7 @@ from scenebuilders.xarm7_table_scene_builder import (
     PEDESTAL_HEIGHT,
     ROBOT_BASE_X_OFFSET,
 )
+from .get_obs_extra import get_obs_extra_full, get_obs_extra_ablation
 
 
 def smoothstep(x: torch.Tensor) -> torch.Tensor:
@@ -49,6 +50,7 @@ def smoothstep(x: torch.Tensor) -> torch.Tensor:
 class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
+    _obs_extra_fn = staticmethod(get_obs_extra_full)
 
     
     BOX_HALF_SIZE = (0.2178*0.5, 0.2882*0.5, 0.1125*0.5)
@@ -538,49 +540,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         return tensor.index_select(dim, idx)
 
     def _get_obs_extra(self, info: Dict[str, Any]):
-        obs = {}
-        if not isinstance(self.agent, MultiAgent):
-            return obs
-
-        def _ensure_batch(t: torch.Tensor) -> torch.Tensor:
-            return t.unsqueeze(0) if t.ndim == 1 else t
-
-        left_tcp_pose = Pose.create(self.agent.agents[1].tcp.pose, device=self.device)
-        right_tcp_pose = Pose.create(self.agent.agents[0].tcp.pose, device=self.device)
-        obs["left_tcp_pose_6d_from_bimanual_center"] = self._pose_to_6d(
-            left_tcp_pose, center_frame=True
-        )
-        obs["right_tcp_pose_6d_from_bimanual_center"] = self._pose_to_6d(
-            right_tcp_pose, center_frame=True
-        )
-
-        self._ensure_pushpoint_buffers()
-        box_pose = Pose.create(self.box.pose, device=self.device)
-        obs["box_pose_6d_from_bimanual_center"] = self._pose_to_6d(
-            box_pose, center_frame=True
-        )
-
-        box_center = box_pose.p
-        box_center = _ensure_batch(box_center)
-        rotation_current = quaternion_to_matrix(box_pose.q)
-        world_pushpoint_right = box_center + torch.einsum(
-            "bij,bj->bi", rotation_current, self.pushpoint_local_right
-        )
-        world_pushpoint_left = box_center + torch.einsum(
-            "bij,bj->bi", rotation_current, self.pushpoint_local_left
-        )
-        center_vec = torch.tensor(
-            self.bimanual_center_pose.p,
-            dtype=world_pushpoint_left.dtype,
-            device=world_pushpoint_left.device,
-        )
-        obs["pushpoint_left_from_bimanual_center"] = (
-            world_pushpoint_left - center_vec
-        )
-        obs["pushpoint_right_from_bimanual_center"] = (
-            world_pushpoint_right - center_vec
-        )
-        return obs
+        return self._obs_extra_fn(self, info)
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
         base_right = torch.tensor(
@@ -853,7 +813,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         #reward = (torch.linalg.norm(self.agent.agents[0].tcp.get_linear_velocity(), dim = -1) + torch.linalg.norm(self.agent.agents[1].tcp.get_linear_velocity(), dim = -1))/20.0 
         
         #このreward_rotationとrotation_rewardは異なる。後者のほうが生の報酬です。
-        reward = rotation_reward + reward_pushpoint
+        reward = rotation_reward + reward_pushpoint + reward_translation + reward_tcp_lead
         #reward = reward_pushpoint + reward_rotation + reward_translation + reward_tcp_lead
         # reward_intrusion is tracked in info but currently excluded from the final sum.
 
@@ -909,3 +869,10 @@ class MyDualBoxRotationEnv(BaseEnv):
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
         return reward.to(self.device)
+
+
+@register_env("MyDualBoxRotationAblated-v0", max_episode_steps=200)
+class MyDualBoxRotationAblatedEnv(MyDualBoxRotationEnv):
+    """Variant with reduced observation (no TCP or pushpoint features)."""
+
+    _obs_extra_fn = staticmethod(get_obs_extra_ablation)

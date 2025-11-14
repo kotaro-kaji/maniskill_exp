@@ -7,6 +7,8 @@ xacro  src/xarm_ros2/xarm_description/urdf/xarm_device.urdf.xacro   dof:=7 robot
  -o xarm7_1305_left.urdf
 
 研究室にある右手のurdfも作成しましたが、rightと全く同じになりました。
+左手側xArm7_1305のRobotSNはXS130508D43A0Cです。
+右手側xArm7_1305のRobotSNはXS130508D43A11です。
 
 
 

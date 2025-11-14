@@ -1,12 +1,16 @@
 import gymnasium as gym
 import mani_skill.envs
 
-
+from collections import OrderedDict
+import torch
 import task_pushcube_beatiful
 import tasks.dual.task_dual_simple
+import tasks.dual.task_dual_box_rotation
+import numpy as np
 
 #env_id = "MyPushCube-v1"
 env_id = "MyDualSimple-v0"
+env_id = "MyDualBoxRotation-v0"
 #env_id = "TwoRobotPickCube-v1"
 
 env = gym.make(
@@ -25,7 +29,10 @@ obs, _ = env.reset(seed=0)
 done = False
 while True:
     action = env.action_space.sample()
-    obs, reward, terminated, truncated, info = env.step(action)
+    print(action)
+
+    zero_action = OrderedDict((k, np.zeros_like(v)) for k, v in action.items())
+    obs, reward, terminated, truncated, info = env.step(zero_action)
     #print(f"Step: {env.num_steps}")
     #print(f"Reward: {reward}, Terminated: {terminated}, Truncated: {truncated}")
     done = terminated or truncated
