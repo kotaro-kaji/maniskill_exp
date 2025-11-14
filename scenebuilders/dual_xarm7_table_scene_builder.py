@@ -11,9 +11,8 @@ from scenebuilders.xarm7_table_scene_builder import (
 )
 
 
-PRIMARY_ARM_Y_OFFSET = -0.3
-SECONDARY_ARM_Y_OFFSET = 0.3
-
+PRIMARY_ARM_Y_OFFSET = -0.3291
+SECONDARY_ARM_Y_OFFSET = 0.3291
 
 class DualXarm7TableSceneBuilder(Xarm7InitialRandomizationSceneBuilder):
     """Table scene builder that positions two xArm7 Ball-EE robots on the table."""
