@@ -645,16 +645,41 @@
     <parent link="xarm_gripper_base_link"/>
     <child link="link_tcp"/>
   </joint>
-  <link name="link_tcp_ball">
+  <link name="link_tcp_stick">
     <inertial>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="0.02109375"/>
-      <inertia ixx="7.59375E-06" ixy="0" ixz="0" iyy="7.59375E-06" iyz="0" izz="7.59375E-06"/>
+      <origin rpy="0 0 0" xyz="0 0.127406 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="1.935e-05" ixy="0" ixz="0" iyy="5.625e-06" iyz="0" izz="1.935e-05"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <sphere radius="0.03"/>
+        <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="Silver"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint_tcp_stick" type="fixed">
+    <origin rpy="1.5707963267948966 0 1.5707963267948966" xyz="0 0 0"/>
+    <parent link="link_tcp"/>
+    <child link="link_tcp_stick"/>
+  </joint>
+  <link name="link_tcp_ball">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.00625"/>
+      <inertia ixx="1.0E-06" ixy="0" ixz="0" iyy="1.0E-06" iyz="0" izz="1.0E-06"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.02"/>
       </geometry>
       <material name="Black"/>
     </visual>
@@ -666,8 +691,10 @@
     </collision>
   </link>
   <joint name="joint_tcp_ball" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <parent link="link_tcp"/>
+    <!-- stickのhalf_h = 0.0315, ballのradius = 0.02, KGB-40-M12ゴムボールのめり込み = 0.004,
+  　したがって、0.0315 + 0.02 - 0.004 = 0.0475   -->
+    <origin rpy="0 0 0" xyz="0 0.0475 0"/>  
+    <parent link="link_tcp_stick"/>
     <child link="link_tcp_ball"/>
   </joint>
   <transmission name="drive_joint_trans">
