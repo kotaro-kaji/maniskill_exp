@@ -1,8 +1,10 @@
+import csv
 from collections import defaultdict
 import os
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import gymnasium as gym
@@ -26,11 +28,85 @@ from task_joint_hold import MyJointHoldEnv
 from task_marker_align_official import MyEEAlignMarkerEnv
 import task_simple
 from task_pushcube_beatiful import MyPushCubeEnv
-
+from tasks.dual.task_dual_simple import MyDualSimpleEnv
+from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
-SIM_FREQUENCY_HZ = 250
-CONTROL_FREQUENCY_HZ = 50
+SIM_FREQUENCY_HZ = 100
+CONTROL_FREQUENCY_HZ = 20
+
+
+class InfoDirectoryLogger:
+    """Utility to dump per-key info streams into CSV files."""
+
+    def __init__(self, root_dir: str, num_envs: int):
+        self.root_dir = Path(root_dir)
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.num_envs = num_envs
+        self._files = {}
+        self._writers = {}
+        self._column_names = {}
+
+    def register_field(self, key: str, column_names):
+        """Register human-readable column names for a specific key."""
+        if column_names is None:
+            self._column_names.pop(key, None)
+            return
+        self._column_names[key] = list(column_names)
+
+    def log(self, infos: dict, step_idx: int):
+        for key, value in infos.items():
+            if key.startswith("_") or key in ("final_info", "final_observation"):
+                continue
+            column_names = None
+            if isinstance(value, tuple) and len(value) == 2:
+                value, column_names = value
+                if column_names is not None:
+                    self.register_field(key, column_names)
+            array = self._to_numpy(value)
+            if array is None:
+                continue
+            if array.ndim == 0:
+                array = np.repeat(array[None], self.num_envs, axis=0)
+            if array.shape[0] != self.num_envs:
+                continue
+            array = array.reshape(self.num_envs, -1)
+            for env_id in range(self.num_envs):
+                self._write_row(key, env_id, step_idx, array[env_id])
+
+    def close(self):
+        for file in self._files.values():
+            file.close()
+        self._files.clear()
+        self._writers.clear()
+
+    def _write_row(self, key: str, env_id: int, step_idx: int, row):
+        directory = self.root_dir / key
+        directory.mkdir(parents=True, exist_ok=True)
+        handle_key = (key, env_id)
+        row_array = np.asarray(row).reshape(-1)
+        column_headers = self._column_names.get(key)
+        if column_headers is None or len(column_headers) != len(row_array):
+            column_headers = [f"{key}_{i}" for i in range(len(row_array))]
+        if handle_key not in self._writers:
+            file_path = directory / f"env_{env_id:03d}.csv"
+            f = open(file_path, "w", newline="")
+            writer = csv.writer(f)
+            headers = ["step"] + column_headers
+            writer.writerow(headers)
+            self._files[handle_key] = f
+            self._writers[handle_key] = writer
+        writer = self._writers[handle_key]
+        row_values = row_array.tolist()
+        writer.writerow([step_idx] + row_values)
+
+    @staticmethod
+    def _to_numpy(value):
+        if isinstance(value, torch.Tensor):
+            return value.detach().cpu().numpy()
+        if isinstance(value, np.ndarray):
+            return value
+        return None
 
 
 @dataclass
@@ -61,7 +137,7 @@ class Args:
     """if toggled, prints the actions issued during evaluation"""
 
     # Algorithm specific arguments
-    env_id: str = "MyPushCube-v1"
+    env_id: str = "MyDualSimple-v0"
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""
@@ -226,13 +302,12 @@ if __name__ == "__main__":
     if isinstance(envs.action_space, gym.spaces.Dict):
         envs = FlattenActionSpaceWrapper(envs)
         eval_envs = FlattenActionSpaceWrapper(eval_envs)
+    info_output_root = None
     if args.capture_video:
         eval_output_dir = f"runs/{run_name}/videos"
         if args.evaluate:
             eval_output_dir = f"{os.path.dirname(args.checkpoint)}/test_videos"
         print(f"Saving eval videos to {eval_output_dir}")
-        
-
         if args.save_train_video_freq is not None:
             save_video_trigger = lambda x : (x // args.num_steps) % args.save_train_video_freq == 0
             envs = RecordEpisode(
@@ -251,6 +326,7 @@ if __name__ == "__main__":
             max_steps_per_video=args.num_eval_steps,
             video_fps=CONTROL_FREQUENCY_HZ,
         )
+        info_output_root = os.path.join(os.path.dirname(eval_output_dir), "info")
     envs = ManiSkillVectorEnv(envs, args.num_envs, ignore_terminations=not args.partial_reset, record_metrics=True)
     eval_envs = ManiSkillVectorEnv(eval_envs, args.num_eval_envs, ignore_terminations=not args.eval_partial_reset, record_metrics=True)
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
@@ -319,6 +395,10 @@ if __name__ == "__main__":
             print("Evaluating")
             eval_obs, _ = eval_envs.reset()
             eval_metrics = defaultdict(list)
+            eval_info_logger = None
+            if info_output_root is not None:
+                iter_info_dir = os.path.join(info_output_root, f"iter_{iteration:04d}")
+                eval_info_logger = InfoDirectoryLogger(iter_info_dir, args.num_eval_envs)
             num_episodes = 0
             for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
@@ -326,13 +406,26 @@ if __name__ == "__main__":
                     if args.print_eval_actions:
                         print(f"[eval] step={eval_step} actions={eval_action.detach().cpu().numpy()}")
                     eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(eval_action)
+                    if eval_info_logger is not None:
+                        eval_info_logger.log({"actions": eval_action}, eval_step)
+                        eval_info_logger.log(
+                            {
+                                "rewards": eval_rew,
+                                "terminations": eval_terminations,
+                                "truncations": eval_truncations,
+                                "next_obs": eval_obs,
+                            },
+                            eval_step,
+                        )
+                        eval_info_logger.log(eval_infos, eval_step)
                     if "final_info" in eval_infos:
                         mask = eval_infos["_final_info"]
                         num_episodes += mask.sum()
                         for k, v in eval_infos["final_info"]["episode"].items():
                             eval_metrics[k].append(v)
+            if eval_info_logger is not None:
+                eval_info_logger.close()
             print(f"Evaluated {args.num_eval_steps * args.num_eval_envs} steps resulting in {num_episodes} episodes")
-            print(f" mean reward = {reward.mean().item():.3f}")
             for k, v in eval_metrics.items():
                 mean = torch.stack(v).float().mean()
                 if logger is not None:
@@ -391,9 +484,24 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
+            candidate_next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
             global_step += args.num_envs
-            next_done = torch.logical_or(terminations, truncations).to(torch.float32)
+
+            # Validate rollout tensors before committing them to buffers.
+            invalid_obs = ~torch.isfinite(candidate_next_obs).view(args.num_envs, -1).all(dim=1)
+            invalid_reward = ~torch.isfinite(reward.view(args.num_envs, -1)).all(dim=1)
+            if invalid_obs.any() or invalid_reward.any():
+                print(f"[warn] rollout step produced invalid tensors at global_step={global_step}; resetting environments")
+                candidate_next_obs, _ = envs.reset()
+                reward = torch.zeros_like(reward)
+                terminations = torch.zeros_like(terminations)
+                truncations = torch.zeros_like(truncations)
+                infos = {}
+                next_done = torch.zeros(args.num_envs, device=device)
+            else:
+                next_done = torch.logical_or(terminations, truncations).to(torch.float32)
+
+            next_obs = candidate_next_obs
             rewards[step] = reward.view(-1) * args.reward_scale
 
             if "final_info" in infos:
@@ -454,6 +562,14 @@ if __name__ == "__main__":
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
+
+        # Final sanity check before optimization to avoid silently propagating NaNs/Infs.
+        if not torch.isfinite(b_obs).all():
+            raise RuntimeError("non-finite observations detected in rollout buffer")
+        if not torch.isfinite(b_actions).all():
+            raise RuntimeError("non-finite actions detected in rollout buffer")
+        if not torch.isfinite(b_returns).all() or not torch.isfinite(b_advantages).all():
+            raise RuntimeError("non-finite returns/advantages detected in rollout buffer")
 
         # Optimizing the policy and value network
         agent.train()

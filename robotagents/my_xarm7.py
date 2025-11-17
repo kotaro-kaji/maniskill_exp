@@ -125,7 +125,8 @@ class Xarm7(BaseAgent):
     @property
     def _controller_configs(self):
 
-        #以下のように制限を設けましたが、controllerの制限ではあまり意味がなく、実質的にはURDFの関節角度制限のほうがずっと支配的です。reset条件に、関節角度のはみ出しを設けたり、URDFそのものを書き換えるほうがずっと現実的だと思います。
+        #以下のように制限を設けましたが、ただのpd_joint_pos controllerのための制限であり、pd_joint_delta_pos controllerの制限は実質的にはURDFの関節角度制限のほうがずっと支配的です。
+        #URDFのjoint limitを正しく設定すべきです。reset条件に、関節角度のはみ出しを設けるのも選択肢だと思います。
         arm_joint_lower = np.array(
         [
             -2 * np.pi,
@@ -164,8 +165,8 @@ class Xarm7(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = -0.02,
-            upper = 0.02,
+            lower = -0.10,
+            upper = 0.10,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,

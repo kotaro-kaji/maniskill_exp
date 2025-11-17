@@ -4,6 +4,7 @@ from typing import Dict, Tuple
 
 import gymnasium as gym
 import mani_skill.envs  # registers built-in envs
+from mani_skill.agents.multi_agent import MultiAgent
 import robotagents.my_xarm7  # registers custom robots
 import robotagents.my_xarm7_mjcf
 import robotagents.my_xarm7_official
@@ -17,7 +18,7 @@ CUSTOM_ENV_MODULES: Tuple[str, ...] = (
     "task_pushcube_beatiful",
     "task_joint_hold",
     "task_marker_align_official",
-    "tasks.du.task_dual_simple",
+    "tasks.dual.task_dual_simple",
 )
 for _module_name in CUSTOM_ENV_MODULES:
     importlib.import_module(_module_name)
@@ -40,7 +41,12 @@ def parse_args():
     parser.add_argument("--control-mode", type=str, default="pd_joint_delta_pos")
     parser.add_argument("--sim-backend", type=str, default="cpu")
     parser.add_argument("--render-backend", type=str, default="cpu")
-    parser.add_argument("--robot-uid", type=str, default="xarm7_ball_ee")
+    parser.add_argument(
+        "--robot-uid",
+        type=str,
+        default=None,
+        help="Override the robot UID. Use comma-separated values for multi-agent setups.",
+    )
     return parser.parse_args()
 
 
@@ -100,7 +106,15 @@ def main():
         render_backend=args.render_backend,
     )
     if args.robot_uid:
-        env_kwargs["robot_uids"] = args.robot_uid
+        spec = args.robot_uid.strip()
+        if spec.lower() == "none":
+            env_kwargs["robot_uids"] = "none"
+        else:
+            parts = [part.strip() for part in spec.split(",") if part.strip()]
+            if len(parts) == 1:
+                env_kwargs["robot_uids"] = parts[0]
+            else:
+                env_kwargs["robot_uids"] = tuple(parts)
 
     try:
         env = gym.make(args.env_id, **env_kwargs)
@@ -120,8 +134,19 @@ def main():
     scene = env.unwrapped.scene
     add_frame(scene, sapien.Pose(), size=0.15, name="world_frame")
     agent = getattr(env.unwrapped, "agent", None)
-    if agent is not None:
-        add_frame(scene, agent.robot.pose, size=0.1, name="robot_base_frame")
+    robot_bases = []
+    if isinstance(agent, MultiAgent):
+        robot_bases = [sub_agent.robot for sub_agent in agent.agents]
+    elif agent is not None and getattr(agent, "robot", None) is not None:
+        robot_bases = [agent.robot]
+
+    for idx, robot in enumerate(robot_bases):
+        add_frame(
+            scene,
+            robot.pose,
+            size=0.1,
+            name=f"robot_base_frame_{idx}",
+        )
 
     done = False
     while not done:

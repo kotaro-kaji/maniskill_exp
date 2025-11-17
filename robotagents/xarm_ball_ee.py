@@ -12,13 +12,11 @@ from mani_skill.utils import sapien_utils
 @register_agent()
 class Xarm7BallEE(BaseAgent):
     uid = "xarm7_ball_ee"
-    urdf_path = "xarm7_ball_ee.urdf"
+    urdf_path = "xarm7_1305_left_ball_ee.urdf"
     # Use the ball link we added in the URDF as the TCP
     ee_link_name = "link_tcp_ball"
 
-    # 初期位置これで。
-    # Note: This articulation has 13 active DOFs (7 arm + 6 gripper joints).
-    # We set all gripper joints to the same opening value.
+    # ここでinit_qposを設定。これに基づいてhome姿勢を設定。 
     init_qpos = np.asarray(
         [
             0.0,
@@ -39,7 +37,7 @@ class Xarm7BallEE(BaseAgent):
         dtype=np.float32,
     )
 
-    # Provide a convenient keyframe for test.py visualization
+    #RoboManipBaselineにおける初期姿勢との関連性はなし。
     keyframes = dict(
         home=Keyframe(qpos=init_qpos.copy(), pose=sapien.Pose([0, 0, 0]))
     )
@@ -55,7 +53,7 @@ class Xarm7BallEE(BaseAgent):
             "joint6",
             "joint7",
         ]
-        # Active gripper joints in this URDF
+        
         self.gripper_joint_names = [
             "drive_joint",
             "left_inner_knuckle_joint",
@@ -64,7 +62,6 @@ class Xarm7BallEE(BaseAgent):
             "left_finger_joint",
             "right_finger_joint",
         ]
-
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
         self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 110))
@@ -125,7 +122,8 @@ class Xarm7BallEE(BaseAgent):
     @property
     def _controller_configs(self):
 
-        #以下のように制限を設けましたが、controllerの制限ではあまり意味がなく、実質的にはURDFの関節角度制限のほうがずっと支配的です。reset条件に、関節角度のはみ出しを設けたり、URDFそのものを書き換えるほうがずっと現実的だと思います。
+        #以下のように制限を設けましたが、ただのpd_joint_pos controllerのための制限であり、pd_joint_delta_pos controllerの制限は実質的にはURDFの関節角度制限のほうがずっと支配的です。
+        #URDFのjoint limitを正しく設定すべきです。reset条件に、関節角度のはみ出しを設けるのも選択肢だと思います。
         arm_joint_lower = np.array(
         [
             -2 * np.pi,
@@ -164,8 +162,8 @@ class Xarm7BallEE(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = -0.02,
-            upper = 0.02,
+            lower = -0.10,
+            upper = 0.10,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,

@@ -1,8 +1,9 @@
-import numpy as np
 import torch
 import sapien
 import sapien.render
+from typing import List
 
+from mani_skill.agents.multi_agent import MultiAgent
 from mani_skill.utils.scene_builder.table.scene_builder import TableSceneBuilder
 
 
@@ -17,6 +18,12 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
     Reuses ManiSkill's TableSceneBuilder for geometry/ground, and only
     customizes the robot initialization for the custom agent uid "my_xarm7".
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._primary_pedestal_pose = sapien.Pose(
+            p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT / 2]
+        )
 
     def build(self):
         super().build()
@@ -37,7 +44,7 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
                 roughness=0.3,
             ),
         )
-        builder.initial_pose = sapien.Pose(p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT / 2])
+        builder.initial_pose = self._primary_pedestal_pose
         self.robot_pedestal = builder.build_static(name="robot_pedestal")
         self.scene_objects.append(self.robot_pedestal)
 
@@ -45,25 +52,57 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
         # Let the base class place the table and ground consistently
         super().initialize(env_idx)
 
-        # Apply unified initial joint configuration from the agent's 'home' keyframe
-        # for all custom Xarm7 variants.
+        agents = self._get_agent_sequence()
+        if not agents:
+            return
+
         try:
-            b = len(env_idx)
-            home_qpos = self.env.agent.keyframes["home"].qpos
-            # Convert to torch on correct device and batch if necessary
-            if isinstance(home_qpos, np.ndarray):
-                home_qpos = torch.tensor(home_qpos, device=self.env.device)
-            else:
-                home_qpos = home_qpos.to(self.env.device)
-            if home_qpos.ndim == 1 and b > 1:
-                qpos = home_qpos.unsqueeze(0).repeat(b, 1)
-            else:
-                qpos = home_qpos
-            # Reset agent state with exact qpos and place base behind the table
-            self.env.agent.reset(qpos)
-            self.env.agent.robot.set_pose(
-                sapien.Pose([ROBOT_BASE_X_OFFSET, 0, PEDESTAL_HEIGHT])
-            )
+            qpos_per_agent = self._compute_initial_qpos(agents, env_idx)
+            for idx, agent in enumerate(agents):
+                qpos = qpos_per_agent[idx]
+                if qpos is not None:
+                    agent.reset(qpos)
+                pose = self._initial_agent_pose(idx)
+                if pose is not None:
+                    agent.robot.set_pose(pose)
         except Exception:
-            # If no keyframe is defined, fall back to base behavior
+            # If anything fails (e.g. missing keyframes), fall back to default placement.
             pass
+
+    # --------------------------------------------------------------------- #
+    # Helper hooks for subclasses / multi-agent compatibility
+    # --------------------------------------------------------------------- #
+    def _get_agent_sequence(self) -> List["BaseAgent"]:
+        agent = getattr(self.env, "agent", None)
+        if agent is None:
+            return []
+        if isinstance(agent, MultiAgent):
+            return list(agent.agents)
+        return [agent]
+
+    def _compute_initial_qpos(self, agents: List["BaseAgent"], env_idx: torch.Tensor):
+        batch_size = len(env_idx)
+        qpos_per_agent = []
+        for agent in agents:
+            home_qpos = None
+            keyframes = getattr(agent, "keyframes", None)
+            if keyframes and "home" in keyframes:
+                home_qpos = keyframes["home"].qpos
+            qpos_per_agent.append(self._expand_initial_qpos(home_qpos, batch_size))
+        return qpos_per_agent
+
+    def _expand_initial_qpos(self, qpos, batch_size: int):
+        if qpos is None:
+            return None
+        if isinstance(qpos, torch.Tensor):
+            tensor = qpos.to(self.env.device)
+        else:
+            tensor = torch.as_tensor(qpos, dtype=torch.float32, device=self.env.device)
+        if tensor.ndim == 1:
+            tensor = tensor.unsqueeze(0)
+        if tensor.shape[0] == 1 and batch_size > 1:
+            tensor = tensor.repeat(batch_size, 1)
+        return tensor.clone()
+
+    def _initial_agent_pose(self, agent_index: int) -> sapien.Pose:
+        return sapien.Pose([ROBOT_BASE_X_OFFSET, 0, PEDESTAL_HEIGHT])
