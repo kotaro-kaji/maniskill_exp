@@ -20,8 +20,8 @@ from robotagents.xarm_ball_ee import Xarm7BallEE
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
-    PRIMARY_ARM_Y_OFFSET,
-    SECONDARY_ARM_Y_OFFSET,
+    LEFT_ARM_Y_OFFSET,
+    RIGHT_ARM_Y_OFFSET,
 )
 from scenebuilders.xarm7_table_scene_builder import (
     PEDESTAL_HEIGHT,
@@ -75,7 +75,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
-        super()._load_agent(options, [sapien.Pose(p=[0,-1,0]), sapien.Pose(p=[0,1,0])])
+        super()._load_agent(options, [sapien.Pose(p=[0,1,0]), sapien.Pose(p=[0,-1,0])])
         self._configure_observed_joint_indices()
         #super()._load_agent(options, sapien.Pose[p=])
 
@@ -395,7 +395,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         )
 
         left_tcp_pos = Pose.create(
-            self.agent.agents[1].tcp.pose, device=self.device
+            self.agent.agents[0].tcp.pose, device=self.device
         ).p
         left_tcp_pos = (
             left_tcp_pos.squeeze(0)
@@ -403,7 +403,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             else left_tcp_pos
         )
         right_tcp_pos = Pose.create(
-            self.agent.agents[0].tcp.pose, device=self.device
+            self.agent.agents[1].tcp.pose, device=self.device
         ).p
         right_tcp_pos = (
             right_tcp_pos.squeeze(0)
@@ -543,12 +543,12 @@ class MyDualBoxRotationEnv(BaseEnv):
         return self._obs_extra_fn(self, info)
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
-        base_right = torch.tensor(
-            [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
+        base_left = torch.tensor(
+            [ROBOT_BASE_X_OFFSET, LEFT_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
             dtype=torch.float32,
         )
-        base_left = torch.tensor(
-            [ROBOT_BASE_X_OFFSET, SECONDARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
+        base_right = torch.tensor(
+            [ROBOT_BASE_X_OFFSET, RIGHT_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
             dtype=torch.float32,
         )
         center = 0.5 * (base_right + base_left)

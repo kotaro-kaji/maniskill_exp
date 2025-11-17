@@ -18,8 +18,8 @@ def _build_obs_dict(
         return t.unsqueeze(0) if t.ndim == 1 else t
 
     if include_tcp:
-        left_tcp_pose = Pose.create(env.agent.agents[1].tcp.pose, device=env.device)
-        right_tcp_pose = Pose.create(env.agent.agents[0].tcp.pose, device=env.device)
+        left_tcp_pose = Pose.create(env.agent.agents[0].tcp.pose, device=env.device)
+        right_tcp_pose = Pose.create(env.agent.agents[1].tcp.pose, device=env.device)
         obs["left_tcp_pose_6d_from_bimanual_center"] = env._pose_to_6d(
             left_tcp_pose, center_frame=True
         )
