@@ -67,6 +67,10 @@ class Xarm7BallEE(BaseAgent):
         self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 110))
         self.arm_damping = float(os.getenv("XARM_ARM_KD", 8))
         self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 100))
+        # Gripper (driver + mimics)
+        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1.5))
+        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 0.5))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.3)) #when it's bigger than 1.0, the robot arm goes out of control.
 
         super().__init__(*args, **kwargs)
 
@@ -118,7 +122,8 @@ class Xarm7BallEE(BaseAgent):
     @property
     def _controller_configs(self):
 
-        #以下のように制限を設けましたが、controllerの制限ではあまり意味がなく、実質的にはURDFの関節角度制限のほうがずっと支配的です。reset条件に、関節角度のはみ出しを設けたり、URDFそのものを書き換えるほうがずっと現実的だと思います。
+        #以下のように制限を設けましたが、ただのpd_joint_pos controllerのための制限であり、pd_joint_delta_pos controllerの制限は実質的にはURDFの関節角度制限のほうがずっと支配的です。
+        #URDFのjoint limitを正しく設定すべきです。reset条件に、関節角度のはみ出しを設けるのも選択肢だと思います。
         arm_joint_lower = np.array(
         [
             -2 * np.pi,
@@ -157,21 +162,53 @@ class Xarm7BallEE(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = -0.06,
-            upper = 0.06,
+            lower = -0.10,
+            upper = 0.10,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,
             use_delta=True,
         )
 
+        # 1-DOF gripper via mimic controller
+        gripper_mimic_map = {
+            # mimic_joint: {"joint": control_joint}
+            "left_inner_knuckle_joint": {"joint": "drive_joint"},
+            "right_outer_knuckle_joint": {"joint": "drive_joint"},
+            "right_inner_knuckle_joint": {"joint": "drive_joint"},
+            "left_finger_joint": {"joint": "drive_joint"},
+            "right_finger_joint": {"joint": "drive_joint"},
+        }
+        gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
+            self.gripper_joint_names,
+            0.05,
+            0.84,
+            self.gripper_stiffness,
+            self.gripper_damping,
+            self.gripper_force_limit,
+            normalize_action=False,
+        )
+        gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
+        gripper_pd_joint_delta_pos_mimic = PDJointPosMimicControllerConfig(
+            self.gripper_joint_names,
+            lower = -0.1,
+            upper = 0.1,
+            stiffness = self.gripper_stiffness,
+            damping =  self.gripper_damping,
+            force_limit = self.gripper_force_limit,
+            use_delta=True,
+        )
+        gripper_pd_joint_delta_pos_mimic.mimic = gripper_mimic_map
+
         controller_configs = dict(
             pd_joint_pos=dict(
-                arm=arm_pd_joint_pos
+                arm=arm_pd_joint_pos,
+                gripper=gripper_pd_joint_pos_mimic,
                 #balance_passive_force=False
             ),
             pd_joint_delta_pos=dict(
-                arm=arm_pd_joint_delta_pos
+                arm=arm_pd_joint_delta_pos,
+                gripper=gripper_pd_joint_delta_pos_mimic,
                 #balance_passive_force=False
             ),
         )

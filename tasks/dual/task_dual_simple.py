@@ -17,8 +17,8 @@ from robotagents.xarm_ball_ee import Xarm7BallEE
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
-    PRIMARY_ARM_Y_OFFSET,
-    SECONDARY_ARM_Y_OFFSET,
+    LEFT_ARM_Y_OFFSET,
+    RIGHT_ARM_Y_OFFSET,
 )
 from scenebuilders.xarm7_table_scene_builder import (
     PEDESTAL_HEIGHT,
@@ -193,12 +193,12 @@ class MyDualSimpleEnv(BaseEnv):
             self.right_target_site.set_pose(Pose.create_from_pq(p=right_target))
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
-        base_right = torch.tensor(
-            [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
+        base_left = torch.tensor(
+            [ROBOT_BASE_X_OFFSET, LEFT_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
             dtype=torch.float32,
         )
-        base_left = torch.tensor(
-            [ROBOT_BASE_X_OFFSET, SECONDARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
+        base_right = torch.tensor(
+            [ROBOT_BASE_X_OFFSET, RIGHT_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
             dtype=torch.float32,
         )
         center = 0.5 * (base_right + base_left)
@@ -226,9 +226,9 @@ class MyDualSimpleEnv(BaseEnv):
         if not isinstance(self.agent, MultiAgent):
             return torch.zeros(self.num_envs, device=self.device)
 
-        # Agent index 0 sits at y < 0 (right-hand side), index 1 at y > 0 (left-hand side).
-        left_tcp_pos = self.agent.agents[1].tcp.pose.p
-        right_tcp_pos = self.agent.agents[0].tcp.pose.p
+        # Agent index 0 now sits at y > 0 (left-hand side), index 1 at y < 0 (right-hand side).
+        left_tcp_pos = self.agent.agents[0].tcp.pose.p
+        right_tcp_pos = self.agent.agents[1].tcp.pose.p
 
         left_target = self.left_target_site.pose.p
         right_target = self.right_target_site.pose.p
