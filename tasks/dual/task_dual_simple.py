@@ -43,8 +43,9 @@ class MyDualSimpleEnv(BaseEnv):
     LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0) #緑色
     RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0) #青色
 
-    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
+    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02, robot_init_noise_scale: float = 1.0, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.robot_init_noise_scale = robot_init_noise_scale
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -122,6 +123,11 @@ class MyDualSimpleEnv(BaseEnv):
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
+            noise_scale = self.robot_init_noise_scale
+            if options is not None:
+                noise_scale = float(options.get("robot_init_noise_scale", noise_scale))
+            if hasattr(self.table_scene, "set_noise_scale"):
+                self.table_scene.set_noise_scale(noise_scale)
             self.table_scene.initialize(env_idx)
             batch_size = len(env_idx)
             if batch_size == 0:

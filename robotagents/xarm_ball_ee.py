@@ -162,8 +162,8 @@ class Xarm7BallEE(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = -0.10,
-            upper = 0.10,
+            lower = -0.06,
+            upper = 0.06,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,

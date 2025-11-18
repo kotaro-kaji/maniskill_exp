@@ -22,12 +22,12 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
             -0.032158957391327556,
             1.27989111575085,
             0.05005294852914137,
-            0.55,
-            0.55,
-            0.55,
-            0.55,
-            0.55,
-            0.55,
+            0.7235,
+            0.7235,
+            0.7235,
+            0.7235,
+            0.7235,
+            0.7235,
         ],
         dtype=torch.float32,
     )
@@ -46,6 +46,12 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
         self.initial_qpos = self._RESET_STATE_OF_ROBOMANIPBASELINES.clone()
         self._offset_low_np = self._OFFSET_LOW.detach().cpu().numpy()
         self._offset_high_np = self._OFFSET_HIGH.detach().cpu().numpy()
+        # Tuneable multiplier so user-facing scale values map to a meaningful spread.
+        # A value of 1.0 now corresponds to roughly 10x the legacy offset bands,
+        # matching a much stronger initialization randomness.
+        self._noise_scale_normalizer = 10.0
+        # Preserve the legacy default until an explicit scale is requested.
+        self.noise_scale = 1.0
 
     def initialize(self, env_idx: torch.Tensor):
         super().initialize(env_idx)
@@ -73,18 +79,32 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
         except Exception:
             pass
 
+    def set_noise_scale(self, scale: float, *, normalize: bool = True):
+        """
+        Set multiplicative scale for joint offset sampling.
+
+        The provided ``scale`` is normalized so 1.0 matches a much stronger
+        randomization (roughly 10x the legacy offset spread).
+        """
+        effective_scale = float(scale)
+        if normalize:
+            effective_scale *= self._noise_scale_normalizer
+        self.noise_scale = effective_scale
+
     def _sample_joint_offsets(self, env_idx: torch.Tensor, batch_size: int) -> torch.Tensor:
+        low = self._offset_low_np * self.noise_scale
+        high = self._offset_high_np * self.noise_scale
         if getattr(self.env, "_enhanced_determinism", False):
             samples = self.env._batched_episode_rng[env_idx].uniform(
-                low=self._offset_low_np, high=self._offset_high_np
+                low=low, high=high
             )
             samples = np.asarray(samples)
             if samples.ndim == 1:
                 samples = samples[np.newaxis, :]
         else:
             samples = self.env._episode_rng.uniform(
-                low=self._offset_low_np,
-                high=self._offset_high_np,
+                low=low,
+                high=high,
                 size=(batch_size, self._offset_low_np.shape[0]),
             )
         offsets = torch.zeros(
@@ -110,13 +130,16 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
         if base.shape[0] == 1 and batch_size > 1:
             base = base.repeat(batch_size, 1)
 
-        offsets = self._sample_joint_offsets(env_idx, batch_size)
-        if offsets.shape[0] == 1 and batch_size > 1:
-            offsets = offsets.repeat(batch_size, 1)
-
-        qpos = base + offsets.to(self.env.device)
-        qpos[:, 8:] = qpos[:, 7:8]
-        return [qpos.clone() for _ in agents]
+        # Sample independent offsets per agent so left/right arms do not share the same noise realization.
+        qpos_per_agent = []
+        for _ in agents:
+            offsets = self._sample_joint_offsets(env_idx, batch_size)
+            if offsets.shape[0] == 1 and batch_size > 1:
+                offsets = offsets.repeat(batch_size, 1)
+            qpos = base + offsets.to(self.env.device)
+            qpos[:, 8:] = qpos[:, 7:8]
+            qpos_per_agent.append(qpos.clone())
+        return qpos_per_agent
 
     def _reset_controller(self, controller):
         if controller is None:

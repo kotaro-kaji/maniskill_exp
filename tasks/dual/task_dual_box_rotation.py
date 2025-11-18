@@ -68,8 +68,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_INTRUSION_SCALE = 2.0
     TCP_LEAD_SATURATION = 0.03
 
-    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
-        self.robot_init_qpos_noise = robot_init_qpos_noise #この引数は現在は未使用です。
+    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_noise_scale=1.0,**kwargs):
+        self.robot_init_noise_scale = robot_init_noise_scale
         self._flat_obs_column_names: Optional[List[str]] = None
         self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
@@ -306,6 +306,11 @@ class MyDualBoxRotationEnv(BaseEnv):
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
+            noise_scale = self.robot_init_noise_scale
+            if options is not None:
+                noise_scale = float(options.get("robot_init_noise_scale", noise_scale))
+            if hasattr(self.table_scene, "set_noise_scale"):
+                self.table_scene.set_noise_scale(noise_scale)
             self.table_scene.initialize(env_idx)
             batch_size = len(env_idx)
             if batch_size == 0:
@@ -866,6 +871,20 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["box_intrusion_depth_right"] = intrusion_info[
             "intrusion_depth_right"
         ].detach().cpu()
+        # measured joint positions (left then right) flattened (drop mimic joints via obs indices)
+        try:
+            left_qpos = self.agent.agents[0].robot.get_qpos()
+            right_qpos = self.agent.agents[1].robot.get_qpos()
+            # use the same active joint subset as observations to drop mimic joints
+            left_idx = self._agent_obs_joint_indices.get(f"{self.agent.agents[0].uid}-0")
+            right_idx = self._agent_obs_joint_indices.get(f"{self.agent.agents[1].uid}-1")
+            if left_idx is not None:
+                left_qpos = self._index_select_joint_tensor(left_qpos, left_idx)
+            if right_idx is not None:
+                right_qpos = self._index_select_joint_tensor(right_qpos, right_idx)
+            info["mesured_q"] = torch.cat([left_qpos, right_qpos], dim=-1).detach().cpu()
+        except Exception:
+            pass
         if reward.ndim == 0:
             reward = reward.unsqueeze(0)
         return reward.to(self.device)
