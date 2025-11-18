@@ -194,6 +194,8 @@ class Args:
     finite_horizon_gae: bool = False
     # simulation backend: "cpu" or "physx_cuda"
     sim_backend: str = "physx_cuda"
+    robot_init_noise_scale: float = 1.0
+    """Scale factor for robot initial joint randomization (1.0 = default training noise, 0.0 = fixed)."""
 
 
     # to be filled in runtime
@@ -243,6 +245,7 @@ class Agent(nn.Module):
         action_std = torch.exp(action_logstd)
         probs = Normal(action_mean, action_std)
         return probs.sample()
+    
     def get_action_and_value(self, x, action=None):
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
@@ -289,6 +292,7 @@ if __name__ == "__main__":
         render_mode="rgb_array",
         sim_backend=args.sim_backend,
         sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
+        robot_init_noise_scale=args.robot_init_noise_scale,
     )
     if args.control_mode is not None:
         control_mode = args.control_mode
