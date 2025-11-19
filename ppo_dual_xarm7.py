@@ -294,10 +294,9 @@ if __name__ == "__main__":
         sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
         robot_init_noise_scale=args.robot_init_noise_scale,
     )
+
     if args.control_mode is not None:
         control_mode = args.control_mode
-    elif args.env_id == "MyEEAlignMarker-v0":
-        control_mode = "official_pd_joint_delta_pos"
     else:
         control_mode = "pd_joint_delta_pos"
     env_kwargs["control_mode"] = control_mode

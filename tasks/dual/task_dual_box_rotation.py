@@ -1,3 +1,4 @@
+import math
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -58,6 +59,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.43
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.03
+    BOX_ROTATION_JITTER_DEG = 3.0
+    BOX_ROTATION_JITTER_RAD = math.radians(BOX_ROTATION_JITTER_DEG)
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
     PUSHPOINT_DISTANCE_THRESHOLD = 0.05
@@ -339,6 +342,12 @@ class MyDualBoxRotationEnv(BaseEnv):
             theta = torch.zeros(
                 batch_size, device=self.device, dtype=torch.float32
             )
+            if self.BOX_ROTATION_JITTER_RAD > 0.0:
+                theta = theta + (
+                    (torch.rand(batch_size, device=self.device) - 0.5)
+                    * 2.0
+                    * self.BOX_ROTATION_JITTER_RAD
+                )
             orientations = self._theta_to_quaternion(theta)
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
             self._update_initial_pushpoints(env_idx, positions, orientations)

@@ -13,6 +13,7 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 
 from robotagents.my_xarm7_official import Xarm7Official
+from robotagents.xarm_ball_ee import Xarm7BallEE
 import robotagents.my_xarm7_mjcf
 from scenebuilders.xarm7_initial_randomization_scene_builder import (
     Xarm7InitialRandomizationSceneBuilder,
@@ -43,13 +44,13 @@ MARKER_GREEN_Z_OFFSET = MARKER_BASE_HALF_SIZE[2] + MARKER_GREEN_HALF_SIZE[2]
 
 @register_env("MyEEAlignMarker-v0", max_episode_steps=201)
 class MyEEAlignMarkerEnv(BaseEnv):
-    SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_over", "my_xarm7_mjcf"]
+    SUPPORTED_ROBOTS = ["my_xarm7_official", "my_xarm7_over", "my_xarm7_mjcf", "xarm7_ball_ee"]
     agent: Xarm7Official
 
     def __init__(
         self,
         *args,
-        robot_uids: str = "my_xarm7_official",
+        robot_uids: str = "xarm7_ball_ee",
         marker_pose: Optional[Any] = None,
         **kwargs,
     ):
