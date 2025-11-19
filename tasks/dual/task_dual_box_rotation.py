@@ -56,7 +56,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     
     BOX_HALF_SIZE = (0.2178*0.5, 0.2882*0.5, 0.1125*0.5)
     BOX_DENSITY = 200.0
-    BOX_X_OFFSET_FROM_BASE = 0.43
+    BOX_X_OFFSET_FROM_BASE = 0.35
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.03
     BOX_ROTATION_JITTER_DEG = 3.0
@@ -333,7 +333,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             )
             z_center = torch.full(
                 (batch_size,),
-                self.BOX_HALF_SIZE[2],
+                self.BOX_HALF_SIZE[2] - PEDESTAL_HEIGHT,
                 device=self.device,
                 dtype=torch.float32,
             )
