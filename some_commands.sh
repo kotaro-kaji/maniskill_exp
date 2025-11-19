@@ -115,12 +115,16 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
   --gamma=0.99
 
 python ppo_rollout_dual_xarm7.py \
-  --checkpoint runs/MyDualBoxRotationAblated-v0__ppo_dual_xarm7__1__1763351130/ckpt_1.pt \
+  --checkpoint runs/MyDualBoxRotationAblated-v0__ppo_dual_xarm7__1__1763533447/ckpt_26.pt \
   --env-id MyDualBoxRotationAblated-v0
 
 python ppo_rollout_dual_xarm7.py \
---checkpoint runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763261309/ckpt_26.pt --env-id MyDualSimple-v0
+--checkpoint runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_51.pt --env-id MyDualSimple-v0
 
+
+
+python ppo_rollout_virtual_dual_xarm7.py \
+runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_26.pt
 
 
 python sac_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
