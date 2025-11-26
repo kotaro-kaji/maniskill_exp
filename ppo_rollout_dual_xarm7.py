@@ -89,7 +89,7 @@ class RolloutArgs:
     print_actions: bool = False
     """Print raw actions each step."""
     gripper_joint_indices: Optional[str] = "7,15"
-    """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 116.5 override)."""
+    """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 119.0 override)."""
 
 
 def _build_env(args: RolloutArgs):
@@ -250,7 +250,7 @@ def run_rollout(args: RolloutArgs) -> None:
                 direct_joint_command = measured_q + denorm_delta
                 if gripper_idx_tensor is not None and gripper_idx_tensor.numel() > 0:
                     direct_joint_command = direct_joint_command.clone()
-                    direct_joint_command[:, gripper_idx_tensor] = 116.5
+                    direct_joint_command[:, gripper_idx_tensor] = 119.0
                 info["direct_joint_command"] = direct_joint_command.detach().cpu()
                 info_logger.log({"direct_joint_command": direct_joint_command}, step)
 

@@ -7,8 +7,8 @@ from mani_skill.agents.multi_agent import MultiAgent
 from mani_skill.utils.scene_builder.table.scene_builder import TableSceneBuilder
 
 
-PEDESTAL_HEIGHT = 0.085344
-PEDESTAL_HALF_EXTENT_X = 0.09
+PEDESTAL_HEIGHT = 0.0880
+PEDESTAL_HALF_EXTENT_X = 0.072
 ROBOT_BASE_X_OFFSET = -0.615
 
 

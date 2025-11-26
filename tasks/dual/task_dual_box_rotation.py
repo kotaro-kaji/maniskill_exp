@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import torch
 import sapien
+import numpy as np
 
 from mani_skill.agents.multi_agent import MultiAgent
 from mani_skill.agents.utils import get_active_joint_indices
@@ -14,7 +15,10 @@ from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
+from mani_skill.utils.structs import Actor, Link
 from mani_skill.utils.structs.pose import Pose
+from sapien.physx import PhysxRigidBodyComponent
+from sapien.render import RenderBodyComponent
 from mani_skill.utils.common import flatten_dict_keys, flatten_state_dict, to_tensor
 from robotagents.xarm_ball_ee import Xarm7BallEE
 
@@ -29,6 +33,7 @@ from scenebuilders.xarm7_table_scene_builder import (
     ROBOT_BASE_X_OFFSET,
 )
 from .get_obs_extra import get_obs_extra_full, get_obs_extra_ablation
+
 
 
 def smoothstep(x: torch.Tensor) -> torch.Tensor:
@@ -54,16 +59,16 @@ class MyDualBoxRotationEnv(BaseEnv):
     _obs_extra_fn = staticmethod(get_obs_extra_full)
 
     
-    BOX_HALF_SIZE = (0.2178*0.5, 0.2882*0.5, 0.1125*0.5)
+    BOX_HALF_SIZE = np.array([0.2178*0.5, 0.2882*0.5, 0.1125*0.5])
     BOX_DENSITY = 200.0
-    BOX_X_OFFSET_FROM_BASE = 0.35
+    BOX_X_OFFSET_FROM_BASE = 0.30
     BOX_Y_JITTER = 0.05
-    BOX_X_JITTER = 0.03
+    BOX_X_JITTER = 0.05
     BOX_ROTATION_JITTER_DEG = 3.0
     BOX_ROTATION_JITTER_RAD = math.radians(BOX_ROTATION_JITTER_DEG)
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
-    PUSHPOINT_DISTANCE_THRESHOLD = 0.05
+    PUSHPOINT_DISTANCE_THRESHOLD = 0.02
     BOX_CENTER_MAX_OFFSET = 0.15
     BOX_CENTER_PENALTY_WEIGHT = 0.5
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
@@ -94,29 +99,56 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.table_scene.build()
         self.bimanual_center_pose = self._compute_bimanual_center_pose()
         builder = self.scene.create_actor_builder()
+        #builder.add_box_collision(
+            #half_size=self.BOX_HALF_SIZE,
+            #density=self.BOX_DENSITY,
+        #)
+
+        random_box_objects = []
+        box_material = sapien.render.RenderMaterial()
+        box_material.set_base_color([1.0, 1.0, 1.0, 1.0])
+
+        # Initial pose will be overwritten during episode init; place safely above table for now.
+        builder.initial_pose = sapien.Pose(
+                p=self._bimanual_center_point_to_world(
+                    [
+                        self.BOX_X_OFFSET_FROM_BASE,
+                        0.0,
+                        self.BOX_HALF_SIZE[2] + 1e-2,
+                    ]
+                )
+            )
+        
         builder.add_box_collision(
             half_size=self.BOX_HALF_SIZE,
             density=self.BOX_DENSITY,
         )
-        self._enable_pushpoint_debug = False
-        if True:
-            self._enable_pushpoint_debug = True
-        box_material = sapien.render.RenderMaterial()
-        box_material.set_base_color([1.0, 1.0, 1.0, 1.0])
-        builder.add_box_visual(
-            half_size=self.BOX_HALF_SIZE,
-            material=box_material,
-        )
-        # Initial pose will be overwritten during episode init; place safely above table for now.
-        builder.initial_pose = sapien.Pose(
-            p=self._bimanual_center_point_to_world(
-                [
-                    self.BOX_X_OFFSET_FROM_BASE,
-                    0.0,
-                    self.BOX_HALF_SIZE[2] + 1e-2,
-                ]
-            )
-        )
+
+        builder.add_box_visual(half_size=self.BOX_HALF_SIZE ,material=box_material)
+            
+        
+        
+        #for i in range(self.num_envs):
+            #builder = self.scene.create_actor_builder()
+            #ここで箱オブジェクトに関するあらゆるプロパティをランダマイズすることが可能です。
+            #builder = self.scene.create_actor_builder()
+            
+            #randomized_box_half_size = self.BOX_HALF_SIZE + np.random.uniform(-0.1, 0.1, size=self.BOX_HALF_SIZE.shape)
+
+            #builder.add_box_collision(half_size=randomized_box_half_size)
+            #builder.add_box_visual(half_size=randomized_box_half_size,material=box_material)
+            
+            #obj = builder.build(name = f"box_object_{i}")
+            #self.remove_from_state_dict_registry(obj)
+            #random_box_objects.append(obj)
+        #self.box_objects = Actor.merge(random_box_objects, name = "object")
+        #self.add_to_state_dict_registry(self.box_objects)
+
+       
+        self._enable_pushpoint_debug = True #Now it is completely True(No overwrite)
+        
+        
+
         self.box = builder.build(name="box_between_arms")
         if self._enable_pushpoint_debug:
             pushpoint_radius = 0.02
@@ -150,6 +182,24 @@ class MyDualBoxRotationEnv(BaseEnv):
             self.pushpoint_left_site = None
             self.pushpoint_right_site = None
 
+
+        #Visualize bimanual center as a small orange sphere for debugging
+        self.bimanual_center_site = actors.build_sphere(
+            self.scene,
+            radius=0.02,
+            color=(1.0, 0.0, 0.0, 0.8),
+            name="bimanual_center_site",
+            body_type="kinematic",
+            add_collision=False,
+            initial_pose=sapien.Pose(
+                p=[
+                    self.bimanual_center_pose.p[0],
+                    self.bimanual_center_pose.p[1],
+                    self.bimanual_center_pose.p[2] 
+                ]
+            ),
+        )
+        
     def _configure_observed_joint_indices(self):
         self._agent_obs_joint_indices = dict()
         if not isinstance(self.agent, MultiAgent):
@@ -349,6 +399,7 @@ class MyDualBoxRotationEnv(BaseEnv):
                     * self.BOX_ROTATION_JITTER_RAD
                 )
             orientations = self._theta_to_quaternion(theta)
+            #self.box_objects[env_idx].set_pose(Pose.create_from_pq(positions, orientations))
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
             self._update_initial_pushpoints(env_idx, positions, orientations)
             self._reset_rotation_buffers(env_idx, theta)

@@ -41,6 +41,55 @@ from urdfpy import URDF, utils as urdf_utils, urdf as urdf_module
 import argparse
 
 
+def _parse_joint_overrides(parser, robot, override_args):
+    overrides = {}
+    if not override_args:
+        return overrides
+
+    valid_joints = {joint.name for joint in robot.actuated_joints}
+    for entry in override_args:
+        if "=" not in entry:
+            parser.error(
+                f"Joint override '{entry}' is malformed. Use the NAME=VALUE format."
+            )
+        name, value_str = entry.split("=", 1)
+        name = name.strip()
+        value_str = value_str.strip()
+        if not name:
+            parser.error(f"Joint override '{entry}' must include a joint name.")
+        if name not in valid_joints:
+            parser.error(
+                f"Unknown joint '{name}'. Available joints: {sorted(valid_joints)}"
+            )
+        try:
+            overrides[name] = float(value_str)
+        except ValueError:
+            parser.error(
+                f"Could not parse value '{value_str}' for joint '{name}'."
+            )
+    return overrides
+
+
+def _build_joint_configuration(robot, overrides):
+    """Start with zeros, clamp by limits, then apply overrides."""
+    cfg = {}
+    for joint in robot.actuated_joints:
+        value = overrides.get(joint.name, 0.0)
+        limit = joint.limit
+        if limit is not None:
+            lower = limit.lower if limit.lower is not None else -np.inf
+            upper = limit.upper if limit.upper is not None else np.inf
+            clamped_value = float(np.clip(value, lower, upper))
+            if clamped_value != value:
+                print(
+                    f"Joint '{joint.name}' clamped from {value:.4f} "
+                    f"to {clamped_value:.4f} to respect limits."
+                )
+            value = clamped_value
+        cfg[joint.name] = value
+    return cfg
+
+
 def _patch_get_filename(package_map):
     original_get_filename = urdf_utils.get_filename
 
@@ -88,6 +137,16 @@ def main():
         default=Path(__file__).resolve().parent / "xarm7.urdf",
         help="Path to the URDF file to visualize.",
     )
+    parser.add_argument(
+        "--joint",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help=(
+            "Override a joint angle (radians). Repeat for multiple joints, "
+            "e.g. --joint drive_joint=0.72"
+        ),
+    )
     args = parser.parse_args()
 
     base_dir = Path(__file__).resolve().parent
@@ -100,9 +159,11 @@ def main():
     _patch_cylinder_mesh_generation()
 
     robot = URDF.load(str(urdf_path))
+    joint_overrides = _parse_joint_overrides(parser, robot, args.joint)
+    joint_cfg = _build_joint_configuration(robot, joint_overrides)
     vis = meshcat.Visualizer().open()
 
-    fk = robot.visual_trimesh_fk()
+    fk = robot.visual_trimesh_fk(cfg=joint_cfg)
     for idx, (mesh, pose) in enumerate(fk.items()):
         vertices = np.asarray(mesh.vertices, dtype=np.float32)
         faces = np.asarray(mesh.faces, dtype=np.uint32)
