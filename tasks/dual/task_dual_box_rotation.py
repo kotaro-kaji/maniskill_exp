@@ -59,9 +59,9 @@ class MyDualBoxRotationEnv(BaseEnv):
     _obs_extra_fn = staticmethod(get_obs_extra_full)
 
     
-    BOX_HALF_SIZE = np.array([0.2178*0.5, 0.2882*0.5, 0.1125*0.5])
+    BOX_HALF_SIZE = np.array([0.2160*0.5, 0.2845*0.5, 0.1140*0.5])
     BOX_DENSITY = 200.0
-    BOX_X_OFFSET_FROM_BASE = 0.30
+    BOX_X_OFFSET_FROM_BASE = 0.337
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.05
     BOX_ROTATION_JITTER_DEG = 3.0
