@@ -1,4 +1,5 @@
 import math
+import itertools
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -58,6 +59,8 @@ class MyDualBoxRotationEnv(BaseEnv):
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
     _obs_extra_fn = staticmethod(get_obs_extra_full)
 
+    CONTACT_FORCE_THRESHOLD = 0.01  # N
+    CONTACT_PENALTY_WEIGHT = 1.0
     
     BOX_HALF_SIZE = np.array([0.2160*0.5, 0.2845*0.5, 0.1140*0.5])
     BOX_DENSITY = 200.0
@@ -285,6 +288,108 @@ class MyDualBoxRotationEnv(BaseEnv):
         z = torch.sin(half)
         return torch.stack((w, zeros, zeros, z), dim=-1)
 
+    def _build_contact_participants(self) -> List[Tuple[str, Actor]]:
+        participants: List[Tuple[str, Actor]] = []
+        # Links with collision geometry we care about
+        include = {
+
+            "xarm_gripper_base_link",
+            "link_tcp_stick",
+            "link_tcp_ball",
+        }
+        # Links that exist but have no collision; skip them
+        exclude = {
+
+            ###ケース次第で、includeするべきlink
+            "link_base",
+            "link1",
+            "link2",
+            "link3",
+            "link4",
+            "link5",
+            "link6",
+            "link7",
+            "link_virtual_ft_sensor_upper",
+            "link_virtual_ft_sensor_lower",
+            "link_eef",
+            #################################
+
+            "world",
+            "${prefix}link_eef",
+            "camera_link",
+            "camera_depth_frame",
+            "camera_depth_optical_frame",
+            "camera_color_frame",
+            "camera_color_optical_frame",
+            "camera_left_ir_frame",
+            "camera_left_ir_optical_frame",
+            "camera_right_ir_frame",
+            "camera_right_ir_optical_frame",
+            "link_tcp",
+            "left_outer_knuckle",
+            "left_finger",
+            "left_inner_knuckle",
+            "right_outer_knuckle",
+            "right_finger",
+            "right_inner_knuckle",
+        }
+        for idx, sub_agent in enumerate(self.agent.agents):
+            prefix = "L" if idx == 0 else "R"
+            for link in sub_agent.robot.get_links():
+                name = link.name
+                if name in include:
+                    participants.append((f"{prefix}_{name}", link))
+                elif name in exclude:
+                    continue
+                else:
+                    raise ValueError(f"Unexpected link name '{name}' encountered in contact setup.")
+        # Environment actors
+        env_items = [
+            ("box", getattr(self, "box", None)),
+            #("ground", getattr(self.table_scene, "ground", None)),
+            ("table", getattr(self.table_scene, "table", None)),
+            ("pedestal", getattr(self.table_scene, "robot_pedestal", None)),
+        ]
+        for name, actor in env_items:
+            if actor is not None:
+                participants.append((name, actor))
+        return participants
+
+    def _default_contact_allow_set(self, names: List[str]) -> set:
+        allow = set()
+        # Allow ball vs box
+        if "L_link_tcp_ball" in names:
+            allow.add(frozenset({"box", "L_link_tcp_ball"}))
+        if "R_link_tcp_ball" in names:
+            allow.add(frozenset({"box", "R_link_tcp_ball"}))
+        # Allow specific self-collision pairs
+        for prefix in ("L_", "R_"):
+            if f"{prefix}link2" in names and f"{prefix}link3" in names:
+                allow.add(frozenset({f"{prefix}link2", f"{prefix}link3"}))
+            if f"{prefix}link3" in names and f"{prefix}link4" in names:
+                allow.add(frozenset({f"{prefix}link3", f"{prefix}link4"}))
+        return allow
+
+    def _init_contact_pairs(self):
+        """Precompute all contact pairs except the allowlist."""
+        if getattr(self, "_contact_pairs_initialized", False):
+            return
+        participants = self._build_contact_participants()
+        names = [n for n, _ in participants]
+        allow = self._default_contact_allow_set(names)
+        env_names = {"box", "ground", "table", "pedestal"}
+        pairs = []
+        for (na, a), (nb, b) in itertools.combinations(participants, 2):
+            if na in env_names and nb in env_names:
+                continue
+            key = frozenset({na, nb})
+            if key in allow:
+                continue
+            pairs.append((f"{na}|{nb}", a, b))
+        self._contact_pairs_initialized = True
+        self._contact_pairs = pairs
+        self._contact_pair_names = [p[0] for p in pairs]
+
     def _get_box_theta_deg(self) -> torch.Tensor:
         """Return box yaw in degrees within [0, 360)."""
         box_pose = Pose.create(self.box.pose, device=self.device)
@@ -403,6 +508,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             self.box.set_pose(Pose.create_from_pq(positions, orientations))
             self._update_initial_pushpoints(env_idx, positions, orientations)
             self._reset_rotation_buffers(env_idx, theta)
+            self._init_contact_pairs()
 
     def _pose_to_6d(self, pose: Pose, *, center_frame: bool = False) -> torch.Tensor:
         matrix = pose.to_transformation_matrix()[..., :3, :3]
@@ -418,6 +524,30 @@ class MyDualBoxRotationEnv(BaseEnv):
             )
             position = position - center
         return torch.cat([position, matrix[..., :, 0], matrix[..., :, 1]], dim=-1)
+
+    def _compute_contact_penalty(self, info: Dict[str, Any]) -> torch.Tensor:
+        """Unified contact penalty: iterate precomputed pairs, log force norms."""
+        self._init_contact_pairs()
+        if not getattr(self, "_contact_pairs", None):
+            return torch.zeros((self.num_envs,), device=self.device)
+
+        device = self.device
+        threshold = self.CONTACT_FORCE_THRESHOLD
+        weight = self.CONTACT_PENALTY_WEIGHT
+
+        forces = []
+        for _, a, b in self._contact_pairs:
+            f = self.scene.get_pairwise_contact_forces(a, b).to(device)
+            forces.append(torch.linalg.norm(f, dim=-1))
+
+        stacked = torch.stack(forces, dim=-1)  # [B, num_pairs]
+        # Boolean penalty: if any disallowed contact exceeds threshold, apply flat penalty
+        has_contact = (stacked > threshold).any(dim=-1)
+        penalty = has_contact.float() * weight
+
+        info["contact/force"] = (stacked.detach().cpu(), list(self._contact_pair_names))
+        info["contact/penalty"] = penalty.detach().cpu()
+        return penalty
 
     @dataclass
     class RewardContext:
@@ -882,11 +1012,16 @@ class MyDualBoxRotationEnv(BaseEnv):
         #reward = reward_pushpoint + reward_rotation + reward_translation + reward_tcp_lead
         # reward_intrusion is tracked in info but currently excluded from the final sum.
 
+        #contact penalty update
+        contact_penalty = self._compute_contact_penalty(info)
+        #reward = reward - contact_penalty
+
         info["reward_pushpoint"] = reward_pushpoint.detach().cpu()
         info["reward_rotation"] = reward_rotation.detach().cpu()
         info["reward_translation"] = reward_translation.detach().cpu()
         info["reward_intrusion"] = reward_intrusion.detach().cpu()
         info["reward_tcp_lead"] = reward_tcp_lead.detach().cpu()
+        info["reward_contact_penalty"] = contact_penalty.detach().cpu()
         info["rewards_t"] = reward.detach().cpu()
 
 
