@@ -459,39 +459,9 @@
     </visual>
     <collision>
       <geometry>
-        <box size="0.0585 0.1222 0.0900"/>
+        <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0.0600"/>
-    </collision>
-    <!-- Finger collision boxes are referenced here (instead of on moving finger links)
-         to avoid locking the finger joints just for collision stability. -->
-    <!-- Left finger lower box -->
-    <collision>
-      <geometry>
-        <box size="0.032 0.01850 0.05693"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0.0232981 0.15161328"/>
-    </collision>
-    <!-- Left finger upper box -->
-    <collision>
-      <geometry>
-        <box size="0.03 0.06 0.024"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0.0329381 0.11807328"/>
-    </collision>
-    <!-- Right finger lower box -->
-    <collision>
-      <geometry>
-        <box size="0.032 0.01850 0.05693"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.0232981 0.15161328"/>
-    </collision>
-    <!-- Right finger upper box -->
-    <collision>
-      <geometry>
-        <box size="0.03 0.06 0.024"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.0332981 0.11807328"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
   </link>
   <link name="left_outer_knuckle">
@@ -507,21 +477,19 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="drive_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035 0.059098"/>
     <parent link="xarm_gripper_base_link"/>
     <child link="left_outer_knuckle"/>
     <axis xyz="1 0 0"/>
-    <limit effort="50" lower="0.7310" upper="0.7310" velocity="0"/>
+    <limit effort="50" lower="0.7235" upper="0.7235" velocity="0"/>
   </joint>
   <link name="left_finger">
     <inertial>
@@ -536,32 +504,21 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-
-    <!-- lower box 
-    <collision>
-      <geometry>
-        <box size="0.032 0.01850 0.05693"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.01004 0.03754"/>
-    </collision> -->
-    <!-- upper box (disabled; handled on base link) -->
     <!--
     <collision>
       <geometry>
-        <box size="0.03 0.06 0.024"/>
+        <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.0004 0.004"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
     -->
-    
-
   </link>
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
     <parent link="left_outer_knuckle"/>
     <child link="left_finger"/>
     <axis xyz="-1 0 0"/>
-    <limit effort="50" lower="0.7310" upper="0.7310" velocity="0"/>
+    <limit effort="50" lower="0.7235" upper="0.7235" velocity="0"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
   <link name="left_inner_knuckle">
@@ -591,7 +548,7 @@
     <parent link="xarm_gripper_base_link"/>
     <child link="left_inner_knuckle"/>
     <axis xyz="1 0 0"/>
-    <limit effort="50" lower="0.7310" upper="0.7310" velocity="0"/>
+    <limit effort="50" lower="0.7235" upper="0.7235" velocity="0"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
   <link name="right_outer_knuckle">
@@ -607,21 +564,19 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-    -->
   </link>
   <joint name="right_outer_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035 0.059098"/>
     <parent link="xarm_gripper_base_link"/>
     <child link="right_outer_knuckle"/>
     <axis xyz="-1 0 0"/>
-    <limit effort="50" lower="0.7310" upper="0.7310" velocity="0"/>
+    <limit effort="50" lower="0.7235" upper="0.7235" velocity="0"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
   <link name="right_finger">
@@ -637,31 +592,21 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    
-    <!-- lower box 
-    <collision>
-      <geometry>
-        <box size="0.032 0.01850 0.05693"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0.01004 0.03754"/>
-    </collision> -->
-    <!-- upper box (disabled; handled on base link) -->
     <!--
     <collision>
       <geometry>
-        <box size="0.03 0.06 0.024"/>
+        <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0.00004 0.004"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
     -->
-    
   </link>
   <joint name="right_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035465 0.042039"/>
     <parent link="right_outer_knuckle"/>
     <child link="right_finger"/>
     <axis xyz="1 0 0"/>
-    <limit effort="50" lower="0.7310" upper="0.7310" velocity="0"/>
+    <limit effort="50" lower="0.7235" upper="0.7235" velocity="0"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
   <link name="right_inner_knuckle">
@@ -691,7 +636,7 @@
     <parent link="xarm_gripper_base_link"/>
     <child link="right_inner_knuckle"/>
     <axis xyz="-1 0 0"/>
-    <limit effort="50" lower="0.7310" upper="0.7310" velocity="0"/>
+    <limit effort="50" lower="0.7235" upper="0.7235" velocity="0"/>
     <mimic joint="drive_joint" multiplier="1" offset="0"/>
   </joint>
   <link name="link_tcp"/>
@@ -709,44 +654,27 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <!--<mesh filename="file:///home/jika/Desktop/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-        -->
-        <!--
-        <mesh filename="file:///home/kotaro/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-        -->
-        
         <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-
-
       </geometry>
       <material name="Silver"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <!--<mesh filename="file:///home/jika/Desktop/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-        -->
-        
-        <!--<mesh filename="file:///home/kotaro/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-        -->
-
         <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-        
-        
-
       </geometry>
     </collision>
   </link>
   <joint name="joint_tcp_stick" type="fixed">
     <!--stickのhalf_h = 0.0315-->
-    <origin rpy="1.5707963267948966 0 1.5707963267948966" xyz="0 0 -0.00241"/>
+    <origin rpy="1.5707963267948966 0 1.5707963267948966" xyz="0 0 0.0315"/>
     <parent link="link_tcp"/>
     <child link="link_tcp_stick"/>
   </joint>
   <link name="link_tcp_ball">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="0.100"/>
+      <mass value="0.00625"/>
       <inertia ixx="1.0E-06" ixy="0" ixz="0" iyy="1.0E-06" iyz="0" izz="1.0E-06"/>
     </inertial>
     <visual>
@@ -759,7 +687,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <sphere radius="0.02"/>
+        <sphere radius="0.03"/>
       </geometry>
     </collision>
   </link>

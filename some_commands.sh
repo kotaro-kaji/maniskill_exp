@@ -117,7 +117,7 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
 python ppo_rollout_dual_xarm7.py \
   --checkpoint runs/MyDualBoxRotationAblated-v0__ppo_dual_xarm7__1__1763533447/ckpt_26.pt \
   --env-id MyDualBoxRotationAblated-v0
-
+s
 python ppo_rollout_dual_xarm7.py \
 --checkpoint runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_51.pt --env-id MyDualSimple-v0
 
@@ -133,3 +133,6 @@ python sac_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
   --num_eval_envs 4 --num-steps=200 --num_eval_steps=200
 
 python3 visualize_urdf.py --urdf xarm7_rs_g2_ft.urdf
+
+#Allegro touch or Allegro_right_hand_
+python tests/ppo.py --env_id="RotateSingleObjectInHandLevel0-v1"   --num_envs=128 --update_epochs=8   --num_minibatches=32   --total_timesteps=50_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99 --no-partial-reset

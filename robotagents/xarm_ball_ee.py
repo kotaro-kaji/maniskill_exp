@@ -72,6 +72,25 @@ class Xarm7BallEE(BaseAgent):
             "left_finger_joint",
             "right_finger_joint",
         ]
+
+
+        self.contact_unallowed_links = [
+            "link_base",
+            "link1",
+            "link2",
+            "link3",
+            "link4",
+            "link5",
+            "link6",
+            "link7",
+            "link_virtual_ft_sensor_upper",
+            "link_virtual_ft_sensor_lower",
+            "link_eef", #realsenseカメラのリンク
+            "xarm_gripper_base_link",
+            "left_finger",
+            "right_finger",
+            "link_tcp_stick"
+        ]
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
         self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 1100))
@@ -83,6 +102,11 @@ class Xarm7BallEE(BaseAgent):
         self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.3)) #when it's bigger than 1.0, the robot arm goes out of control.
 
         super().__init__(*args, **kwargs)
+        
+        #for contact detection
+        self.body_query: Optional[
+            Tuple[physx.PhysxGpuContactBodyImpulseQuery, Tuple[int, int, int]]
+        ] = None
 
     # ------------------------------------------------------------------
     # TCP (Tool Center Point)
@@ -94,6 +118,10 @@ class Xarm7BallEE(BaseAgent):
         # Local offset from the TCP link frame (can be changed via set_tcp_offset)
         self._tcp_offset = sapien.Pose([0, 0, 0], [1, 0, 0, 0])
 
+        self._contact_unallowed_links: list[Actor] = sapien_utils.get_objs_by_names(
+            self.robot.get_links(),
+            self.contact_unallowed_links,
+        )
     def set_tcp_link(self, link_name: str):
         """Change the TCP base link by name (must exist in the robot)."""
         self.ee_link_name = link_name
@@ -224,3 +252,32 @@ class Xarm7BallEE(BaseAgent):
         )
 
         return deepcopy_dict(controller_configs)
+
+    
+    def get_contact_detection(self):
+        if self.scene.gpu_sim_enabled:
+            px: physx.PhysxGpuSystem = self.scene.px
+            # Create contact query if it is not existed
+            if self.body_query is None:
+                # Convert the order of links so that the link from the same sub-scene will come together
+                # It makes life easier for reshape
+                bodies = list(zip(*[link._bodies for link in self.contact_unallowed_links]))
+                bodies = list(itertools.chain(*bodies))
+
+                query = px.gpu_create_contact_body_impulse_query(bodies)
+                self.body_query = (
+                    query,
+                    (len(self.contact_unallowed_links[0]._bodies), len(self.contact_unallowed_links), 3),
+                )
+
+            # Query contact buffer
+            query, contacts_shape = self.body_query
+            px.gpu_query_contact_body_impulses(query)
+            contacts = (
+                query.cuda_impulses.torch().clone().reshape(*contacts_shape)
+            )  # [n, len(contact_unallowed_links), 3]
+
+            return contacts
+        else:
+            raise ValueError("Scene is not GPU enabled")
+
