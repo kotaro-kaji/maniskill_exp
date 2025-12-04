@@ -51,14 +51,14 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="package://xarm_description/meshes/xarm7_1305/visual/link1.stl"/>
+        <mesh filename="package://xarm_description/meshes/xarm7_1305/visual/link1.stl" scale="1.20 1.20 1.20"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://xarm_description/meshes/xarm7_1305/collision/link1.obj"/>
+        <mesh filename="package://xarm_description/meshes/xarm7_1305/collision/link1.obj" scale="1.20 1.20 1.20"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
@@ -79,14 +79,14 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="package://xarm_description/meshes/xarm7_1305/visual/link2.stl"/>
+        <mesh filename="package://xarm_description/meshes/xarm7_1305/visual/link2.stl" scale="1.20 1.20 1.20"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://xarm_description/meshes/xarm7_1305/collision/link2.obj"/>
+        <mesh filename="package://xarm_description/meshes/xarm7_1305/collision/link2.obj" scale="1.20 1.20 1.20"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
@@ -450,6 +450,7 @@
       <mass value="0.54156"/>
       <inertia ixx="0.00047106" ixy="3.9292E-07" ixz="2.6537E-06" iyy="0.00033072" iyz="-1.0975E-05" izz="0.00025642"/>
     </inertial>
+    
     <visual>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
@@ -457,6 +458,45 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    
+    <!-- Visuals aligned with collision boxes for easier debugging -->
+    <!--
+    <visual>
+      <geometry>
+        <box size="0.0585 0.1222 0.0900"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0.0600"/>
+      <material name="White"/>
+    </visual>
+    <visual>
+      <geometry>
+        <box size="0.032 0.01200 0.03800"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0.0232981 0.14961328"/>
+      <material name="White"/>
+    </visual>
+    <visual>
+      <geometry>
+        <box size="0.03 0.06 0.024"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0.0329381 0.11807328"/>
+      <material name="White"/>
+    </visual>
+    <visual>
+      <geometry>
+        <box size="0.032 0.01200 0.03800"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 -0.0232981 0.14961328"/>
+      <material name="White"/>
+    </visual>
+    <visual>
+      <geometry>
+        <box size="0.03 0.06 0.024"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 -0.0332981 0.11807328"/>
+      <material name="White"/>
+    </visual>
+    -->
     <collision>
       <geometry>
         <box size="0.0585 0.1222 0.0900"/>
@@ -468,9 +508,9 @@
     <!-- Left finger lower box -->
     <collision>
       <geometry>
-        <box size="0.032 0.01850 0.05693"/>
+        <box size="0.032 0.01200 0.03800"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0.0232981 0.15161328"/>
+      <origin rpy="0 0 0" xyz="0 0.0232981 0.14961328"/>
     </collision>
     <!-- Left finger upper box -->
     <collision>
@@ -482,9 +522,9 @@
     <!-- Right finger lower box -->
     <collision>
       <geometry>
-        <box size="0.032 0.01850 0.05693"/>
+        <box size="0.032 0.01200 0.03800"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.0232981 0.15161328"/>
+      <origin rpy="0 0 0" xyz="0 -0.0232981 0.14961328"/>
     </collision>
     <!-- Right finger upper box -->
     <collision>
@@ -711,12 +751,16 @@
       <geometry>
         <!--<mesh filename="file:///home/jika/Desktop/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
         -->
+        
         <!--
         <mesh filename="file:///home/kotaro/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
-        -->
         
-        <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
+        -->
 
+        <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
+        
+        
+        
 
       </geometry>
       <material name="Silver"/>
@@ -727,7 +771,9 @@
         <!--<mesh filename="file:///home/jika/Desktop/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
         -->
         
-        <!--<mesh filename="file:///home/kotaro/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
+        <!--
+        <mesh filename="file:///home/kotaro/my_projects/robot/maniskill_exp/xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>
+        
         -->
 
         <mesh filename="xarm7_stick_centered.stl" scale="0.001 0.001 0.001"/>

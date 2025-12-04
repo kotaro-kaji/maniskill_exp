@@ -39,40 +39,6 @@ while True:
     #print(contact)
     #print("\n\n\n")
 
-    if contact is not None:
-        forces, names = contact
-        forces = torch.as_tensor(forces)
-        if forces.ndim == 1:
-            forces = forces.unsqueeze(0)
-        # 特定ペアは常に表示
-        for target in (
-            "L_link_tcp_stick|box",
-            "R_link_tcp_stick|box",
-            "L_xarm_gripper_base_link|box",
-            "R_xarm_gripper_base_link|box",
-        ):
-            if target in names:
-                idx = names.index(target)
-                vec = forces[:, idx]
-                print(f"{target}: {vec}")
-        # マスク：どこかの環境でしきい値を超える接触があるペアだけ表示
-        mask = (forces > 0).any(dim=0)
-        if mask.any():
-            print("\nContact pairs with nonzero force:")
-            for name, force_vec in zip(names, forces.T):
-                if force_vec.max() <= 0:
-                    continue
-                # 環境ごとに表示（0ベースの env idx）
-                for env_idx, val in enumerate(force_vec):
-                    if val <= 0:
-                        continue
-                    print(f"  env {env_idx}: {name} -> {val.item():.6f}")
-            # ついでに接触ペナルティも表示
-            if "reward_contact_penalty" in info:
-                pen = info["reward_contact_penalty"]
-                if not isinstance(pen, torch.Tensor):
-                    pen = torch.as_tensor(pen)
-                print("  reward_contact_penalty:", pen.detach().cpu().numpy())
     done = terminated or truncated
     env.render()  # GUIウィンドウ表示
 print(f"Episode finished: {info}")

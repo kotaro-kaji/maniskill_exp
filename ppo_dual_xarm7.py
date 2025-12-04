@@ -19,7 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 # ManiSkill specific imports
 import mani_skill.envs
 from mani_skill.utils import gym_utils
-from mani_skill.utils.structs.types import SimConfig
+from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -287,11 +287,23 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
+    # Bump PhysX contact buffers to avoid overflow when many envs are run in parallel.
+    gpu_mem_cfg = GPUMemoryConfig(
+        max_rigid_contact_count=2**21,
+        max_rigid_patch_count=2**20,
+        temp_buffer_capacity=2**26,
+        heap_capacity=2**28,
+    )
+
     env_kwargs = dict(
         obs_mode="state",
         render_mode="rgb_array",
         sim_backend=args.sim_backend,
-        sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
+        sim_config=SimConfig(
+            sim_freq=SIM_FREQUENCY_HZ,
+            control_freq=CONTROL_FREQUENCY_HZ,
+            gpu_memory_config=gpu_mem_cfg,
+        ),
         robot_init_noise_scale=args.robot_init_noise_scale,
     )
 
