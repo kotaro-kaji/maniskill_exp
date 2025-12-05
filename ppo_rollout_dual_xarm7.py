@@ -64,6 +64,10 @@ class RolloutArgs:
     """Observation mode passed to the environment."""
     render_mode: Optional[str] = "rgb_array"
     """Render mode for the environment."""
+    render_width: int = 1280
+    """Width of rendered frames for video capture (default: high-res)."""
+    render_height: int = 1280
+    """Height of rendered frames for video capture (default: high-res)."""
     robot_init_noise_scale: float = 0.05
     """Scale for robot initial joint randomization (normalized internally; 1.0 = training-level high randomness, ~10x legacy offsets)."""
     seed: int = 1
@@ -86,6 +90,8 @@ class RolloutArgs:
     """Capture rollout videos via ManiSkill's RecordEpisode wrapper."""
     record_dir: Optional[str] = None
     """Directory to store rollout videos (defaults next to checkpoint)."""
+    video_fps: int = 20
+    """Frames per second for recorded videos."""
     print_actions: bool = False
     """Print raw actions each step."""
     gripper_joint_indices: Optional[str] = "7,15"
@@ -98,6 +104,9 @@ def _build_env(args: RolloutArgs):
         render_mode=args.render_mode,
         sim_backend=args.sim_backend,
         robot_init_noise_scale=args.robot_init_noise_scale,
+        human_render_camera_configs={
+            "render_camera": {"width": args.render_width, "height": args.render_height}
+        },
     )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
@@ -126,7 +135,7 @@ def _build_env(args: RolloutArgs):
             save_trajectory=False,
             trajectory_name="rollout",
             max_steps_per_video=args.num_eval_steps,
-            video_fps=30,
+            video_fps=args.video_fps,
         )
     return ManiSkillVectorEnv(
         eval_envs,

@@ -59,16 +59,18 @@ class MyDualBoxRotationEnv(BaseEnv):
     CONTACT_FORCE_THRESHOLD = 0.000001  # N
     CONTACT_PENALTY_WEIGHT = 1.0
     
-    BOX_HALF_SIZE = np.array([0.2160*0.5, 0.2845*0.5, 0.1140*0.5])
+    BOX_HALF_SIZE = np.array([0.2170*0.5, 0.2845*0.5, 0.1140*0.5])
     BOX_DENSITY = 200.0
     BOX_X_OFFSET_FROM_BASE = 0.337
+    BOX_CENTER_MIN_X = 0.25
+    BOX_CENTER_MIN_X_PENALTY = 0.5
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.05
     BOX_ROTATION_JITTER_DEG = 3.0
     BOX_ROTATION_JITTER_RAD = math.radians(BOX_ROTATION_JITTER_DEG)
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
-    PUSHPOINT_DISTANCE_THRESHOLD = 0.030
+    PUSHPOINT_DISTANCE_THRESHOLD = 0.035
     BOX_CENTER_MAX_OFFSET = 0.15
     BOX_CENTER_PENALTY_WEIGHT = 0.5
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
@@ -76,6 +78,9 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_INTRUSION_SCALE = 2.0
     TCP_LEAD_SATURATION = 0.010
     TCP_LEAD_MAX = 0.25
+    BOX_TRANSLATION_PENALTY_SCALE = 0.25
+    TCP_HEIGHT_MARGIN = 0.005
+    TCP_HEIGHT_PENALTY = 0.5
 
     def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_noise_scale=1.0,**kwargs):
         self.robot_init_noise_scale = robot_init_noise_scale
@@ -246,7 +251,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_forward_side_center = zeros.clone()
         self.initial_pushpoint_by_right = zeros.clone()
         self.initial_pushpoint_by_left = zeros.clone()
-        self.initial_box_center = zeros.clone()
         self.pushpoint_local_right = zeros.clone()
         self.pushpoint_local_left = zeros.clone()
 
@@ -338,7 +342,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         self.initial_forward_side_center[env_idx_long] = initial_forward_side_center
         self.initial_pushpoint_by_right[env_idx_long] = initial_pushpoint_by_right
         self.initial_pushpoint_by_left[env_idx_long] = initial_pushpoint_by_left
-        self.initial_box_center[env_idx_long] = positions
         rotations_T = rotations.transpose(1, 2)
         local_right = torch.einsum(
             "bij,bj->bi", rotations_T, initial_pushpoint_by_right - positions
@@ -434,10 +437,18 @@ class MyDualBoxRotationEnv(BaseEnv):
 
         # Prepare environment actors
         table_actor = getattr(self.table_scene, "table", None)
+        pedestal_actor = getattr(self.table_scene, "robot_pedestal", None)
         if table_actor is None:
             raise ValueError("Expected environment actor 'table' to exist, got None")
         if self.box is None:
             raise ValueError("Expected environment actor 'box' to exist, got None")
+        if pedestal_actor is None:
+            raise ValueError("Expected environment actor 'robot_pedestal' to exist, got None")
+
+        # Environment-object penalty: box hitting pedestal
+        f_box_pedestal = self.scene.get_pairwise_contact_forces(self.box, pedestal_actor).to(device)
+        penalty_forces.append(torch.linalg.norm(f_box_pedestal, dim=-1))
+        penalty_names.append("box|robot_pedestal")
 
         for idx, sub_agent in enumerate(self.agent.agents):
             prefix = "L" if idx == 0 else "R"
@@ -448,6 +459,7 @@ class MyDualBoxRotationEnv(BaseEnv):
             base_link = name_map.get("xarm_gripper_base_link")
             link2 = name_map.get("link2")
             link6 = name_map.get("link6")
+            link5 = name_map.get("link5")
             link1 = name_map.get("link1")
             if (
                 ball_link is None
@@ -455,6 +467,7 @@ class MyDualBoxRotationEnv(BaseEnv):
                 or base_link is None
                 or link2 is None
                 or link6 is None
+                or link5 is None
                 or link1 is None
             ):
                 raise ValueError("Missing expected link on agent")
@@ -464,9 +477,9 @@ class MyDualBoxRotationEnv(BaseEnv):
                 (f"{prefix}_xarm_gripper_base_link|box", base_link, self.box),
                 (f"{prefix}_link_tcp_stick|box", stick_link, self.box),
                 (f"{prefix}_link_tcp_ball|table", ball_link, table_actor),
-                (f"{prefix}_link2|link6", link2, link6),
-                (f"{prefix}_link6|box", link6, self.box),
-                (f"{prefix}_link1|box", link1, self.box),
+                (f"{prefix}_link2|{prefix}_link6", link2, link6),
+                (f"{prefix}_link6|{prefix}_link1", link6, link1),
+                (f"{prefix}_link5|{prefix}_link1", link5, link1),
             ):
                 f = self.scene.get_pairwise_contact_forces(a, b).to(device)
                 penalty_forces.append(torch.linalg.norm(f, dim=-1))
@@ -476,6 +489,8 @@ class MyDualBoxRotationEnv(BaseEnv):
             f_ball_box = self.scene.get_pairwise_contact_forces(ball_link, self.box).to(device)
             ball_box_forces.append(torch.linalg.norm(f_ball_box, dim=-1))
             ball_box_names.append(f"{prefix}_link_tcp_ball|box")
+
+
 
         if penalty_forces:
             stacked = torch.stack(penalty_forces, dim=-1)  # [B, num_pairs]
@@ -518,21 +533,14 @@ class MyDualBoxRotationEnv(BaseEnv):
         if current_box_center.ndim == 1:
             current_box_center = current_box_center.unsqueeze(0)
         rotation_current = quaternion_to_matrix(box_pose.q)
-        world_pushpoint_right = current_box_center + torch.einsum(
-            "bij,bj->bi", rotation_current, self.pushpoint_local_right
-        )
-        world_pushpoint_left = current_box_center + torch.einsum(
-            "bij,bj->bi", rotation_current, self.pushpoint_local_left
-        )
-        normal_conditions = (theta >= 0.0) & (theta < 179.0) | (theta >= 359.0)
-        inversion_conditions = ~normal_conditions 
-        inversion_conditions_mask = inversion_conditions.unsqueeze(-1)
-        current_pushpoint_by_right = torch.where(
-            inversion_conditions_mask, world_pushpoint_left,  world_pushpoint_right
-        )
-
-        current_pushpoint_by_left = torch.where(
-            inversion_conditions_mask, world_pushpoint_right, world_pushpoint_left
+        (
+            target_pushpoint_left,
+            target_pushpoint_right,
+            inversion_conditions,
+            world_pushpoint_left,
+            world_pushpoint_right,
+        ) = self._compute_pushpoints_from_pose(
+            current_box_center, rotation_current, theta
         )
 
         left_tcp_pos = Pose.create(
@@ -551,9 +559,6 @@ class MyDualBoxRotationEnv(BaseEnv):
             if right_tcp_pos.ndim == 2 and right_tcp_pos.shape[0] == 1
             else right_tcp_pos
         )
-
-        target_pushpoint_left = current_pushpoint_by_left.clone()
-        target_pushpoint_right = current_pushpoint_by_right.clone()
 
         info["box_theta_deg"] = theta.detach().cpu()
         info["pushpoint_inversion_conditions"] = inversion_conditions.detach().cpu()
@@ -587,6 +592,39 @@ class MyDualBoxRotationEnv(BaseEnv):
             right_tcp_pos=right_tcp_pos,
             box_theta_deg=theta,
             box_rotation_matrix=rotation_current,
+        )
+
+    def _compute_pushpoints_from_pose(
+        self,
+        current_box_center: torch.Tensor,
+        rotation_current: torch.Tensor,
+        theta: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Compute world-frame pushpoints from the box pose.
+        Separated for easy customization of how pushpoints are derived (e.g., adding extra rotation).
+        """
+        world_pushpoint_right = current_box_center + torch.einsum(
+            "bij,bj->bi", rotation_current, self.pushpoint_local_right
+        )
+        world_pushpoint_left = current_box_center + torch.einsum(
+            "bij,bj->bi", rotation_current, self.pushpoint_local_left
+        )
+        normal_conditions = (theta >= 0.0) & (theta < 179.0) | (theta >= 359.0)
+        inversion_conditions = ~normal_conditions
+        inversion_conditions_mask = inversion_conditions.unsqueeze(-1)
+        target_pushpoint_by_right = torch.where(
+            inversion_conditions_mask, world_pushpoint_left, world_pushpoint_right
+        )
+        target_pushpoint_by_left = torch.where(
+            inversion_conditions_mask, world_pushpoint_right, world_pushpoint_left
+        )
+        return (
+            target_pushpoint_by_left.clone(),
+            target_pushpoint_by_right.clone(),
+            inversion_conditions,
+            world_pushpoint_left,
+            world_pushpoint_right,
         )
 
     def _log_observation_to_info(self, info: Dict[str, Any]):
@@ -760,15 +798,32 @@ class MyDualBoxRotationEnv(BaseEnv):
     def _box_translation_penalty(
         self, current_box_center: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        translation_vector = current_box_center - self.initial_box_center
+        # Deviation from the nominal spawn center in XYZ to discourage lifting/carrying.
+        nominal_center_world = torch.tensor(
+            self._bimanual_center_point_to_world(
+                [
+                    self.BOX_X_OFFSET_FROM_BASE,
+                    0.0,
+                    self.BOX_HALF_SIZE[2] - PEDESTAL_HEIGHT,
+                ]
+            ),
+            device=self.device,
+            dtype=torch.float32,
+        )
+        translation_vector = current_box_center - nominal_center_world
         translation_distance = torch.linalg.norm(translation_vector, dim=-1)
         normalized_distance = torch.clamp(
             translation_distance / self.BOX_CENTER_MAX_OFFSET, 0.0, 1.0
         )
         normalized_penalty = smoothstep(normalized_distance)
-        translation_penalty = self.BOX_CENTER_PENALTY_WEIGHT * normalized_penalty
+        translation_penalty = (
+            self.BOX_CENTER_PENALTY_WEIGHT
+            * normalized_penalty
+            * self.BOX_TRANSLATION_PENALTY_SCALE
+        )
         info = {
             "translation_distance": translation_distance,
+            "translation_reference_world": nominal_center_world,
             "normalized_translation_distance": normalized_distance,
             "normalized_translation_penalty": normalized_penalty,
             "translation_penalty": translation_penalty,
@@ -898,6 +953,35 @@ class MyDualBoxRotationEnv(BaseEnv):
         }
         return reward, info
 
+    def _tcp_height_penalty(
+        self,
+        current_box_center: torch.Tensor,
+        left_tcp_pos: torch.Tensor,
+        right_tcp_pos: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Penalize TCP dipping below box center z minus tolerance."""
+
+        def _ensure_batch(t: torch.Tensor) -> torch.Tensor:
+            return t.unsqueeze(0) if t.ndim == 1 else t
+
+        current_box_center = _ensure_batch(current_box_center)
+        left_tcp_pos = _ensure_batch(left_tcp_pos)
+        right_tcp_pos = _ensure_batch(right_tcp_pos)
+
+        box_center_z = current_box_center[..., 2]
+        threshold_z = box_center_z - self.TCP_HEIGHT_MARGIN
+        violation_left = left_tcp_pos[..., 2] < threshold_z
+        violation_right = right_tcp_pos[..., 2] < threshold_z
+        violation = violation_left | violation_right
+        penalty = violation.float() * self.TCP_HEIGHT_PENALTY
+
+        info = {
+            "tcp_height_penalty": penalty,
+            "tcp_height_violation_left": violation_left,
+            "tcp_height_violation_right": violation_right,
+        }
+        return penalty, info
+
 
 
     def compute_normalized_dense_reward(self, obs, action, info):
@@ -931,6 +1015,15 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.left_tcp_pos,
             context.right_tcp_pos,
         )
+        tcp_height_penalty_score, tcp_height_info = self._tcp_height_penalty(
+            context.current_box_center,
+            context.left_tcp_pos,
+            context.right_tcp_pos,
+        )
+
+        # Penalize box center x dropping below minimum threshold.
+        below_min_x = context.current_box_center[..., 0] < self.BOX_CENTER_MIN_X
+        box_min_x_penalty = below_min_x.float() * self.BOX_CENTER_MIN_X_PENALTY
 
         contact_penalty_score = self._compute_contact_penalty(info) #non-negative penalty
         
@@ -944,8 +1037,10 @@ class MyDualBoxRotationEnv(BaseEnv):
             positive_rotation, torch.zeros_like(rotation_score), rotation_score ) #min = -1.0, max = 0.0
         reward_tcp_lead = tcp_lead_score #min = -TCP_LEAD_MAX, max = TCP_LEAD_MAX
 
-        penalty_translation = -translation_penalty_score #min = -0.5, max = 0.0
+        penalty_translation = -translation_penalty_score #min = -0.1 (scale=0.25), max = 0.0
         penalty_contact = -contact_penalty_score #min = -1.0, max = 0.0
+        penalty_tcp_height = -tcp_height_penalty_score #min = -TCP_HEIGHT_PENALTY, max = 0.0
+        penalty_box_min_x = -box_min_x_penalty #min = -BOX_CENTER_MIN_X_PENALTY, max = 0.0
         #penalty_intrusion = -intrusion_penalty_score  #min = -0.916, max = 0.0
         
 
@@ -956,16 +1051,16 @@ class MyDualBoxRotationEnv(BaseEnv):
 
 
         #Stage 1: move tcp to pushpoint
-        #reward = reward_pushpoint + reward_tcp_lead #min = -1.0, max = 1 + TCP_LEAD_MAX
+        reward = reward_pushpoint + reward_tcp_lead #min = -1.0, max = 1 + TCP_LEAD_MAX
 
         #Stage 2: rotate box to pushpoint
-        #stage_2_reward = 1.0 + self.TCP_LEAD_MAX + reward_rotation
-        #mask = pushpoint_stage_complete.bool()
-        #reward[mask] = stage_2_reward[mask] #min = 1 + TCP_LEAD_MAX, max = 1 + TCP_LEAD_MAX + 1.0
+        stage_2_reward = reward_pushpoint + self.TCP_LEAD_MAX +1e-4 + 2.0*reward_rotation
+        mask = pushpoint_stage_complete.bool()
+        reward[mask] = stage_2_reward[mask] #min = 1 + TCP_LEAD_MAX, max = 1 + TCP_LEAD_MAX + 1.0
 
-        reward = reward_rotation + reward_pushpoint
+        #reward = reward_rotation + reward_pushpoint
         # Add a constant penalty that is independent of the stage.
-        #reward = reward + penalty_contact + penalty_translation + penalty_inverse_rotation 
+        reward = reward + penalty_contact + penalty_translation + penalty_inverse_rotation + penalty_tcp_height + penalty_box_min_x 
 
 
         info["reward_pushpoint"] = reward_pushpoint.detach().cpu()
@@ -973,6 +1068,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["penalty_translation"] = penalty_translation.detach().cpu()
         info["penalty_contact"] = penalty_contact.detach().cpu()
         info["penalty_inverse_rotation"] = penalty_inverse_rotation.detach().cpu()
+        info["penalty_tcp_height"] = penalty_tcp_height.detach().cpu()
+        info["penalty_box_min_x"] = penalty_box_min_x.detach().cpu()
         info["reward_tcp_lead"] = reward_tcp_lead.detach().cpu()
         info["rewards_t"] = reward.detach().cpu()
 
@@ -1017,6 +1114,12 @@ class MyDualBoxRotationEnv(BaseEnv):
         ].detach().cpu()
         info["box_intrusion_depth_right"] = intrusion_info[
             "intrusion_depth_right"
+        ].detach().cpu()
+        info["tcp_height_violation_left"] = tcp_height_info[
+            "tcp_height_violation_left"
+        ].detach().cpu()
+        info["tcp_height_violation_right"] = tcp_height_info[
+            "tcp_height_violation_right"
         ].detach().cpu()
         # measured joint positions (left then right) flattened (drop mimic joints via obs indices)
         try:

@@ -30,6 +30,7 @@ import task_simple
 from task_pushcube_beatiful import MyPushCubeEnv
 from tasks.dual.task_dual_simple import MyDualSimpleEnv
 from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
+from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwitchEnv
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
 SIM_FREQUENCY_HZ = 100
