@@ -4,8 +4,10 @@
 **/runs/
 
 
+/ckpts
 
 commit.sh
+
 
 
 rollout_dual_info.jsonl

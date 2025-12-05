@@ -114,9 +114,15 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
   --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
   --gamma=0.99
 
+# サンドイッチ版（Y面を挟むpushpoint）
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationSandwitch-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
+
 python ppo_rollout_dual_xarm7.py \
-  --checkpoint runs/MyDualBoxRotationAblated-v0__ppo_dual_xarm7__1__1763533447/ckpt_26.pt \
-  --env-id MyDualBoxRotationAblated-v0
+  --checkpoint ckpts/ckpt_101.pt \
+  --env-id MyDualBoxRotationAblated-v0 --num_eval_steps 200
 s
 python ppo_rollout_dual_xarm7.py \
 --checkpoint runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_51.pt --env-id MyDualSimple-v0
