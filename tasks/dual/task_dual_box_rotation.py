@@ -63,19 +63,17 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_DENSITY = 200.0
     BOX_X_OFFSET_FROM_BASE = 0.337
     BOX_CENTER_MIN_X = 0.25
-    BOX_CENTER_MIN_X_PENALTY = 0.5
-    BOX_Y_JITTER = 0.05
-    BOX_X_JITTER = 0.05
+    BOX_Y_JITTER = 0.02
+    BOX_X_JITTER = 0.015
     BOX_ROTATION_JITTER_DEG = 3.0
     BOX_ROTATION_JITTER_RAD = math.radians(BOX_ROTATION_JITTER_DEG)
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
-    PUSHPOINT_DISTANCE_THRESHOLD = 0.035
+    PUSHPOINT_DISTANCE_THRESHOLD = 0.050
     BOX_CENTER_MAX_OFFSET = 0.15
     BOX_CENTER_PENALTY_WEIGHT = 0.5
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
-    BOX_INTRUSION_MARGIN = 0.025
-    BOX_INTRUSION_SCALE = 2.0
+    BOX_GOAL_YAW_DEG = 145.0  # raw yawでは -145 度、内部では正値で扱う
     TCP_LEAD_SATURATION = 0.010
     TCP_LEAD_MAX = 0.25
     BOX_TRANSLATION_PENALTY_SCALE = 0.25
@@ -830,6 +828,30 @@ class MyDualBoxRotationEnv(BaseEnv):
         }
         return translation_penalty, info
 
+    def _box_min_x_penalty(
+        self, current_box_center: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Linear penalty based on box center x.
+        Zero at BOX_X_OFFSET_FROM_BASE, 1.0 at BOX_CENTER_MIN_X, clamped to [0, 1].
+        """
+        center = torch.tensor(
+            self.bimanual_center_pose.p, device=self.device, dtype=torch.float32
+        )
+        x_center_frame = current_box_center[..., 0] - center[0]
+        ref_x = float(self.BOX_X_OFFSET_FROM_BASE - self.BOX_X_JITTER)
+        min_x = float(self.BOX_CENTER_MIN_X)
+        span = max(ref_x - min_x, 1e-6)
+        normalized = torch.clamp((ref_x - x_center_frame) / span, 0.0, 1.0)
+        penalty = normalized  # already in [0,1]
+        info = {
+            "box_min_x_penalty": penalty,
+            "box_min_x_normalized": normalized,
+            "box_min_x_reference": torch.tensor(ref_x, device=self.device),
+            "box_min_x_span": torch.tensor(span, device=self.device),
+        }
+        return penalty, info
+
     def _box_yaw_rotation(
         self, theta_deg: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -851,53 +873,24 @@ class MyDualBoxRotationEnv(BaseEnv):
             target_delta_value, device=self.device, dtype=torch.float32
         )
         step_reward = signed_delta / target_delta
-        rotation_reward = torch.clamp(step_reward, min=-1.0, max=1.0)
+        step_reward = torch.clamp(step_reward, min=-1.0, max=1.0)
+        delta_reward = 2.0 * step_reward  # range [-2, 2]
+
+        goal_theta = torch.tensor(
+            self.BOX_GOAL_YAW_DEG, device=self.device, dtype=torch.float32
+        )
+        angle_diff_rad = torch.deg2rad(goal_theta - theta_deg)
+        alignment_reward = 2.0 * (1.0 + torch.cos(angle_diff_rad))
         info = {
             "yaw_delta_deg": signed_delta,
-            "yaw_rotation_reward": rotation_reward,
+            "yaw_rotation_reward": alignment_reward,
+            "yaw_step_reward": delta_reward,
             "yaw_rotation_progress_deg": self._positive_yaw_progress,
             "yaw_rotation_target_delta_deg": signed_delta.new_full(
                 signed_delta.shape, target_delta_value
             ),
         }
-        return rotation_reward, info
-
-    def _box_intrusion_penalty(
-        self,
-        current_box_center: torch.Tensor,
-        left_tcp_pos: torch.Tensor,
-        right_tcp_pos: torch.Tensor,
-        rotation_matrix: torch.Tensor,
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-       
-
-        half_sizes = torch.tensor(
-            self.BOX_HALF_SIZE, device=self.device, dtype=torch.float32
-        )
-        inflated_half = half_sizes + self.BOX_INTRUSION_MARGIN
-
-        def _intrusion(tcp_pos: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-            delta_world = tcp_pos - current_box_center
-            delta_local = torch.einsum(
-                "bij,bj->bi", rotation_matrix.transpose(1, 2), delta_world
-            )
-            delta_abs = torch.abs(delta_local)
-            inside = torch.all(delta_abs <= inflated_half, dim=-1)
-            penetration = torch.clamp(inflated_half - delta_abs, min=0.0)
-            depth = torch.linalg.norm(penetration, dim=-1)
-            return inside, depth
-
-        inside_left, depth_left = _intrusion(left_tcp_pos)
-        inside_right, depth_right = _intrusion(right_tcp_pos)
-        penalty = self.BOX_INTRUSION_SCALE * (depth_left + depth_right)
-        info = {
-            "intrusion_left": inside_left,
-            "intrusion_right": inside_right,
-            "intrusion_depth_left": depth_left,
-            "intrusion_depth_right": depth_right,
-            "intrusion_penalty": penalty,
-        }
-        return penalty, info
+        return delta_reward, info
 
     def _tcp_leading_reward(
         self,
@@ -1002,13 +995,10 @@ class MyDualBoxRotationEnv(BaseEnv):
         translation_penalty_score, translation_info = self._box_translation_penalty(
             context.current_box_center
         )
-        rotation_score, rotation_info = self._box_yaw_rotation(context.box_theta_deg)
-        intrusion_penalty_score, intrusion_info = self._box_intrusion_penalty(
-            context.current_box_center,
-            context.left_tcp_pos,
-            context.right_tcp_pos,
-            context.box_rotation_matrix,
+        box_min_x_penalty_score, box_min_x_info = self._box_min_x_penalty(
+            context.current_box_center
         )
+        rotation_step_score, rotation_info = self._box_yaw_rotation(context.box_theta_deg)
         tcp_lead_score, tcp_lead_info = self._tcp_leading_reward(
             context.current_box_center,
             context.box_rotation_matrix,
@@ -1021,46 +1011,47 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.right_tcp_pos,
         )
 
-        # Penalize box center x dropping below minimum threshold.
-        below_min_x = context.current_box_center[..., 0] < self.BOX_CENTER_MIN_X
-        box_min_x_penalty = below_min_x.float() * self.BOX_CENTER_MIN_X_PENALTY
-
         contact_penalty_score = self._compute_contact_penalty(info) #non-negative penalty
-        
+
         reward_pushpoint = pushpoint_score #min = 0.0, max = 1.0
 
-        # 負の回転は常に抑制、正の回転はpushpoint_stageのときだけ（envごとに判定）
-        positive_rotation = rotation_score > 0.0
+        mask = pushpoint_stage_complete.bool()
+        rotation_alignment_reward = rotation_info["yaw_rotation_reward"]
         reward_rotation = torch.where(
-            positive_rotation, rotation_score, torch.zeros_like(rotation_score) ) #min = 0.0, max = 1.0
+            mask, rotation_alignment_reward, torch.zeros_like(rotation_alignment_reward)
+        )  # min = -3.0, max = 3.0 (only after pushpoint stage)
+
+        positive_rotation = rotation_step_score > 0.0
         penalty_inverse_rotation = torch.where(
-            positive_rotation, torch.zeros_like(rotation_score), rotation_score ) #min = -1.0, max = 0.0
+            positive_rotation, torch.zeros_like(rotation_step_score), rotation_step_score
+        ) #min = -2.0, max = 0.0
+        penalty_forward_rotation_stage1 = torch.where(
+            mask, torch.zeros_like(rotation_step_score), -torch.clamp(rotation_step_score, min=0.0)
+        ) #min = -2.0, max = 0.0 (only before pushpoints reached)
         reward_tcp_lead = tcp_lead_score #min = -TCP_LEAD_MAX, max = TCP_LEAD_MAX
 
         penalty_translation = -translation_penalty_score #min = -0.1 (scale=0.25), max = 0.0
         penalty_contact = -contact_penalty_score #min = -1.0, max = 0.0
         penalty_tcp_height = -tcp_height_penalty_score #min = -TCP_HEIGHT_PENALTY, max = 0.0
-        penalty_box_min_x = -box_min_x_penalty #min = -BOX_CENTER_MIN_X_PENALTY, max = 0.0
-        #penalty_intrusion = -intrusion_penalty_score  #min = -0.916, max = 0.0
+        penalty_box_min_x = -box_min_x_penalty_score #min = -1.0, max = 0.0
         
 
         #腕を振り回すというだけの報酬も用意してみました。
         #reward = (torch.linalg.norm(self.agent.agents[0].tcp.get_linear_velocity(), dim = -1) + torch.linalg.norm(self.agent.agents[1].tcp.get_linear_velocity(), dim = -1))/20.0 
         
-        # reward_intrusion is tracked in info but currently excluded from the final sum.
-
 
         #Stage 1: move tcp to pushpoint
         reward = reward_pushpoint + reward_tcp_lead #min = -1.0, max = 1 + TCP_LEAD_MAX
 
         #Stage 2: rotate box to pushpoint
-        stage_2_reward = reward_pushpoint + self.TCP_LEAD_MAX +1e-4 + 2.0*reward_rotation
-        mask = pushpoint_stage_complete.bool()
-        reward[mask] = stage_2_reward[mask] #min = 1 + TCP_LEAD_MAX, max = 1 + TCP_LEAD_MAX + 1.0
+        stage_2_reward = reward_pushpoint + self.TCP_LEAD_MAX +1e-2 + reward_rotation
+        reward[mask] = stage_2_reward[mask] #approx range: (1 + TCP_LEAD_MAX - 3.0, 1 + TCP_LEAD_MAX + 3.0)
 
         #reward = reward_rotation + reward_pushpoint
         # Add a constant penalty that is independent of the stage.
-        reward = reward + penalty_contact + penalty_translation + penalty_inverse_rotation + penalty_tcp_height + penalty_box_min_x 
+        #reward = reward + penalty_contact + penalty_translation + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x 
+        #reward = reward + penalty_contact + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x 
+        reward = reward + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x
 
 
         info["reward_pushpoint"] = reward_pushpoint.detach().cpu()
@@ -1068,8 +1059,18 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["penalty_translation"] = penalty_translation.detach().cpu()
         info["penalty_contact"] = penalty_contact.detach().cpu()
         info["penalty_inverse_rotation"] = penalty_inverse_rotation.detach().cpu()
+        info["penalty_forward_rotation_stage1"] = penalty_forward_rotation_stage1.detach().cpu()
         info["penalty_tcp_height"] = penalty_tcp_height.detach().cpu()
         info["penalty_box_min_x"] = penalty_box_min_x.detach().cpu()
+        info["box_min_x_penalty_norm"] = box_min_x_info[
+            "box_min_x_penalty"
+        ].detach().cpu()
+        info["box_min_x_reference"] = box_min_x_info[
+            "box_min_x_reference"
+        ].detach().cpu()
+        info["box_min_x_span"] = box_min_x_info[
+            "box_min_x_span"
+        ].detach().cpu()
         info["reward_tcp_lead"] = reward_tcp_lead.detach().cpu()
         info["rewards_t"] = reward.detach().cpu()
 
@@ -1093,9 +1094,9 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["box_rotation_reward"] = rotation_info[
             "yaw_rotation_reward"
         ].detach().cpu()
-        info["box_intrusion_penalty"] = intrusion_info["intrusion_penalty"].detach().cpu()
-        info["box_intrusion_left"] = intrusion_info["intrusion_left"].detach().cpu()
-        info["box_intrusion_right"] = intrusion_info["intrusion_right"].detach().cpu()
+        info["box_rotation_step_reward"] = rotation_info[
+            "yaw_step_reward"
+        ].detach().cpu()
         info["box_rotation_progress"] = rotation_info[
             "yaw_rotation_progress_deg"
         ].detach().cpu()
@@ -1108,12 +1109,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         ].detach().cpu()
         info["tcp_lead_left_component"] = tcp_lead_info[
             "tcp_lead_left_component"
-        ].detach().cpu()
-        info["box_intrusion_depth_left"] = intrusion_info[
-            "intrusion_depth_left"
-        ].detach().cpu()
-        info["box_intrusion_depth_right"] = intrusion_info[
-            "intrusion_depth_right"
         ].detach().cpu()
         info["tcp_height_violation_left"] = tcp_height_info[
             "tcp_height_violation_left"
