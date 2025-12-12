@@ -133,7 +133,7 @@ python ppo_rollout_virtual_dual_xarm7.py \
 runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_26.pt
 
 
-python sac_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
+python sac_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
   --num_envs=128 --utd=0.5 --buffer_size=500_000 \
   --total_timesteps=5_000_000 --eval_freq=50_000 --control-mode="pd_joint_delta_pos" \
   --num_eval_envs 4 --num-steps=200 --num_eval_steps=200
