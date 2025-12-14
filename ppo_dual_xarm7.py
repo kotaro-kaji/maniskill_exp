@@ -290,10 +290,10 @@ if __name__ == "__main__":
     # env setup
     # Bump PhysX contact buffers to avoid overflow when many envs are run in parallel.
     gpu_mem_cfg = GPUMemoryConfig(
-        max_rigid_contact_count=2**25,
+        max_rigid_contact_count=2**22,
         max_rigid_patch_count=2**20,
-        temp_buffer_capacity=2**26,
-        heap_capacity=2**28,
+        temp_buffer_capacity=2**24,
+        heap_capacity=2**22,
     )
 
     env_kwargs = dict(
