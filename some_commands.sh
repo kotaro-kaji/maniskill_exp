@@ -142,3 +142,11 @@ python3 visualize_urdf.py --urdf xarm7_rs_g2_ft.urdf
 
 #Allegro touch or Allegro_right_hand_
 python tests/ppo.py --env_id="RotateSingleObjectInHandLevel0-v1"   --num_envs=128 --update_epochs=8   --num_minibatches=32   --total_timesteps=50_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99 --no-partial-reset
+
+python sac.py --env_id="MyDualSimple-v0" \
+  --num_envs=32 --utd=0.5 --buffer_size=500_000 \
+  --total_timesteps=500_000 --eval_freq=50_000 --control-mode="pd_joint_delta_pos" 
+
+python sac.py --env_id="MyDualBoxRotationAblated-v0"   \
+  --num_envs=64 --utd=0.5 --buffer_size=500_000   --total_timesteps=5_000_000 \
+  --eval_freq=50_000 --control-mode="pd_joint_delta_pos" --num_eval_envs=4 --num_steps 200 --num_eval_steps 200

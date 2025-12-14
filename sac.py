@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import os
 import random
 import time
-from typing import Optional
+from typing import Optional, Union
 
 import tqdm
 
@@ -12,6 +12,21 @@ from mani_skill.utils import gym_utils
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+from mani_skill.envs.tasks.tabletop.push_cube import PushCubeEnv
+from mani_skill.utils.registration import register_env
+
+from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
+from tasks.dual.task_dual_simple import MyDualSimpleEnv
+from robotagents.xarm_ball_ee import Xarm7BallEE
+
+# Register a PushCube variant that accepts the custom xArm end-effector.
+@register_env("PushCubeXarm-v1", max_episode_steps=50)
+class PushCubeXarmEnv(PushCubeEnv):
+    SUPPORTED_ROBOTS = ["xarm_ball_ee"]
+    agent: Union[Xarm7BallEE]
+
+    def __init__(self, *args, robot_uids="xarm_ball_ee", **kwargs):
+        super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
 import gymnasium as gym
 import numpy as np
@@ -274,6 +289,9 @@ if __name__ == "__main__":
     args = tyro.cli(Args)
     args.grad_steps_per_iteration = int(args.training_freq * args.utd)
     args.steps_per_env = args.training_freq // args.num_envs
+    # Redirect default PushCube to the xArm-enabled variant.
+    if args.env_id == "PushCube-v1":
+        args.env_id = "PushCubeXarm-v1"
     if args.exp_name is None:
         args.exp_name = os.path.basename(__file__)[: -len(".py")]
         run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -407,10 +425,10 @@ if __name__ == "__main__":
                 eval_metrics_mean[k] = mean
                 if logger is not None:
                     logger.add_scalar(f"eval/{k}", mean, global_step)
-            pbar.set_description(
-                f"success_once: {eval_metrics_mean['success_once']:.2f}, "
-                f"return: {eval_metrics_mean['return']:.2f}"
-            )
+            #pbar.set_description(
+                #f"success_once: {eval_metrics_mean['success_once']:.2f}, "
+                #f"reward: {eval_metrics_mean['reward']:.2f}"
+            #)
             if logger is not None:
                 eval_time = time.perf_counter() - stime
                 cumulative_times["eval_time"] += eval_time

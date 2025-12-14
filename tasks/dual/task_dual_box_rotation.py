@@ -1049,9 +1049,8 @@ class MyDualBoxRotationEnv(BaseEnv):
 
         #reward = reward_rotation + reward_pushpoint
         # Add a constant penalty that is independent of the stage.
-        #reward = reward + penalty_contact + penalty_translation + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x 
-        #reward = reward + penalty_contact + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x 
-        reward = reward + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x
+        reward = reward + penalty_contact + penalty_translation + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_box_min_x 
+        
 
 
         info["reward_pushpoint"] = reward_pushpoint.detach().cpu()
