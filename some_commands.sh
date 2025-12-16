@@ -114,6 +114,11 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
   --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
   --gamma=0.99
 
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationRegrasp-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=3072 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
+
 # サンドイッチ版（Y面を挟むpushpoint）
 python ppo_dual_xarm7.py --env_id="MyDualBoxRotationSandwitch-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
@@ -149,4 +154,15 @@ python sac.py --env_id="MyDualSimple-v0" \
 
 python sac.py --env_id="MyDualBoxRotationAblated-v0"   \
   --num_envs=64 --utd=0.5 --buffer_size=500_000   --total_timesteps=5_000_000 \
+  --eval_freq=50_000 --control-mode="pd_joint_delta_pos" --num_eval_envs=4 --num_steps 200 --num_eval_steps 200
+
+
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationRegrasp-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
+
+
+python sac.py --env_id="MyDualBoxRotationRegrasp-v0"   \
+  --num_envs=64 --utd=0.5 --buffer_size=500_000   --total_timesteps=25_000_000 \
   --eval_freq=50_000 --control-mode="pd_joint_delta_pos" --num_eval_envs=4 --num_steps 200 --num_eval_steps 200
