@@ -65,7 +65,7 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_CENTER_MIN_X = 0.25
     BOX_Y_JITTER = 0.02
     BOX_X_JITTER = 0.015
-    BOX_ROTATION_JITTER_DEG = 3.0
+    BOX_ROTATION_JITTER_DEG = 180
     BOX_ROTATION_JITTER_RAD = math.radians(BOX_ROTATION_JITTER_DEG)
     DISTANCE_SCALE = 4.0
     PUSHPOINT_DISTANCE_SCALE = 5.0
@@ -271,8 +271,13 @@ class MyDualBoxRotationEnv(BaseEnv):
         if env_idx.numel() == 0:
             return
         env_idx_long = env_idx.long()
-        theta_deg = theta_deg.to(device=self.device, dtype=torch.float32)
-        self._prev_box_theta[env_idx_long] = theta_deg
+        # Use actual box yaw at reset to avoid spurious large deltas on first step.
+        current_theta = self._get_box_theta_deg().to(
+            device=self.device, dtype=torch.float32
+        )
+        if current_theta.ndim == 0:
+            current_theta = current_theta.unsqueeze(0)
+        self._prev_box_theta[env_idx_long] = current_theta[env_idx_long]
         self._positive_yaw_progress[env_idx_long] = 0.0
 
     def _theta_to_quaternion(self, theta_deg: torch.Tensor) -> torch.Tensor:
@@ -319,12 +324,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         )  # (batch, 3, 2)
         long_side_offsets_world = long_side_offsets_world.transpose(1, 2)  # (batch, 2, 3)
         long_side_centers_world = positions.unsqueeze(1) + long_side_offsets_world
-        mask = long_side_centers_world[:, 0, 0] >= long_side_centers_world[:, 1, 0]
-        initial_forward_side_center = torch.where(
-            mask.unsqueeze(-1),
-            long_side_centers_world[:, 0, :],
-            long_side_centers_world[:, 1, :],
-        )
+        # Treat +X (local +hx) as the forward side deterministically.
+        initial_forward_side_center = long_side_centers_world[:, 0, :]
 
         push_offset_local = torch.tensor(
             [0.0, -0.8 * hy, 0.0],
@@ -394,11 +395,12 @@ class MyDualBoxRotationEnv(BaseEnv):
             theta = torch.zeros(
                 batch_size, device=self.device, dtype=torch.float32
             )
-            if self.BOX_ROTATION_JITTER_RAD > 0.0:
+            if self.BOX_ROTATION_JITTER_DEG > 0.0:
+                # jitter is specified in degrees; keep theta in degrees before quaternion conversion
                 theta = theta + (
                     (torch.rand(batch_size, device=self.device) - 0.5)
                     * 2.0
-                    * self.BOX_ROTATION_JITTER_RAD
+                    * float(self.BOX_ROTATION_JITTER_DEG)
                 )
             orientations = self._theta_to_quaternion(theta)
             #self.box_objects[env_idx].set_pose(Pose.create_from_pq(positions, orientations))
@@ -569,8 +571,19 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["initial_pushpoint_by_left"] = (
             self.initial_pushpoint_by_left.detach().cpu()
         )
+        center = torch.tensor(
+            self.bimanual_center_pose.p,
+            device=self.device,
+            dtype=target_pushpoint_left.dtype,
+        )
         info["current_pushpoint_by_right"] = target_pushpoint_right.detach().cpu()
         info["current_pushpoint_by_left"] = target_pushpoint_left.detach().cpu()
+        info["current_pushpoint_by_right_from_bimanual_center"] = (
+            target_pushpoint_right - center
+        ).detach().cpu()
+        info["current_pushpoint_by_left_from_bimanual_center"] = (
+            target_pushpoint_left - center
+        ).detach().cpu()
 
         if getattr(self, "_enable_pushpoint_debug", False):
             if self.pushpoint_left_site is not None:
@@ -898,9 +911,13 @@ class MyDualBoxRotationEnv(BaseEnv):
         rotation_matrix: torch.Tensor,
         left_tcp_pos: torch.Tensor,
         right_tcp_pos: torch.Tensor,
+        target_pushpoint_left: torch.Tensor,
+        target_pushpoint_right: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Reward when TCP passes the pushpoint along +/-X on the box surface."""
-        self._ensure_pushpoint_buffers()
+        """Reward when TCP passes the (possibly inverted) pushpoints along +/-X on the box surface.
+
+        Output is squashed by tanh then shifted into [0, TCP_LEAD_MAX], so small負も段階的に残しつつ上限だけクリップ。
+        """
 
         def _ensure_batch(t: torch.Tensor) -> torch.Tensor:
             return t.unsqueeze(0) if t.ndim == 1 else t
@@ -908,6 +925,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         current_box_center = _ensure_batch(current_box_center)
         left_tcp_pos = _ensure_batch(left_tcp_pos)
         right_tcp_pos = _ensure_batch(right_tcp_pos)
+        target_pushpoint_left = _ensure_batch(target_pushpoint_left)
+        target_pushpoint_right = _ensure_batch(target_pushpoint_right)
         if rotation_matrix.ndim == 2:
             rotation_matrix = rotation_matrix.unsqueeze(0)
 
@@ -918,11 +937,11 @@ class MyDualBoxRotationEnv(BaseEnv):
         right_local = torch.einsum(
             "bij,bj->bi", rot_T, right_tcp_pos - current_box_center
         )
-        push_left_local = self.pushpoint_local_left.to(
-            device=self.device, dtype=torch.float32
+        push_left_local = torch.einsum(
+            "bij,bj->bi", rot_T, target_pushpoint_left - current_box_center
         )
-        push_right_local = self.pushpoint_local_right.to(
-            device=self.device, dtype=torch.float32
+        push_right_local = torch.einsum(
+            "bij,bj->bi", rot_T, target_pushpoint_right - current_box_center
         )
 
         def _lead(push_local: torch.Tensor, tcp_local: torch.Tensor) -> torch.Tensor:
@@ -933,8 +952,10 @@ class MyDualBoxRotationEnv(BaseEnv):
             progress = progress * direction.abs()
             progress = torch.clamp(progress, max=self.TCP_LEAD_SATURATION)
             saturation = self.TCP_LEAD_SATURATION + 1e-8
-            scaled_progress = torch.clamp(progress / saturation, -1.0, 1.0)
-            return scaled_progress * self.TCP_LEAD_MAX
+            # Squash with tanh then shift to [0,1], preserving magnitude differences for negative progress.
+            scaled_progress = torch.tanh(progress / saturation)  # [-1, 1]
+            normalized = 0.5 * (scaled_progress + 1.0)  # [0, 1]
+            return normalized * self.TCP_LEAD_MAX
 
         lead_right = _lead(push_right_local, right_local)
         lead_left = _lead(push_left_local, left_local)
@@ -1004,6 +1025,8 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.box_rotation_matrix,
             context.left_tcp_pos,
             context.right_tcp_pos,
+            context.target_pushpoint_left,
+            context.target_pushpoint_right,
         )
         tcp_height_penalty_score, tcp_height_info = self._tcp_height_penalty(
             context.current_box_center,

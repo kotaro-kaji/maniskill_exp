@@ -1,11 +1,15 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 import os
 import random
 import time
 from typing import Optional, Union
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import tqdm
 
 from mani_skill.utils import gym_utils
@@ -16,8 +20,11 @@ from mani_skill.envs.tasks.tabletop.push_cube import PushCubeEnv
 from mani_skill.utils.registration import register_env
 
 from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
+from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwitchEnv
+from tasks.dual.task_dual_box_rotation_regrasp import MyDualBoxRotationRegraspEnv
 from tasks.dual.task_dual_simple import MyDualSimpleEnv
 from robotagents.xarm_ball_ee import Xarm7BallEE
+from ppo_dual_xarm7 import InfoDirectoryLogger
 
 # Register a PushCube variant that accepts the custom xArm end-effector.
 @register_env("PushCubeXarm-v1", max_episode_steps=50)
@@ -38,6 +45,39 @@ from torch.utils.tensorboard import SummaryWriter
 import tyro
 
 import mani_skill.envs
+
+
+def _extract_returns(final_info: dict, done_mask) -> list:
+    episode_info = final_info.get("episode", {})
+    if not episode_info:
+        return []
+    returns = None
+    for key in ("reward", "r"):
+        if key in episode_info:
+            returns = episode_info[key]
+            break
+    if returns is None:
+        return []
+    returns = torch.as_tensor(returns)
+    mask = torch.as_tensor(done_mask, dtype=torch.bool, device=returns.device)
+    return returns[mask].detach().cpu().view(-1).tolist()
+
+
+def _save_return_plot(data_points, out_dir: Path):
+    if not data_points:
+        return
+    out_dir.mkdir(parents=True, exist_ok=True)
+    arr = np.asarray(data_points, dtype=float)
+    csv_path = out_dir / "returns.csv"
+    np.savetxt(csv_path, arr, delimiter=",", header="timestep,return", comments="")
+    plt.figure()
+    plt.plot(arr[:, 0], arr[:, 1], marker=".", linewidth=1)
+    plt.xlabel("timestep")
+    plt.ylabel("return")
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(out_dir / "returns.png")
+    plt.close()
 
 
 @dataclass
@@ -315,6 +355,7 @@ if __name__ == "__main__":
     if isinstance(envs.action_space, gym.spaces.Dict):
         envs = FlattenActionSpaceWrapper(envs)
         eval_envs = FlattenActionSpaceWrapper(eval_envs)
+    info_output_root = None
     if args.capture_video or args.save_trajectory:
         eval_output_dir = f"runs/{run_name}/videos"
         if args.evaluate:
@@ -324,12 +365,16 @@ if __name__ == "__main__":
             save_video_trigger = lambda x : (x // args.num_steps) % args.save_train_video_freq == 0
             envs = RecordEpisode(envs, output_dir=f"runs/{run_name}/train_videos", save_trajectory=False, save_video_trigger=save_video_trigger, max_steps_per_video=args.num_steps, video_fps=30)
         eval_envs = RecordEpisode(eval_envs, output_dir=eval_output_dir, save_trajectory=args.save_trajectory, save_video=args.capture_video, trajectory_name="trajectory", max_steps_per_video=args.num_eval_steps, video_fps=30)
+        info_output_root = os.path.join(os.path.dirname(eval_output_dir), "info")
     envs = ManiSkillVectorEnv(envs, args.num_envs, ignore_terminations=not args.partial_reset, record_metrics=True)
     eval_envs = ManiSkillVectorEnv(eval_envs, args.num_eval_envs, ignore_terminations=not args.eval_partial_reset, record_metrics=True)
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     max_episode_steps = gym_utils.find_max_episode_steps_value(envs._env)
     logger = None
+    eval_return_trace = []
+    return_plot_dir = Path(f"runs/{run_name}/info")
+    return_plot_dir.mkdir(parents=True, exist_ok=True)
     if not args.evaluate:
         print("Running training")
         if args.track:
@@ -411,14 +456,33 @@ if __name__ == "__main__":
             eval_obs, _ = eval_envs.reset()
             eval_metrics = defaultdict(list)
             num_episodes = 0
-            for _ in range(args.num_eval_steps):
+            eval_info_logger = None
+            if info_output_root is not None:
+                iter_info_dir = os.path.join(info_output_root, f"step_{global_step:08d}")
+                eval_info_logger = InfoDirectoryLogger(iter_info_dir, args.num_eval_envs)
+            for eval_step in range(args.num_eval_steps):
                 with torch.no_grad():
-                    eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(actor.get_eval_action(eval_obs))
+                    eval_action = actor.get_eval_action(eval_obs)
+                    eval_obs, eval_rew, eval_terminations, eval_truncations, eval_infos = eval_envs.step(eval_action)
+                    if eval_info_logger is not None:
+                        eval_info_logger.log({"actions": eval_action}, eval_step)
+                        eval_info_logger.log(
+                            {
+                                "rewards": eval_rew,
+                                "terminations": eval_terminations,
+                                "truncations": eval_truncations,
+                                "next_obs": eval_obs,
+                            },
+                            eval_step,
+                        )
+                        eval_info_logger.log(eval_infos, eval_step)
                     if "final_info" in eval_infos:
                         mask = eval_infos["_final_info"]
                         num_episodes += mask.sum()
                         for k, v in eval_infos["final_info"]["episode"].items():
                             eval_metrics[k].append(v)
+            if eval_info_logger is not None:
+                eval_info_logger.close()
             eval_metrics_mean = {}
             for k, v in eval_metrics.items():
                 mean = torch.stack(v).float().mean()
@@ -429,6 +493,14 @@ if __name__ == "__main__":
                 #f"success_once: {eval_metrics_mean['success_once']:.2f}, "
                 #f"reward: {eval_metrics_mean['reward']:.2f}"
             #)
+            mean_return = None
+            for key in ("reward", "r"):
+                if key in eval_metrics_mean:
+                    mean_return = float(eval_metrics_mean[key].detach().cpu().item())
+                    break
+            if mean_return is not None and return_plot_dir is not None:
+                eval_return_trace.append((global_step, mean_return))
+                _save_return_plot(eval_return_trace, return_plot_dir)
             if logger is not None:
                 eval_time = time.perf_counter() - stime
                 cumulative_times["eval_time"] += eval_time
@@ -456,11 +528,20 @@ if __name__ == "__main__":
             if not learning_has_started:
                 actions = 2 * torch.rand(size=envs.action_space.shape, dtype=torch.float32, device=device) - 1
             else:
-                actions, _, _ = actor.get_action(obs)
-                actions = actions.detach()
+                try:
+                    actions, _, _ = actor.get_action(obs)
+                    actions = actions.detach()
+                except ValueError as e:
+                    print(f"[warn] rollout action distribution invalid (nan/inf); fallback to random action. err={e}")
+                    actions = 2 * torch.rand(size=envs.action_space.shape, dtype=torch.float32, device=device) - 1
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+            # if isinstance(infos, dict) and "positive_flip_count" in infos:
+            #     flip_val = infos["positive_flip_count"]
+            #     flip_tensor = torch.as_tensor(flip_val)
+            #     if (flip_tensor != 0).any():
+            #         print(f"[train] global_step={global_step} local_step={local_step} positive_flip_count={flip_tensor}")
             real_next_obs = next_obs.clone()
             if args.bootstrap_at_done == 'never':
                 need_final_obs = torch.ones_like(terminations, dtype=torch.bool)
@@ -498,13 +579,17 @@ if __name__ == "__main__":
             data = rb.sample(args.batch_size)
 
             # update the value networks
-            with torch.no_grad():
-                next_state_actions, next_state_log_pi, _ = actor.get_action(data.next_obs)
-                qf1_next_target = qf1_target(data.next_obs, next_state_actions)
-                qf2_next_target = qf2_target(data.next_obs, next_state_actions)
-                min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - alpha * next_state_log_pi
-                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (min_qf_next_target).view(-1)
-                # data.dones is "stop_bootstrap", which is computed earlier according to args.bootstrap_at_done
+            try:
+                with torch.no_grad():
+                    next_state_actions, next_state_log_pi, _ = actor.get_action(data.next_obs)
+                    qf1_next_target = qf1_target(data.next_obs, next_state_actions)
+                    qf2_next_target = qf2_target(data.next_obs, next_state_actions)
+                    min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - alpha * next_state_log_pi
+                    next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (min_qf_next_target).view(-1)
+                    # data.dones is "stop_bootstrap", which is computed earlier according to args.bootstrap_at_done
+            except ValueError as e:
+                print(f"[warn] skipping critic update at global_step={global_step} (local_update={local_update}) due to invalid action distribution: {e}")
+                continue
 
             qf1_a_values = qf1(data.obs, data.actions).view(-1)
             qf2_a_values = qf2(data.obs, data.actions).view(-1)
@@ -518,7 +603,11 @@ if __name__ == "__main__":
 
             # update the policy network
             if global_update % args.policy_frequency == 0:  # TD 3 Delayed update support
-                pi, log_pi, _ = actor.get_action(data.obs)
+                try:
+                    pi, log_pi, _ = actor.get_action(data.obs)
+                except ValueError as e:
+                    print(f"[warn] skipping actor update at global_step={global_step} (local_update={local_update}) due to invalid action distribution: {e}")
+                    continue
                 qf1_pi = qf1(data.obs, pi)
                 qf2_pi = qf2(data.obs, pi)
                 min_qf_pi = torch.min(qf1_pi, qf2_pi)
@@ -529,18 +618,22 @@ if __name__ == "__main__":
                 actor_optimizer.step()
 
                 if args.autotune:
-                    with torch.no_grad():
-                        _, log_pi, _ = actor.get_action(data.obs)
-                    # if args.correct_alpha:
-                    alpha_loss = (-log_alpha.exp() * (log_pi + target_entropy)).mean()
-                    # else:
-                    #     alpha_loss = (-log_alpha * (log_pi + target_entropy)).mean()
-                    # log_alpha has a legacy reason: https://github.com/rail-berkeley/softlearning/issues/136#issuecomment-619535356
+                    try:
+                        with torch.no_grad():
+                            _, log_pi, _ = actor.get_action(data.obs)
+                        # if args.correct_alpha:
+                        alpha_loss = (-log_alpha.exp() * (log_pi + target_entropy)).mean()
+                        # else:
+                        #     alpha_loss = (-log_alpha * (log_pi + target_entropy)).mean()
+                        # log_alpha has a legacy reason: https://github.com/rail-berkeley/softlearning/issues/136#issuecomment-619535356
 
-                    a_optimizer.zero_grad()
-                    alpha_loss.backward()
-                    a_optimizer.step()
-                    alpha = log_alpha.exp().item()
+                        a_optimizer.zero_grad()
+                        alpha_loss.backward()
+                        a_optimizer.step()
+                        alpha = log_alpha.exp().item()
+                    except ValueError as e:
+                        print(f"[warn] skipping alpha update at global_step={global_step} (local_update={local_update}) due to invalid action distribution: {e}")
+                        continue
 
             # update the target networks
             if global_update % args.target_network_frequency == 0:
