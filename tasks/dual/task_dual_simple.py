@@ -1,10 +1,11 @@
 import os
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import sapien
 import torch
 
 from mani_skill.agents.multi_agent import MultiAgent
+from mani_skill.agents.utils import get_active_joint_indices
 
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
@@ -36,20 +37,22 @@ class MyDualSimpleEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.28
     BOX_Y_JITTER = 0.05
     BOX_X_JITTER = 0.03
-    LEFT_TARGET_POS_FROM_BIMANUAL_CENTER = (0.5, 0.3, 0.35)
-    RIGHT_TARGET_POS_FROM_BIMANUAL_CENTER = (0.5, -0.3, 0.35)
+    LEFT_TARGET_POS_FROM_BIMANUAL_CENTER = (0.5, 0.3, 0.25)
+    RIGHT_TARGET_POS_FROM_BIMANUAL_CENTER = (0.5, -0.3, 0.25)
     DISTANCE_SCALE = 4.0
     TARGET_RADIUS = 0.02
     LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0) #緑色
     RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0) #青色
 
-    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02,**kwargs):
+    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02, robot_init_noise_scale: float = 1.0, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.robot_init_noise_scale = robot_init_noise_scale
+        self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
         super()._load_agent(options, [sapien.Pose(p=[0,-1,0]), sapien.Pose(p=[0,1,0])])
-        #super()._load_agent(options, sapien.Pose[p=])
+        self._configure_observed_joint_indices()
 
     @property
     def _default_human_render_camera_configs(self):
@@ -122,6 +125,11 @@ class MyDualSimpleEnv(BaseEnv):
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
+            noise_scale = self.robot_init_noise_scale
+            if options is not None:
+                noise_scale = float(options.get("robot_init_noise_scale", noise_scale))
+            if hasattr(self.table_scene, "set_noise_scale"):
+                self.table_scene.set_noise_scale(noise_scale)
             self.table_scene.initialize(env_idx)
             batch_size = len(env_idx)
             if batch_size == 0:
@@ -203,6 +211,76 @@ class MyDualSimpleEnv(BaseEnv):
         )
         center = 0.5 * (base_right + base_left)
         return sapien.Pose(p=center.tolist())
+
+    def _clear(self):
+        super()._clear()
+        self._agent_obs_joint_indices = dict()
+
+    def _configure_observed_joint_indices(self):
+        self._agent_obs_joint_indices = dict()
+        if not isinstance(self.agent, MultiAgent):
+            return
+        for idx, sub_agent in enumerate(self.agent.agents):
+            key = f"{sub_agent.uid}-{idx}"
+            indices = self._build_agent_joint_indices(sub_agent)
+            if indices is None:
+                if hasattr(sub_agent, "_obs_joint_indices"):
+                    delattr(sub_agent, "_obs_joint_indices")
+                continue
+            self._agent_obs_joint_indices[key] = indices
+            sub_agent._obs_joint_indices = indices
+
+    def _build_agent_joint_indices(self, sub_agent) -> Optional[torch.Tensor]:
+        observed_joint_names: List[str] = []
+        arm_joint_names = getattr(sub_agent, "arm_joint_names", None)
+        if arm_joint_names is not None:
+            observed_joint_names.extend(list(arm_joint_names))
+        gripper_joint_names = getattr(sub_agent, "gripper_joint_names", None)
+        if gripper_joint_names:
+            drive_joint = gripper_joint_names[0]
+            if drive_joint not in observed_joint_names:
+                observed_joint_names.append(drive_joint)
+        if not observed_joint_names:
+            return None
+        return get_active_joint_indices(sub_agent.robot, observed_joint_names).long()
+
+    def _get_obs_agent(self):
+        obs = super()._get_obs_agent()
+        if not isinstance(obs, dict):
+            return obs
+        index_map = getattr(self, "_agent_obs_joint_indices", None)
+        if not index_map:
+            return obs
+        filtered = {}
+        for key, value in obs.items():
+            indices = index_map.get(key)
+            if indices is None:
+                filtered[key] = value
+                continue
+            filtered[key] = self._filter_agent_obs_entry(value, indices)
+        return filtered
+
+    def _filter_agent_obs_entry(self, obs_entry: Any, indices: torch.Tensor) -> Any:
+        if not isinstance(obs_entry, dict):
+            return obs_entry
+        filtered_entry = dict(obs_entry)
+        if "qpos" in obs_entry and obs_entry["qpos"] is not None:
+            filtered_entry["qpos"] = self._index_select_joint_tensor(
+                obs_entry["qpos"], indices
+            )
+        # Drop velocities entirely from observations for simplicity.
+        if "qvel" in filtered_entry:
+            filtered_entry.pop("qvel", None)
+        return filtered_entry
+
+    def _index_select_joint_tensor(
+        self, tensor: torch.Tensor, indices: torch.Tensor
+    ) -> torch.Tensor:
+        if tensor is None:
+            return tensor
+        idx = indices.to(device=tensor.device, dtype=torch.long)
+        dim = tensor.dim() - 1
+        return tensor.index_select(dim, idx)
 
     def _bimanual_center_point_to_world(self, point):
         center = self.bimanual_center_pose.p

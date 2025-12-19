@@ -7,3 +7,6 @@
 [submodule "xArm-Python-SDK"]
 	path = reference/xArm-Python-SDK
 	url = https://github.com/xArm-Developer/xArm-Python-SDK.git
+[submodule "reference/SAPIEN"]
+	path = reference/SAPIEN
+	url = https://github.com/haosulab/SAPIEN.git

@@ -111,15 +111,58 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
 
 python ppo_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
-  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
+
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationRegrasp-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=3072 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
+
+# サンドイッチ版（Y面を挟むpushpoint）
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationSandwitch-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
 
 python ppo_rollout_dual_xarm7.py \
---checkpoint path/to/ckpt.pt --env-id MyDualBoxRotation-v0
+  --checkpoint ckpts/ckpt_101.pt \
+  --env-id MyDualBoxRotationAblated-v0 --num_eval_steps 200
+s
+python ppo_rollout_dual_xarm7.py \
+--checkpoint runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_51.pt --env-id MyDualSimple-v0
 
 
-python sac_dual_xarm7.py --env_id="MyDualBoxRotation-v0" \
+
+python ppo_rollout_virtual_dual_xarm7.py \
+runs/MyDualSimple-v0__ppo_dual_xarm7__1__1763541530/ckpt_26.pt
+
+
+python sac_dual_xarm7.py --env_id="MyDualBoxRotationAblated-v0" \
   --num_envs=128 --utd=0.5 --buffer_size=500_000 \
   --total_timesteps=5_000_000 --eval_freq=50_000 --control-mode="pd_joint_delta_pos" \
   --num_eval_envs 4 --num-steps=200 --num_eval_steps=200
 
 python3 visualize_urdf.py --urdf xarm7_rs_g2_ft.urdf
+
+#Allegro touch or Allegro_right_hand_
+python tests/ppo.py --env_id="RotateSingleObjectInHandLevel0-v1"   --num_envs=128 --update_epochs=8   --num_minibatches=32   --total_timesteps=50_000_000 --num-steps=200 --num_eval_steps=200 --gamma=0.99 --no-partial-reset
+
+python sac.py --env_id="MyDualSimple-v0" \
+  --num_envs=32 --utd=0.5 --buffer_size=500_000 \
+  --total_timesteps=500_000 --eval_freq=50_000 --control-mode="pd_joint_delta_pos" 
+
+python sac.py --env_id="MyDualBoxRotationAblated-v0"   \
+  --num_envs=64 --utd=0.5 --buffer_size=500_000   --total_timesteps=5_000_000 \
+  --eval_freq=50_000 --control-mode="pd_joint_delta_pos" --num_eval_envs=4 --num_steps 200 --num_eval_steps 200
+
+
+python ppo_dual_xarm7.py --env_id="MyDualBoxRotationRegrasp-v0" \
+  --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
+  --num_minibatches=32   --total_timesteps=500_000_000 --num-steps=200 --num_eval_steps=200 \
+  --gamma=0.99
+
+
+python sac.py --env_id="MyDualBoxRotationRegrasp-v0"   \
+  --num_envs=64 --utd=0.5 --buffer_size=500_000   --total_timesteps=25_000_000 \
+  --eval_freq=50_000 --control-mode="pd_joint_delta_pos" --num_eval_envs=4 --num_steps 200 --num_eval_steps 200

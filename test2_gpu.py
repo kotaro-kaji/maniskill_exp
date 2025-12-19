@@ -29,12 +29,16 @@ obs, _ = env.reset(seed=0)
 done = False
 while True:
     action = env.action_space.sample()
-    print(action)
+    #print(action)
 
     zero_action = OrderedDict((k, np.zeros_like(v)) for k, v in action.items())
     obs, reward, terminated, truncated, info = env.step(zero_action)
-    #print(f"Step: {env.num_steps}")
-    #print(f"Reward: {reward}, Terminated: {terminated}, Truncated: {truncated}")
+    contact = info.get("contact/force", None)
+
+    #print("\n\n\n")
+    #print(contact)
+    #print("\n\n\n")
+
     done = terminated or truncated
     env.render()  # GUIウィンドウ表示
 print(f"Episode finished: {info}")

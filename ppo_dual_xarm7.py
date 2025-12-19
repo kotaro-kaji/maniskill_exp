@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import gymnasium as gym
 import numpy as np
 import torch
@@ -19,7 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 # ManiSkill specific imports
 import mani_skill.envs
 from mani_skill.utils import gym_utils
-from mani_skill.utils.structs.types import SimConfig
+from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -30,6 +33,9 @@ import task_simple
 from task_pushcube_beatiful import MyPushCubeEnv
 from tasks.dual.task_dual_simple import MyDualSimpleEnv
 from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
+from tasks.dual.task_dual_box_rotation_regrasp import MyDualBoxRotationRegraspEnv
+from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwitchEnv
+
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
 SIM_FREQUENCY_HZ = 100
@@ -107,6 +113,39 @@ class InfoDirectoryLogger:
         if isinstance(value, np.ndarray):
             return value
         return None
+
+
+def _extract_returns(final_info: dict, done_mask) -> list:
+    episode_info = final_info.get("episode", {})
+    if not episode_info:
+        return []
+    returns = None
+    for key in ("reward", "r"):
+        if key in episode_info:
+            returns = episode_info[key]
+            break
+    if returns is None:
+        return []
+    returns = torch.as_tensor(returns)
+    mask = torch.as_tensor(done_mask, dtype=torch.bool, device=returns.device)
+    return returns[mask].detach().cpu().view(-1).tolist()
+
+
+def _save_return_plot(data_points, out_dir: Path):
+    if not data_points:
+        return
+    out_dir.mkdir(parents=True, exist_ok=True)
+    arr = np.asarray(data_points, dtype=float)
+    csv_path = out_dir / "returns.csv"
+    np.savetxt(csv_path, arr, delimiter=",", header="timestep,return", comments="")
+    plt.figure()
+    plt.plot(arr[:, 0], arr[:, 1], marker=".", linewidth=1)
+    plt.xlabel("timestep")
+    plt.ylabel("return")
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(out_dir / "returns.png")
+    plt.close()
 
 
 @dataclass
@@ -194,6 +233,8 @@ class Args:
     finite_horizon_gae: bool = False
     # simulation backend: "cpu" or "physx_cuda"
     sim_backend: str = "physx_cuda"
+    robot_init_noise_scale: float = 1.0
+    """Scale factor for robot initial joint randomization (1.0 = default training noise, 0.0 = fixed)."""
 
 
     # to be filled in runtime
@@ -243,6 +284,7 @@ class Agent(nn.Module):
         action_std = torch.exp(action_logstd)
         probs = Normal(action_mean, action_std)
         return probs.sample()
+    
     def get_action_and_value(self, x, action=None):
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
@@ -284,16 +326,28 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
+    # Bump PhysX contact buffers to avoid overflow when many envs are run in parallel.
+    gpu_mem_cfg = GPUMemoryConfig(
+        max_rigid_contact_count=2**22,
+        max_rigid_patch_count=2**20,
+        temp_buffer_capacity=2**24,
+        heap_capacity=2**22,
+    )
+
     env_kwargs = dict(
         obs_mode="state",
         render_mode="rgb_array",
         sim_backend=args.sim_backend,
-        sim_config=SimConfig(sim_freq=SIM_FREQUENCY_HZ, control_freq=CONTROL_FREQUENCY_HZ),
+        sim_config=SimConfig(
+            sim_freq=SIM_FREQUENCY_HZ,
+            control_freq=CONTROL_FREQUENCY_HZ,
+            gpu_memory_config=gpu_mem_cfg,
+        ),
+        robot_init_noise_scale=args.robot_init_noise_scale,
     )
+
     if args.control_mode is not None:
         control_mode = args.control_mode
-    elif args.env_id == "MyEEAlignMarker-v0":
-        control_mode = "official_pd_joint_delta_pos"
     else:
         control_mode = "pd_joint_delta_pos"
     env_kwargs["control_mode"] = control_mode
@@ -333,6 +387,9 @@ if __name__ == "__main__":
 
     max_episode_steps = gym_utils.find_max_episode_steps_value(envs._env)
     logger = None
+    eval_return_trace = []
+    return_plot_dir = Path(f"runs/{run_name}/info")
+    return_plot_dir.mkdir(parents=True, exist_ok=True)
     if not args.evaluate:
         print("Running training")
         if args.track:
@@ -426,11 +483,22 @@ if __name__ == "__main__":
             if eval_info_logger is not None:
                 eval_info_logger.close()
             print(f"Evaluated {args.num_eval_steps * args.num_eval_envs} steps resulting in {num_episodes} episodes")
+            eval_metrics_mean = {}
             for k, v in eval_metrics.items():
                 mean = torch.stack(v).float().mean()
+                eval_metrics_mean[k] = mean
                 if logger is not None:
                     logger.add_scalar(f"eval/{k}", mean, global_step)
                 print(f"eval_{k}_mean={mean}")
+            # Log eval return to info folder (plot+csv)
+            mean_return = None
+            for key in ("reward", "r"):
+                if key in eval_metrics_mean:
+                    mean_return = float(eval_metrics_mean[key].detach().cpu().item())
+                    break
+            if mean_return is not None and return_plot_dir is not None:
+                eval_return_trace.append((global_step, mean_return))
+                _save_return_plot(eval_return_trace, return_plot_dir)
             if args.evaluate:
                 break
         if args.save_model and iteration % args.eval_freq == 1:

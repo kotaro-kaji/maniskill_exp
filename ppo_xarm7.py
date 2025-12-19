@@ -332,7 +332,7 @@ if __name__ == "__main__":
                         for k, v in eval_infos["final_info"]["episode"].items():
                             eval_metrics[k].append(v)
             print(f"Evaluated {args.num_eval_steps * args.num_eval_envs} steps resulting in {num_episodes} episodes")
-            print(f" mean reward = {reward.mean().item():.3f}")
+            print(f" mean reward = {eval_rew.mean().item():.3f}")
             for k, v in eval_metrics.items():
                 mean = torch.stack(v).float().mean()
                 if logger is not None:
