@@ -17,7 +17,8 @@ env = gym.make(
     env_id,
     obs_mode="state",
     control_mode="pd_joint_delta_pos",
-    render_mode="human"
+    render_mode="human",
+    robot_init_noise_scale=0.0001,
 )
 
 print(f"Environment ID: {env_id}")

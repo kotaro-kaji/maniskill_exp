@@ -253,14 +253,14 @@
     </inertial>
     <visual>
       <geometry>
-        <cylinder length="0.0338" radius="0.034"/>
+        <cylinder length="0.0338" radius="0.035"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0338" radius="0.034"/>
+        <cylinder length="0.0338" radius="0.035"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
@@ -278,14 +278,14 @@
     </inertial>
     <visual>
       <geometry>
-        <cylinder length="0.025" radius="0.03"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.025" radius="0.03"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
@@ -545,7 +545,7 @@
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
     <!--
     <collision>
@@ -574,7 +574,7 @@
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
 
     <!-- lower box 
@@ -615,7 +615,7 @@
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_inner_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
     <!--
     <collision>
@@ -645,7 +645,7 @@
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
     <!--
     <collision>
@@ -675,7 +675,7 @@
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
     
     <!-- lower box 
@@ -715,7 +715,7 @@
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_inner_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
     <!--
     <collision>
@@ -763,7 +763,7 @@
         
 
       </geometry>
-      <material name="Silver"/>
+      <material name="Black"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
