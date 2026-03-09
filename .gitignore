@@ -9,11 +9,17 @@
 commit.sh
 
 
+**/dataset/
 
 rollout_dual_info.jsonl
 rollout_dual_log.csv
 
 
+/wandb
+
+/wandb/*
+
+/wandb/**/*
 
 
 

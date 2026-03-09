@@ -32,12 +32,26 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
         dtype=torch.float32,
     )
 
+    # Desired joint configuration (arm joints 1-7 only)
+    _JOINT_ONLY_RESET_STATE_OF_ROBOMANIPBASELINES_ = torch.tensor(
+        [
+            -0.00001,
+            -0.5236051678657532,
+            0.00,
+            0.7853981852531433,
+            -0.00001,
+            1.30899178981781,
+            -0.000001,
+        ],
+        dtype=torch.float32,
+    )
+
     _OFFSET_LOW = torch.tensor(
-        [-0.01, -0.05, -0.05, -0.05, -0.05, -0.05, -0.05, -0.01],
+        [-0.05, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.01],
         dtype=torch.float32,
     )
     _OFFSET_HIGH = torch.tensor(
-        [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.01],
+        [0.05, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.01],
         dtype=torch.float32,
     )
 
@@ -46,11 +60,6 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
         self.initial_qpos = self._RESET_STATE_OF_ROBOMANIPBASELINES.clone()
         self._offset_low_np = self._OFFSET_LOW.detach().cpu().numpy()
         self._offset_high_np = self._OFFSET_HIGH.detach().cpu().numpy()
-        # Tuneable multiplier so user-facing scale values map to a meaningful spread.
-        # A value of 1.0 now corresponds to roughly 10x the legacy offset bands,
-        # matching a much stronger initialization randomness.
-        self._noise_scale_normalizer = 10.0
-        # Preserve the legacy default until an explicit scale is requested.
         self.noise_scale = 1.0
 
     def initialize(self, env_idx: torch.Tensor):
@@ -79,17 +88,11 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
         except Exception:
             pass
 
-    def set_noise_scale(self, scale: float, *, normalize: bool = True):
+    def set_noise_scale(self, scale: float):
         """
         Set multiplicative scale for joint offset sampling.
-
-        The provided ``scale`` is normalized so 1.0 matches a much stronger
-        randomization (roughly 10x the legacy offset spread).
         """
-        effective_scale = float(scale)
-        if normalize:
-            effective_scale *= self._noise_scale_normalizer
-        self.noise_scale = effective_scale
+        self.noise_scale = float(scale)
 
     def _sample_joint_offsets(self, env_idx: torch.Tensor, batch_size: int) -> torch.Tensor:
         low = self._offset_low_np * self.noise_scale

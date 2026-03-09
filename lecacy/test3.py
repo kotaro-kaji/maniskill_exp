@@ -9,7 +9,7 @@ SEED = 0
 CKPT_DIR = "runs/pusht_min/ckpts"
 os.makedirs(CKPT_DIR, exist_ok=True)
 # ---- 環境（GPU）----
-env = gym.make(ENV_ID, num_envs=NUM_ENVS, obs_mode="state", reconfiguration_freq=1)
+env = gym.make(ENV_ID, num_envs=NUM_ENVS, obs_mode="state", reconfiguration_freq=1, render_mode="human")
 env = ManiSkillVectorEnv(env, auto_reset=True, ignore_terminations=True, record_metrics=True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 obs, _ = env.reset(seed=SEED)

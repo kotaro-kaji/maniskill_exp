@@ -23,7 +23,7 @@ class DualXarm7TableSceneBuilder(Xarm7InitialRandomizationSceneBuilder):
 
     def build(self):
         self._primary_pedestal_pose = sapien.Pose(
-            [ROBOT_BASE_X_OFFSET, PRIMARY_ARM_Y_OFFSET, PEDESTAL_HEIGHT / 2.0]
+            [ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT / 2.0]
         )
         super().build()
 

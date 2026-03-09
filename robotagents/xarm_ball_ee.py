@@ -17,7 +17,7 @@ class Xarm7BallEE(BaseAgent):
     ee_link_name = "link_tcp_ball"
     urdf_config = dict(
         _materials=dict(
-            ball_contact=dict(static_friction=2.0, dynamic_friction=2.0, restitution=0.0)
+            ball_contact=dict(static_friction=3.0, dynamic_friction=2.0, restitution=0.0)
         ),
         link=dict(
             link_tcp_ball=dict(
@@ -117,11 +117,38 @@ class Xarm7BallEE(BaseAgent):
         self.tcp = sapien_utils.get_obj_by_name(self.robot.get_links(), self.ee_link_name)
         # Local offset from the TCP link frame (can be changed via set_tcp_offset)
         self._tcp_offset = sapien.Pose([0, 0, 0], [1, 0, 0, 0])
+        self._set_link_roughness(
+            link_names=["link_tcp_stick", "link_tcp_ball", "link_eef"],
+            roughness=0.2,
+        )
+        self._set_link_roughness(
+            link_names=[
+                "link_virtual_ft_sensor_lower",
+                "link_virtual_ft_sensor_upper",
+                "link7",
+            ],
+            roughness=0.3,
+        )
 
         self._contact_unallowed_links: list[Actor] = sapien_utils.get_objs_by_names(
             self.robot.get_links(),
             self.contact_unallowed_links,
         )
+
+    def _set_link_roughness(self, link_names, roughness: float):
+        for link_name in link_names:
+            link = self.robot.links_map.get(link_name)
+            assert link is not None, f"Link not found: {link_name}"
+            for obj in link._objs:
+                render_comp = obj.entity.find_component_by_type(
+                    sapien.render.RenderBodyComponent
+                )
+                assert render_comp is not None, f"Render component not found: {link_name}"
+                for shape in render_comp.render_shapes:
+                    for part in shape.parts:
+                        sapien_utils.set_render_material(
+                            part.material, roughness=roughness
+                        )
     def set_tcp_link(self, link_name: str):
         """Change the TCP base link by name (must exist in the robot)."""
         self.ee_link_name = link_name
@@ -280,4 +307,3 @@ class Xarm7BallEE(BaseAgent):
             return contacts
         else:
             raise ValueError("Scene is not GPU enabled")
-

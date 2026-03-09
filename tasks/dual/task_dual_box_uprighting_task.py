@@ -57,8 +57,8 @@ def smoothstep(x: torch.Tensor) -> torch.Tensor:
     return 6 * x**5 - 15 * x**4 + 10 * x**3
 
 
-@register_env("MyDualBoxRotation-v0", max_episode_steps=120)
-class MyDualBoxRotationEnv(BaseEnv):
+@register_env("MyDualBoxUprightingTask-v0", max_episode_steps=120)
+class MyDualBoxUprightingTaskEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
     agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
     _obs_extra_fn = staticmethod(get_obs_extra_full)
@@ -82,31 +82,20 @@ class MyDualBoxRotationEnv(BaseEnv):
     BOX_TRANSLATION_PENALTY_MAX = 0.5
     MAX_ROTATION_PACE = 540.0 / 10.0  # degrees per second for full reward
     BOX_GOAL_YAW_DEG = 90.0 
-    BOX_OVERSHOOT_PENALTY_START_DEG = 90.5
-    BOX_OVERSHOOT_PENALTY_END_DEG = 110.0
-    BOX_OVERSHOOT_PENALTY_MAX = 5.0
+    BOX_OVERSHOOT_PENALTY_START_DEG = 92.0
+    BOX_OVERSHOOT_PENALTY = 0.5
     TCP_LEAD_SATURATION = 0.020
     TCP_LEAD_MAX = 0.35
     TCP_HEIGHT_MARGIN = 0.005
     TCP_HEIGHT_PENALTY = 0.5
-    TCP_MIN_X_THRESHOLD = 0.095
-    TCP_MIN_X_PENALTY = 2.0
     OBS_ABS_MAX = 1e15
-    BOX_OBS_TRANSLATION_OFFSET_M = 0.005
-    BOX_OBS_YAW_OFFSET_RAD = 0.02
-    BOX_OBS_TRANSLATION_JITTER_M = 0.005
-    BOX_OBS_YAW_JITTER_RAD = 0.02
+    BOX_OBS_TRANSLATION_OFFSET_M = 0.01
+    BOX_OBS_YAW_OFFSET_RAD = 0.03
+    BOX_OBS_TRANSLATION_JITTER_M = 0.01
+    BOX_OBS_YAW_JITTER_RAD = 0.03
 
-    def __init__(
-        self,
-        *args,
-        robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"),
-        robot_init_noise_scale=1.0,
-        collect_rmb_data: bool = False,
-        **kwargs,
-    ):
+    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_noise_scale=1.0,**kwargs):
         self.robot_init_noise_scale = robot_init_noise_scale
-        self.collect_rmb_data = bool(collect_rmb_data)
         self._box_obs_translation_offset: Optional[torch.Tensor] = None
         self._box_obs_yaw_offset: Optional[torch.Tensor] = None
         self._flat_obs_column_names: Optional[List[str]] = None
@@ -130,21 +119,12 @@ class MyDualBoxRotationEnv(BaseEnv):
     def _default_sensor_configs(self):
         bimanual_center_pose = self._compute_bimanual_center_pose()
         bimanual_center_T_front_camera = np.array(
-            # [
-            #     [0.00539962, -0.97814688, 0.20784496, 0.11480299],
-            #     [-0.99990853, -0.00270374, 0.01325251, -0.00192624],
-            #     [-0.01240094, -0.20789751, -0.97807200, 0.95438088],
-            #     [0.00000000, 0.00000000, 0.00000000, 1.00000000],
-            # ],
-
             [
-
-                [0.00604744, -0.97743607, 0.21114487, 0.11216216],
-                [-0.99990406, -0.00327925, 0.01345807, -0.00125407],
-                [-0.01246200, -0.21120600, -0.97736212, 0.95348328],
-                [0.0, 0.0, 0.0, 1.0]
+                [0.00539962, -0.97814688, 0.20784496, 0.11480299],
+                [-0.99990853, -0.00270374, 0.01325251, -0.00192624],
+                [-0.01240094, -0.20789751, -0.97807200, 0.95438088],
+                [0.00000000, 0.00000000, 0.00000000, 1.00000000],
             ],
-
             dtype=np.float32,
         )
         rotation_np = bimanual_center_T_front_camera[:3, :3]
@@ -173,7 +153,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         # print(f"rotation: {rotation}")
         # print(f"q:{matrix_to_quaternion(rotation)}")
         pose = Pose.create(bimanual_center_pose) * front_camera_pose_in_bimanual_center
-        scale = 1.0 if self.collect_rmb_data else 0.4
+        scale = 0.4
         base_intrinsic = np.array(
             [
                 [606.135498046875, 0.0, 330.1974182128906],
@@ -189,7 +169,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         intrinsic[1, 2] *= scale
         return [
             CameraConfig(
-                "top",
+                "base_camera",
                 pose=pose,
                 width=int(640 * scale),
                 height=int(480 * scale),
@@ -210,7 +190,7 @@ class MyDualBoxRotationEnv(BaseEnv):
 
     def _load_lighting(self, options: dict):
         obs_mode = str(getattr(self, "obs_mode", "")).lower()
-        if "rgb" in obs_mode or self.collect_rmb_data:
+        if "rgb" in obs_mode:
             for scene in self.scene.sub_scenes:
                 scene.render_system.ambient_light = np.random.uniform(
                     0.2, 0.5, size=(3,)
@@ -602,80 +582,30 @@ class MyDualBoxRotationEnv(BaseEnv):
                 return
 
             self._ensure_pushpoint_buffers()
-            positions, theta = self._sample_initial_box_pose(batch_size, options)
-            orientations = self._theta_to_quaternion(theta)
-            #self.box_objects[env_idx].set_pose(Pose.create_from_pq(positions, orientations))
-            self.box.set_pose(Pose.create_from_pq(positions, orientations))
-            self._update_initial_pushpoints(env_idx, positions, orientations)
-            self._reset_rotation_buffers(env_idx, theta)
-            self._reset_box_obs_offset_buffers(env_idx)
-
-    def _sample_initial_box_pose(
-        self, batch_size: int, options: Dict[str, Any]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_center = None
-        y_center = None
-        theta = None
-        if options is not None:
-            fixed_xy = options.get("box_jitter_xy", None)
-            if fixed_xy is not None:
-                fixed_xy = torch.tensor(
-                    fixed_xy, device=self.device, dtype=torch.float32
-                )
-                if fixed_xy.ndim == 1:
-                    assert batch_size == 1
-                    fixed_xy = fixed_xy.unsqueeze(0)
-                assert fixed_xy.shape == (batch_size, 2)
-                x_center = self.BOX_X_OFFSET_FROM_BASE + fixed_xy[:, 0]
-                y_center = fixed_xy[:, 1]
-
-            fixed_theta = options.get("box_jitter_theta_deg", None)
-            if fixed_theta is not None:
-                fixed_theta = torch.tensor(
-                    fixed_theta, device=self.device, dtype=torch.float32
-                )
-                if fixed_theta.ndim == 0:
-                    fixed_theta = fixed_theta.unsqueeze(0)
-                if fixed_theta.ndim == 1 and fixed_theta.shape[0] == 1:
-                    assert batch_size == 1
-                assert fixed_theta.shape == (batch_size,)
-                theta = (
-                    torch.full(
-                        (batch_size,),
-                        self.BOX_ROTATION_MEAN_DEG,
-                        device=self.device,
-                        dtype=torch.float32,
-                    )
-                    + fixed_theta
-                )
-
-        if x_center is None:
             x_center = (
                 self.BOX_X_OFFSET_FROM_BASE
                 + (torch.rand(batch_size, device=self.device) - 0.5)
                 * 2
                 * self.BOX_X_JITTER
             )
-        if y_center is None:
             y_center = (
                 (torch.rand(batch_size, device=self.device) - 0.5)
                 * 2
                 * self.BOX_Y_JITTER
             )
-        z_center = torch.full(
-            (batch_size,),
-            self.BOX_HALF_SIZE[2] - PEDESTAL_HEIGHT,
-            device=self.device,
-            dtype=torch.float32,
-        )
-        positions = torch.stack((x_center, y_center, z_center), dim=-1)
-        positions = self._bimanual_center_tensor_to_world(positions)
-        if theta is None:
+            z_center = torch.full(
+                (batch_size,),
+                self.BOX_HALF_SIZE[2] - PEDESTAL_HEIGHT,
+                device=self.device,
+                dtype=torch.float32,
+            )
+            positions = torch.stack((x_center, y_center, z_center), dim=-1)
+            positions = self._bimanual_center_tensor_to_world(positions)
             theta = torch.full(
                 (batch_size,),
                 self.BOX_ROTATION_MEAN_DEG,
                 device=self.device,
-                dtype=torch.float32,
+                dtype=torch.float32
             )
             if self.BOX_ROTATION_JITTER_DEG > 0.0:
                 # jitter is specified in degrees; keep theta in degrees before quaternion conversion
@@ -684,7 +614,12 @@ class MyDualBoxRotationEnv(BaseEnv):
                     * 2.0
                     * float(self.BOX_ROTATION_JITTER_DEG)
                 )
-        return positions, theta
+            orientations = self._theta_to_quaternion(theta)
+            #self.box_objects[env_idx].set_pose(Pose.create_from_pq(positions, orientations))
+            self.box.set_pose(Pose.create_from_pq(positions, orientations))
+            self._update_initial_pushpoints(env_idx, positions, orientations)
+            self._reset_rotation_buffers(env_idx, theta)
+            self._reset_box_obs_offset_buffers(env_idx)
 
     def _pose_to_6d(self, pose: Pose, *, center_frame: bool = False) -> torch.Tensor:
         matrix = pose.to_transformation_matrix()[..., :3, :3]
@@ -827,7 +762,7 @@ class MyDualBoxRotationEnv(BaseEnv):
 
     def _gather_reward_context(
         self, info: Dict[str, Any]
-    ) -> "MyDualBoxRotationEnv.RewardContext":
+    ) -> "MyDualBoxUprightingTaskEnv.RewardContext":
         theta = self._get_box_theta_deg()
         if theta.ndim == 0:
             theta = theta.unsqueeze(0)
@@ -1067,21 +1002,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         return tensor.index_select(dim, idx)
 
     def _get_obs_extra(self, info: Dict[str, Any]):
-        extra = self._obs_extra_fn(self, info)
-        if info is not None and self.collect_rmb_data:
-            rgb_images = self._capture_rgb_images()
-            if rgb_images:
-                info["rgb_images"] = rgb_images
-        return extra
-
-    def _capture_rgb_images(self) -> Dict[str, Any]:
-        """Capture RGB images from all sensors (assumes rgb is always available)."""
-        sensor_obs = self._get_obs_sensor_data()
-        rgb_images: Dict[str, Any] = {}
-        for name, data in sensor_obs.items():
-            rgb = data["rgb"]
-            rgb_images[name] = rgb.detach().cpu() if torch.is_tensor(rgb) else rgb
-        return rgb_images
+        return self._obs_extra_fn(self, info)
 
     def _get_obs_state_dict(self, info: Dict[str, Any]):
         obs = super()._get_obs_state_dict(info)
@@ -1457,64 +1378,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         }
         return penalty, info
 
-    def _tcp_min_x_penalty(
-        self,
-        left_tcp_pos: torch.Tensor,
-        right_tcp_pos: torch.Tensor,
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Penalize when either TCP x (in bimanual-center frame) is below threshold."""
-
-        def _ensure_batch(t: torch.Tensor) -> torch.Tensor:
-            return t.unsqueeze(0) if t.ndim == 1 else t
-
-        left_tcp_pos = _ensure_batch(left_tcp_pos)
-        right_tcp_pos = _ensure_batch(right_tcp_pos)
-
-        center_x = float(self.bimanual_center_pose.p[0])
-        left_tcp_x_center = left_tcp_pos[..., 0] - center_x
-        right_tcp_x_center = right_tcp_pos[..., 0] - center_x
-
-        violation_left = left_tcp_x_center < float(self.TCP_MIN_X_THRESHOLD)
-        violation_right = right_tcp_x_center < float(self.TCP_MIN_X_THRESHOLD)
-        violation = violation_left | violation_right
-        penalty = violation.float() * float(self.TCP_MIN_X_PENALTY)
-
-        info = {
-            "tcp_min_x_penalty": penalty,
-            "tcp_min_x_violation_left": violation_left,
-            "tcp_min_x_violation_right": violation_right,
-            "tcp_x_center_left": left_tcp_x_center,
-            "tcp_x_center_right": right_tcp_x_center,
-        }
-        return penalty, info
-
-    def _box_yaw_overshoot_penalty(
-        self, theta_deg: torch.Tensor
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Yaw overshoot penalty. Linear only within [start, end], zero outside."""
-        theta = theta_deg.to(device=self.device, dtype=torch.float32)
-        overshoot_start = float(self.BOX_OVERSHOOT_PENALTY_START_DEG)
-        overshoot_end = float(self.BOX_OVERSHOOT_PENALTY_END_DEG)
-        overshoot_max = float(self.BOX_OVERSHOOT_PENALTY_MAX)
-        overshoot_span = max(overshoot_end - overshoot_start, 1e-6)
-
-        overshoot_active_mask = (theta >= overshoot_start) & (theta <= overshoot_end)
-        overshoot_saturated_mask = theta > overshoot_end
-        overshoot_linear = ((theta - overshoot_start) / overshoot_span) * overshoot_max
-
-        overshoot_value = torch.where(
-            overshoot_active_mask,
-            overshoot_linear,
-            torch.zeros_like(theta),
-        )
-        penalty = overshoot_value
-        info = {
-            "overshoot_active_mask": overshoot_active_mask,
-            "overshoot_saturated_mask": overshoot_saturated_mask,
-            "overshoot_penalty_value": penalty,
-        }
-        return penalty, info
-
 
 
     def compute_normalized_dense_reward(self, obs, action, info):
@@ -1552,13 +1415,6 @@ class MyDualBoxRotationEnv(BaseEnv):
             context.left_tcp_pos,
             context.right_tcp_pos,
         )
-        tcp_min_x_penalty_score, tcp_min_x_info = self._tcp_min_x_penalty(
-            context.left_tcp_pos,
-            context.right_tcp_pos,
-        )
-        rotation_overshoot_penalty_score, rotation_overshoot_info = self._box_yaw_overshoot_penalty(
-            context.box_theta_deg
-        )
 
         contact_penalty_score = self._compute_contact_penalty(info) #non-negative penalty
 
@@ -1587,10 +1443,12 @@ class MyDualBoxRotationEnv(BaseEnv):
         penalty_translation = -translation_penalty_score #min = -0.5, max = 0.0
         penalty_contact = -contact_penalty_score #min = -1.0, max = 0.0
         penalty_tcp_height = -tcp_height_penalty_score #min = -TCP_HEIGHT_PENALTY, max = 0.0
-        penalty_tcp_min_x = -tcp_min_x_penalty_score #min = -TCP_MIN_X_PENALTY, max = 0.0
         penalty_box_min_x = -box_min_x_penalty_score #min = -1.0, max = 0.0
-        penalty_rotation_overshoot = -rotation_overshoot_penalty_score
-
+        penalty_rotation_overshoot = -torch.where(
+            context.box_theta_deg >= float(self.BOX_OVERSHOOT_PENALTY_START_DEG),
+            torch.full_like(context.box_theta_deg, float(self.BOX_OVERSHOOT_PENALTY)),
+            torch.zeros_like(context.box_theta_deg),
+        )  # min = -BOX_OVERSHOOT_PENALTY, max = 0.0
         
 
         #腕を振り回すというだけの報酬も用意してみました。
@@ -1623,7 +1481,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         
 
         # Add a constant penalty that is independent of the stage.
-        reward = reward + penalty_contact + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_tcp_min_x + penalty_rotation_overshoot
+        reward = reward + penalty_contact + penalty_inverse_rotation + penalty_forward_rotation_stage1 + penalty_tcp_height + penalty_rotation_overshoot
         
 
 
@@ -1634,15 +1492,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["penalty_inverse_rotation"] = penalty_inverse_rotation.detach().cpu()
         info["penalty_forward_rotation_stage1"] = penalty_forward_rotation_stage1.detach().cpu()
         info["penalty_tcp_height"] = penalty_tcp_height.detach().cpu()
-        info["penalty_tcp_min_x"] = penalty_tcp_min_x.detach().cpu()
         info["penalty_box_min_x"] = penalty_box_min_x.detach().cpu()
         info["penalty_rotation_overshoot"] = penalty_rotation_overshoot.detach().cpu()
-        info["overshoot_active_mask"] = rotation_overshoot_info[
-            "overshoot_active_mask"
-        ].detach().cpu()
-        info["overshoot_saturated_mask"] = rotation_overshoot_info[
-            "overshoot_saturated_mask"
-        ].detach().cpu()
         info["box_min_x_penalty_norm"] = box_min_x_info[
             "box_min_x_penalty"
         ].detach().cpu()
@@ -1657,7 +1508,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["rewards_t"] = reward.detach().cpu()
         info["reward_closeness_to_reset_state"] = reward_closeness_to_reset_state.detach().cpu()
         info["success_once"] = stage_3_mask
-        
+        info["success"] = stage_3_mask
+
 
         info["pushpoint_left_distance"] = push_info["distance_left"].detach().cpu()
         info["pushpoint_left_reached"] = push_info["reached_left"].detach().cpu()
@@ -1698,14 +1550,6 @@ class MyDualBoxRotationEnv(BaseEnv):
         info["tcp_height_violation_right"] = tcp_height_info[
             "tcp_height_violation_right"
         ].detach().cpu()
-        info["tcp_min_x_violation_left"] = tcp_min_x_info[
-            "tcp_min_x_violation_left"
-        ].detach().cpu()
-        info["tcp_min_x_violation_right"] = tcp_min_x_info[
-            "tcp_min_x_violation_right"
-        ].detach().cpu()
-        info["tcp_x_center_left"] = tcp_min_x_info["tcp_x_center_left"].detach().cpu()
-        info["tcp_x_center_right"] = tcp_min_x_info["tcp_x_center_right"].detach().cpu()
         # measured joint positions (left then right) flattened (drop mimic joints via obs indices)
         try:
             left_qpos = self.agent.agents[0].robot.get_qpos()
@@ -1725,8 +1569,8 @@ class MyDualBoxRotationEnv(BaseEnv):
         return reward.to(self.device)
 
 
-@register_env("MyDualBoxRotationAblated-v0", max_episode_steps=200)
-class MyDualBoxRotationAblatedEnv(MyDualBoxRotationEnv):
+@register_env("MyDualBoxUprightingTaskAblated-v0", max_episode_steps=200)
+class MyDualBoxUprightingTaskAblatedEnv(MyDualBoxUprightingTaskEnv):
     """Variant with reduced observation (no TCP or pushpoint features)."""
 
     _obs_extra_fn = staticmethod(get_obs_extra_ablation)
