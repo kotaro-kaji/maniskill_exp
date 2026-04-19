@@ -1,0 +1,11 @@
+[project]
+name = "maniskill-exp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mani-skill>=3.0.0b22",
+    "tensorboard>=2.20.0",
+    "torch>=2.11.0",
+]

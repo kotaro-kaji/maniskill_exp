@@ -216,3 +216,15 @@ print(rmb[DataKey.MEASURED_JOINT_POS].shape)
 
 #rmbデータの収集
 python sac_collect_rmb_data.py --checkpoint runs/ckpt/ckpt_11700224.pt
+=======
+python sac.py --env_id="MyDualBoxRotationRegrasp-v0"   \
+  --num_envs=64 --utd=0.5 --buffer_size=500_000   --total_timesteps=25_000_000 \
+  --eval_freq=50_000 --control-mode="pd_joint_delta_pos" --num_eval_envs=4 --num_steps 200 --num_eval_steps 200
+
+uv run python sac.py --env_id="MyDualSimple-v0" \
+    --num_envs=32 --num_eval_envs=1 \
+    --utd=0.5 --buffer_size=500_000 \
+    --total_timesteps=500_000 --eval_freq=50_000 \
+    --control-mode="pd_joint_delta_pos" \
+    --no-capture-video
+
