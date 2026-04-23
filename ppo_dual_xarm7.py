@@ -32,6 +32,7 @@ from task_marker_align_official import MyEEAlignMarkerEnv
 import task_simple
 from task_pushcube_beatiful import MyPushCubeEnv
 from tasks.dual.task_dual_simple import MyDualSimpleEnv
+from tasks.dual.task_dual_cardboard_cabinet import MyDualCardboardCabinetEnv
 from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
 from tasks.dual.task_dual_box_rotation_regrasp import MyDualBoxRotationRegraspEnv
 from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwitchEnv
