@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any, Dict, List, Optional, Tuple
 
 import sapien
@@ -16,8 +17,10 @@ from robotagents.my_xarm7 import Xarm7
 from scenebuilders.cardboard_cabinet_builder import (
     DEFAULT_CARDBOARD_CABINET_SPEC,
     build_cardboard_cabinet_actor,
+    build_cardboard_inner_box_actor,
     cardboard_cabinet_grasp_targets_local,
     cardboard_cabinet_quaternion,
+    make_cardboard_inner_box_spec,
 )
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
@@ -35,7 +38,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     SUPPORTED_ROBOTS = [("my_xarm7", "my_xarm7")]
     agent: MultiAgent[Tuple[Xarm7, Xarm7]]
 
-    CABINET_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
+    OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
+    CABINET_SPEC = replace(OUTER_CARDBOARD_BASE_SPEC, color_hex="#4C78A8")
+    INNER_BOX_SPEC = make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC)
+    INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.30
     TARGET_RADIUS = 0.018
     LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0)
@@ -85,6 +91,11 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             initial_pose=self._initial_cabinet_pose(),
             spec=self.CABINET_SPEC,
         )
+        self.cardboard_inner_box = build_cardboard_inner_box_actor(
+            self.scene,
+            initial_pose=self._initial_inner_box_pose(),
+            spec=self.INNER_BOX_SPEC,
+        )
         left_target, right_target = self._current_grasp_targets_world()
         self.left_target_site = actors.build_sphere(
             self.scene,
@@ -124,6 +135,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 device=self.device,
             ).unsqueeze(0).repeat(len(env_idx), 1)
             self.cardboard_cabinet.set_pose(Pose.create_from_pq(positions, orientations))
+            self.cardboard_inner_box.set_pose(
+                Pose.create_from_pq(
+                    self._initial_inner_box_world_position().unsqueeze(0).repeat(
+                        len(env_idx), 1
+                    ),
+                    orientations,
+                )
+            )
             self._sync_target_sites()
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
@@ -227,6 +246,17 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             p=self._initial_box_world_position().detach().cpu().tolist(),
             q=cardboard_cabinet_quaternion(self.CABINET_SPEC).tolist(),
         )
+
+    def _initial_inner_box_pose(self) -> sapien.Pose:
+        return sapien.Pose(
+            p=self._initial_inner_box_world_position().detach().cpu().tolist(),
+            q=cardboard_cabinet_quaternion(self.CABINET_SPEC).tolist(),
+        )
+
+    def _initial_inner_box_world_position(self) -> torch.Tensor:
+        position = self._initial_box_world_position().clone()
+        position[1] += self.INNER_BOX_WORLD_Y_OFFSET
+        return position
 
     def _box_grasp_targets_local(self) -> torch.Tensor:
         return cardboard_cabinet_grasp_targets_local(
