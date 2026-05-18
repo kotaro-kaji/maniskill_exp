@@ -21,7 +21,7 @@ from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
-from tasks.single_arm.pick_cube import MyXarm7PickCubeEnv
+import tasks.single_arm.pick_cube  # registers MyXarm7PickCube-v1
 
 @dataclass
 class Args:

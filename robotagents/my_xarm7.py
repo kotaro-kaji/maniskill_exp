@@ -1,12 +1,14 @@
 import os
 import numpy as np
 import sapien
+import torch
 
 from mani_skill.agents.base_agent import BaseAgent, Keyframe
 from mani_skill.agents.controllers import *
 from mani_skill.utils.structs import Pose as MSPose
 from mani_skill.agents.registration import register_agent
-from mani_skill.utils import sapien_utils
+from mani_skill.utils import common, sapien_utils
+from mani_skill.utils.structs.actor import Actor
 
 
 @register_agent()
@@ -83,9 +85,37 @@ class Xarm7(BaseAgent):
     def _after_init(self):
         # Resolve the physical TCP link from the articulation
         # and prepare an optional offset pose you can customize.
+        self.finger1_link = sapien_utils.get_obj_by_name(self.robot.get_links(), "left_finger")
+        self.finger2_link = sapien_utils.get_obj_by_name(self.robot.get_links(), "right_finger")
         self.tcp = sapien_utils.get_obj_by_name(self.robot.get_links(), self.ee_link_name)
         # Local offset from the TCP link frame (can be changed via set_tcp_offset)
         self._tcp_offset = sapien.Pose([0, 0, 0], [1, 0, 0, 0])
+
+    def is_grasping(self, object: Actor, min_force=0.5, max_angle=85):
+        l_contact_forces = self.scene.get_pairwise_contact_forces(
+            self.finger1_link, object
+        )
+        r_contact_forces = self.scene.get_pairwise_contact_forces(
+            self.finger2_link, object
+        )
+        lforce = torch.linalg.norm(l_contact_forces, axis=1)
+        rforce = torch.linalg.norm(r_contact_forces, axis=1)
+
+        ldirection = self.finger1_link.pose.to_transformation_matrix()[..., :3, 1]
+        rdirection = self.finger2_link.pose.to_transformation_matrix()[..., :3, 1]
+        langle = common.compute_angle_between(ldirection, l_contact_forces)
+        rangle = common.compute_angle_between(rdirection, r_contact_forces)
+        lflag = torch.logical_and(
+            lforce >= min_force, torch.rad2deg(langle) <= max_angle
+        )
+        rflag = torch.logical_and(
+            rforce >= min_force, torch.rad2deg(rangle) <= max_angle
+        )
+        return torch.logical_and(lflag, rflag)
+
+    def is_static(self, threshold: float = 0.2):
+        qvel = self.robot.get_qvel()[..., :7]
+        return torch.max(torch.abs(qvel), 1)[0] <= threshold
 
     def set_tcp_link(self, link_name: str):
         """Change the TCP base link by name (must exist in the robot)."""
