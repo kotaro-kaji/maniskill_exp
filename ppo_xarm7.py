@@ -26,11 +26,11 @@ from task_joint_hold import MyJointHoldEnv
 from task_marker_align_official import MyEEAlignMarkerEnv
 import task_simple
 from task_pushcube_beatiful import MyPushCubeEnv
-
+import tasks.single_arm.pick_cube  # registers MyXarm7PickCube-v1
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
-SIM_FREQUENCY_HZ = 250
-CONTROL_FREQUENCY_HZ = 50
+SIM_FREQUENCY_HZ = 100
+CONTROL_FREQUENCY_HZ = 20
 
 
 @dataclass
