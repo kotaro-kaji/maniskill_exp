@@ -19,6 +19,8 @@ Follow existing Python style: 4-space indentation, snake_case for functions and 
 
 There is no enforced formatter config in the repo, so match surrounding code and keep imports, typing, and docstrings consistent with the edited file. In docs, PR notes, and shell snippets, show Python entry points as `uv run python ...`, not plain `python ...`.
 
+When editing command-list files such as `some_commands.sh` or `some_commands2.sh`, keep new examples as simple as the surrounding examples. Do not add separate smoke-test commands unless explicitly requested. Do not add `--exp-name` unless the user asks for a named run. Do not spell out arguments that already have acceptable defaults in the target script. If the user asks to edit a specific line range, change that existing range rather than inserting a new duplicated block elsewhere.
+
 ## Testing Guidelines
 There is no single pytest suite yet; verification is script-driven. Add targeted checks under `tests/` and name files after the behavior being exercised, such as `rollout_record.py` or `search_camera_transform.py`. Run validation commands via `uv run python ...`, and for task or controller changes, run at least one relevant training or rollout script and capture the exact command in your PR notes.
 
