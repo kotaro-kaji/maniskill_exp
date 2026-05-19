@@ -59,6 +59,8 @@ class PushCubeEnv(BaseEnv):
     # set some commonly used values
     goal_radius = 0.1
     cube_half_size = 0.02
+    gripper_closure_reward_scale = 0.5
+    max_dense_reward = 4.5
 
     def __init__(
         self,
@@ -245,12 +247,17 @@ class PushCubeEnv(BaseEnv):
         #   we only add the z reward if the robot has reached the desired push pose
         #   and the z reward becomes more important as the robot gets closer to the goal.
         reward += place_reward * z_reward * reached
+        reward += self.gripper_closure_reward_scale * self._gripper_closure_reward()
 
         # assign rewards to parallel environments that achieved success to the maximum of 3.
-        reward[info["success"]] = 4
+        reward[info["success"]] = self.max_dense_reward
         return reward
+
+    def _gripper_closure_reward(self) -> torch.Tensor:
+        drive_joint = self.agent.robot.joints_map["drive_joint"]
+        drive_qpos = drive_joint.qpos
+        return torch.clamp((drive_qpos - 0.05) / (0.84 - 0.05), 0.0, 1.0)
 
     def compute_normalized_dense_reward(self, obs: Any, action: Array, info: dict):
         # this should be equal to compute_dense_reward / max possible reward
-        max_reward = 4.0
-        return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
+        return self.compute_dense_reward(obs=obs, action=action, info=info) / self.max_dense_reward

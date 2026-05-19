@@ -159,9 +159,6 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotationRegrasp-v0" \
 
 
 # SAC
-uv run python sac.py --env_id="MyXarm7PushCube-v1" \
-  --total_timesteps=5_000_000 --no-capture-video
-
 python sac.py --env_id="MyDualBoxRotation-v0"   \
   --num_envs=256 --training_freq 256 --utd=0.5 --buffer_size=1_000_000 \
   --total_timesteps=25_000_000 --eval_freq=100_000 --control-mode="pd_joint_delta_pos" \
