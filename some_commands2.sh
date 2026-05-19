@@ -11,4 +11,4 @@ python ppo_xarm7.py --env_id="MyXarm7PushCube-v1" \
     --total_timesteps=25_000_000
 
 python sac.py --env_id="MyXarm7PushCube-v1" \
-    --total_timesteps=5_000_000 --no-capture-video
+    --total_timesteps=5_000_000

@@ -28,7 +28,14 @@ from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.registration import register_env
-from mani_skill.utils.scene_builder.table import TableSceneBuilder
+
+
+from scenebuilders.xarm7_table_scene_builder import (
+    Xarm7TableSceneBuilder,
+    PEDESTAL_HEIGHT,
+    ROBOT_BASE_X_OFFSET,
+)
+
 from mani_skill.utils.structs import Pose
 from mani_skill.utils.structs.types import Array, GPUMemoryConfig, SimConfig
 
@@ -114,8 +121,8 @@ class PushCubeEnv(BaseEnv):
 
     def _load_scene(self, options: dict):
         # we use a prebuilt scene builder class that automatically loads in a floor and table.
-        self.table_scene = TableSceneBuilder(
-            env=self, robot_init_qpos_noise=self.robot_init_qpos_noise
+        self.table_scene = Xarm7TableSceneBuilder(
+            env=self
         )
         self.table_scene.build()
 
@@ -163,8 +170,8 @@ class PushCubeEnv(BaseEnv):
 
             # here we write some randomization code that randomizes the x, y position of the cube we are pushing in the range [-0.1, -0.1] to [0.1, 0.1]
             xyz = torch.zeros((b, 3))
-            xyz[..., :2] = torch.rand((b, 2)) * 0.2 - 0.1
-            xyz[..., 0] -= 0.1
+            xyz[..., :2] = torch.rand((b, 2)) * 0.2 - 0.1 
+            xyz[..., 0] -= 0.30
             xyz[..., 2] = self.cube_half_size
             q = [1, 0, 0, 0]
             # we can then create a pose object using Pose.create_from_pq to then set the cube pose with. Note that even though our quaternion
@@ -179,7 +186,8 @@ class PushCubeEnv(BaseEnv):
             # and we further rotate 90 degrees on the y-axis to make the target object face up
             target_region_xyz = xyz + torch.tensor([0.1 + self.goal_radius, 0, 0])
             # set a little bit above 0 so the target is sitting on the table
-            target_region_xyz[..., 2] = 1e-3
+            target_region_xyz[..., 2] = 1e-3 
+            target_region_xyz[..., 0] -= 0.15
             self.goal_region.set_pose(
                 Pose.create_from_pq(
                     p=target_region_xyz,
