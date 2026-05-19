@@ -14,7 +14,7 @@ from mani_skill.utils.structs.actor import Actor
 @register_agent()
 class Xarm7(BaseAgent):
     uid = "my_xarm7"
-    urdf_path = "xarm7.urdf"
+    urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
     # Default TCP link defined in the URDF (fixed joint from gripper base)
     ee_link_name = "link_tcp"
 
