@@ -245,7 +245,6 @@ class MyPushCubeEnv(BaseEnv):
         reward = push_reward
         reward += self._goal_alignment_reward() * reached_weight
         reward += self._height_stability_reward() * reached_weight
-        reward += self._gripper_closure_reward()
 
         return reward
 
@@ -319,12 +318,3 @@ class MyPushCubeEnv(BaseEnv):
         desired_obj_z = self.box_half_extent_z
         z_deviation = torch.abs(current_obj_z - desired_obj_z)
         return 1 - torch.tanh(5 * z_deviation)
-
-    def _gripper_closure_reward(self) -> torch.Tensor:
-        drive_joint = self.agent.robot.joints_map.get("drive_joint")
-        base = torch.zeros_like(self.obj.pose.p[..., 0])
-        if drive_joint is None or drive_joint.active_index is None:
-            return base
-        drive_qpos = drive_joint.qpos
-        grip_closure = torch.clamp(drive_qpos / 0.85, 0.0, 1.0)
-        return 0.5 * grip_closure
