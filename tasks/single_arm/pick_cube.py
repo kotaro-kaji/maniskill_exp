@@ -55,8 +55,15 @@ class PickCubeEnv(BaseEnv):
     cube_spawn_half_size = 0.05
     cube_spawn_center = (0, 0)
 
-    def __init__(self, *args, robot_uids="my_xarm7", robot_init_qpos_noise=0.02, **kwargs):
-        self.robot_init_qpos_noise = robot_init_qpos_noise
+    def __init__(
+        self,
+        *args,
+        robot_uids="my_xarm7",
+        robot_init_qpos_noise=0.02,
+        robot_init_noise_scale=1.0,
+        **kwargs,
+    ):
+        self.robot_init_qpos_noise = robot_init_qpos_noise * robot_init_noise_scale
         if robot_uids in PICK_CUBE_CONFIGS:
             cfg = PICK_CUBE_CONFIGS[robot_uids]
         else:

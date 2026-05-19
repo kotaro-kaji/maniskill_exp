@@ -52,7 +52,10 @@ def main():
     while True:
         action = env.action_space.sample()
         if not args.random_action:
-            action = OrderedDict((k, np.zeros_like(v)) for k, v in action.items())
+            if isinstance(action, OrderedDict):
+                action = OrderedDict((k, np.zeros_like(v)) for k, v in action.items())
+            else:
+                action = np.zeros_like(action)
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
         env.render()
