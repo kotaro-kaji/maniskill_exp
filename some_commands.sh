@@ -89,10 +89,6 @@ python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode official_pd_j
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0"   --control-mode local_pd_joint_delta_pos --num_envs=1024 --update_epochs=8 --num_minibatches=32   --total_timesteps=100_000_000 --num-steps=100 --num_eval_steps=100 --gamma=0.99 --print_eval_actions
 
 
-python sac_xarm7.py --env_id="MyPushCube-v1" \
-  --num_envs=128 --utd=0.5 --buffer_size=500_000 \
-  --total_timesteps=5_000_000 --eval_freq=50_000 --control-mode="pd_joint_delta_pos" \
-  --num_eval_envs 4 --num-steps=120 --num_eval_steps=120
 
 python ppo_xarm7.py --env_id="MyEEAlignMarker-v0" \
   --control-mode pd_joint_delta_pos --num_envs=1024 --update_epochs=8 \
@@ -163,6 +159,9 @@ python ppo_dual_xarm7.py --env_id="MyDualBoxRotationRegrasp-v0" \
 
 
 # SAC
+uv run python sac.py --env_id="MyXarm7PushCube-v1" \
+  --total_timesteps=5_000_000 --no-capture-video
+
 python sac.py --env_id="MyDualBoxRotation-v0"   \
   --num_envs=256 --training_freq 256 --utd=0.5 --buffer_size=1_000_000 \
   --total_timesteps=25_000_000 --eval_freq=100_000 --control-mode="pd_joint_delta_pos" \
@@ -226,4 +225,3 @@ uv run python sac.py --env_id="MyDualSimple-v0" \
     --total_timesteps=500_000 --eval_freq=50_000 \
     --control-mode="pd_joint_delta_pos" \
     --no-capture-video
-

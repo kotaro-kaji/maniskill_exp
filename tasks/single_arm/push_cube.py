@@ -60,9 +60,16 @@ class PushCubeEnv(BaseEnv):
     goal_radius = 0.1
     cube_half_size = 0.02
 
-    def __init__(self, *args, robot_uids="my_xarm7", robot_init_qpos_noise=0.02, **kwargs):
+    def __init__(
+        self,
+        *args,
+        robot_uids="my_xarm7",
+        robot_init_qpos_noise=0.02,
+        robot_init_noise_scale=1.0,
+        **kwargs,
+    ):
         assert robot_uids == "my_xarm7"
-        self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.robot_init_qpos_noise = robot_init_qpos_noise * robot_init_noise_scale
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     # Specify default simulation/gpu memory configurations to override any default values
