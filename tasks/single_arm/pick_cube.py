@@ -16,8 +16,12 @@ from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.registration import register_env
-from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.utils.structs.pose import Pose
+from scenebuilders.xarm7_table_scene_builder import (
+    Xarm7TableSceneBuilder,
+    PEDESTAL_HEIGHT,
+    ROBOT_BASE_X_OFFSET,
+)
 
 PICK_CUBE_DOC_STRING = """**Task Description:**
 A simple task where the objective is to grasp a red cube with the {robot_id} robot and move it to a target goal position. This is also the *baseline* task to test whether a robot with manipulation
@@ -86,9 +90,7 @@ class PickCubeEnv(BaseEnv):
         super()._load_agent(options, sapien.Pose(p=[-0.615, 0, 0]))
 
     def _load_scene(self, options: dict):
-        self.table_scene = TableSceneBuilder(
-            self, robot_init_qpos_noise=self.robot_init_qpos_noise
-        )
+        self.table_scene = Xarm7TableSceneBuilder(self)
         self.table_scene.build()
         self.cube = actors.build_cube(
             self.scene,
