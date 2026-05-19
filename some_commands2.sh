@@ -7,5 +7,5 @@ python ppo_xarm7.py --env_id="MyXarm7PickCube-v1"   --robot_uid panda \
     --num_minibatches=32   --total_timesteps=25_000_000 --gamma=0.99 
 
 
-uv run python ppo_xarm7.py --env_id="MyXarm7PushCube-v1" \
-    --total_timesteps=25_000_000 --no-capture-video
+python ppo_xarm7.py --env_id="MyXarm7PushCube-v1" \
+    --total_timesteps=25_000_000
