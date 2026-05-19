@@ -27,6 +27,7 @@ from task_marker_align_official import MyEEAlignMarkerEnv
 import task_simple
 from task_pushcube_beatiful import MyPushCubeEnv
 import tasks.single_arm.pick_cube  # registers MyXarm7PickCube-v1
+import tasks.single_arm.push_cube  # registers MyXarm7PushCube-v1
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
 SIM_FREQUENCY_HZ = 100
