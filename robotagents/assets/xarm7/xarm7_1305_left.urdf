@@ -422,30 +422,6 @@
       <mechanicalReduction>100</mechanicalReduction>
     </actuator>
   </transmission>
-  <gazebo reference="link_base">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link1">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link2">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link3">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link4">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link5">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link6">
-    <selfCollide>true</selfCollide>
-  </gazebo>
-  <gazebo reference="link7">
-    <selfCollide>true</selfCollide>
-  </gazebo>
   <link name="link_eef">
     <visual>
       <geometry>
@@ -454,12 +430,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/camera/realsense/collision/d435_with_cam_stand.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <link name="camera_link"/>
   <link name="camera_depth_frame"/>
@@ -515,126 +493,6 @@
     <child link="camera_right_ir_optical_frame"/>
     <origin rpy="-1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0"/>
   </joint>
-  <gazebo reference="camera_depth_frame">
-    <sensor name="cameradepth" type="depth">
-      <camera name="camera">
-        <horizontal_fov>1.57</horizontal_fov>
-        <image>
-          <width>1280</width>
-          <height>720</height>
-        </image>
-        <clip>
-          <near>0.1</near>
-          <far>100</far>
-        </clip>
-        <noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.100</stddev>
-        </noise>
-      </camera>
-      <always_on>1</always_on>
-      <update_rate>30</update_rate>
-      <visualize>0</visualize>
-    </sensor>
-  </gazebo>
-  <gazebo reference="camera_color_frame">
-    <sensor name="cameracolor" type="camera">
-      <camera name="camera">
-        <horizontal_fov>1.57</horizontal_fov>
-        <image>
-          <width>1280</width>
-          <height>720</height>
-          <format>RGB_INT8</format>
-        </image>
-        <clip>
-          <near>0.1</near>
-          <far>100</far>
-        </clip>
-        <noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.007</stddev>
-        </noise>
-      </camera>
-      <always_on>1</always_on>
-      <update_rate>30</update_rate>
-      <visualize>1</visualize>
-    </sensor>
-  </gazebo>
-  <gazebo reference="camera_left_ir_frame">
-    <sensor name="cameraired1" type="camera">
-      <camera name="camera">
-        <horizontal_fov>1.57</horizontal_fov>
-        <image>
-          <width>1280</width>
-          <height>720</height>
-          <format>L_INT8</format>
-        </image>
-        <clip>
-          <near>0.1</near>
-          <far>100</far>
-        </clip>
-        <noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.05</stddev>
-        </noise>
-      </camera>
-      <always_on>1</always_on>
-      <update_rate>30</update_rate>
-      <visualize>0</visualize>
-    </sensor>
-  </gazebo>
-  <gazebo reference="camera_right_ir_frame">
-    <sensor name="cameraired2" type="camera">
-      <camera name="camera">
-        <horizontal_fov>1.57</horizontal_fov>
-        <image>
-          <width>1280</width>
-          <height>720</height>
-          <format>L_INT8</format>
-        </image>
-        <clip>
-          <near>0.1</near>
-          <far>100</far>
-        </clip>
-        <noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.05</stddev>
-        </noise>
-      </camera>
-      <always_on>1</always_on>
-      <update_rate>30</update_rate>
-      <visualize>0</visualize>
-    </sensor>
-  </gazebo>
-  <gazebo>
-    <plugin filename="librealsense_gazebo_plugin.so" name="realsense_gazebo_camera">
-      <prefix>camera</prefix>
-      <depthUpdateRate>30.0</depthUpdateRate>
-      <colorUpdateRate>30.0</colorUpdateRate>
-      <infraredUpdateRate>30.0</infraredUpdateRate>
-      <depthTopicName>aligned_depth_to_color/image_raw</depthTopicName>
-      <depthCameraInfoTopicName>depth/camera_info</depthCameraInfoTopicName>
-      <colorTopicName>color/image_raw</colorTopicName>
-      <colorCameraInfoTopicName>color/camera_info</colorCameraInfoTopicName>
-      <infrared1TopicName>infra1/image_raw</infrared1TopicName>
-      <infrared1CameraInfoTopicName>infra1/camera_info</infrared1CameraInfoTopicName>
-      <infrared2TopicName>infra2/image_raw</infrared2TopicName>
-      <infrared2CameraInfoTopicName>infra2/camera_info</infrared2CameraInfoTopicName>
-      <colorOpticalframeName>camera_color_optical_frame</colorOpticalframeName>
-      <depthOpticalframeName>camera_depth_optical_frame</depthOpticalframeName>
-      <infrared1OpticalframeName>camera_left_ir_optical_frame</infrared1OpticalframeName>
-      <infrared2OpticalframeName>camera_right_ir_optical_frame</infrared2OpticalframeName>
-      <rangeMinDepth>0.3</rangeMinDepth>
-      <rangeMaxDepth>3.0</rangeMaxDepth>
-      <pointCloud>true</pointCloud>
-      <pointCloudTopicName>depth/color/points</pointCloudTopicName>
-      <pointCloudCutoff>0.3</pointCloudCutoff>
-    </plugin>
-  </gazebo>
   <joint name="joint_eef" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="link7"/>
@@ -658,12 +516,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="White"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/base_link.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <link name="left_outer_knuckle">
     <inertial>
@@ -678,12 +538,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="drive_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035 0.059098"/>
@@ -705,12 +567,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
@@ -733,12 +597,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_inner_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="left_inner_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.02 0.074098"/>
@@ -761,12 +627,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_outer_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="right_outer_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035 0.059098"/>
@@ -789,12 +657,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="right_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035465 0.042039"/>
@@ -817,12 +687,14 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
+    <!--
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_inner_knuckle.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
+    -->
   </link>
   <joint name="right_inner_knuckle_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.02 0.074098"/>
@@ -848,91 +720,5 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
-  <gazebo reference="xarm_gripper_base_link">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="left_outer_knuckle">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="left_finger">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="left_inner_knuckle">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="right_outer_knuckle">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="right_finger">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="right_inner_knuckle">
-    <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo>
-    <plugin filename="libgazebo_mimic_joint_plugin.so" name="left_finger_jointmimic_joint_plugin">
-      <joint>drive_joint</joint>
-      <mimicJoint>left_finger_joint</mimicJoint>
-      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
-      <hasPID/>
-      <multiplier>1.0</multiplier>
-      <offset>0</offset>
-      <sensitiveness>0.0</sensitiveness>
-      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
-      <maxEffort>10.0</maxEffort>
-    </plugin>
-  </gazebo>
-  <gazebo>
-    <plugin filename="libgazebo_mimic_joint_plugin.so" name="left_inner_knuckle_jointmimic_joint_plugin">
-      <joint>drive_joint</joint>
-      <mimicJoint>left_inner_knuckle_joint</mimicJoint>
-      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
-      <hasPID/>
-      <multiplier>1.0</multiplier>
-      <offset>0</offset>
-      <sensitiveness>0.0</sensitiveness>
-      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
-      <maxEffort>10.0</maxEffort>
-    </plugin>
-  </gazebo>
-  <gazebo>
-    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_outer_knuckle_jointmimic_joint_plugin">
-      <joint>drive_joint</joint>
-      <mimicJoint>right_outer_knuckle_joint</mimicJoint>
-      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
-      <hasPID/>
-      <multiplier>1.0</multiplier>
-      <offset>0</offset>
-      <sensitiveness>0.0</sensitiveness>
-      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
-      <maxEffort>10.0</maxEffort>
-    </plugin>
-  </gazebo>
-  <gazebo>
-    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_finger_jointmimic_joint_plugin">
-      <joint>drive_joint</joint>
-      <mimicJoint>right_finger_joint</mimicJoint>
-      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
-      <hasPID/>
-      <multiplier>1.0</multiplier>
-      <offset>0</offset>
-      <sensitiveness>0.0</sensitiveness>
-      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
-      <maxEffort>10.0</maxEffort>
-    </plugin>
-  </gazebo>
-  <gazebo>
-    <plugin filename="libgazebo_mimic_joint_plugin.so" name="right_inner_knuckle_jointmimic_joint_plugin">
-      <joint>drive_joint</joint>
-      <mimicJoint>right_inner_knuckle_joint</mimicJoint>
-      <!-- if set to true, PID parameters from "/gazebo_ros_control/pid_gains/${mimic_joint}" are loaded -->
-      <hasPID/>
-      <multiplier>1.0</multiplier>
-      <offset>0</offset>
-      <sensitiveness>0.0</sensitiveness>
-      <!-- if absolute difference between setpoint and process value is below this threshold, do nothing; 0.0 = disable [rad] -->
-      <maxEffort>10.0</maxEffort>
-    </plugin>
-  </gazebo>
   <!-- Insert at the end of xarm_device_macro.xacro -->
 </robot>
