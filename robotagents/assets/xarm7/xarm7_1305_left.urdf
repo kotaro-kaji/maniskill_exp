@@ -567,20 +567,20 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
+    
     <collision>
       <geometry>
         <box size="0.028 0.010 0.036"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.024 0.0575"/>
+      <origin rpy="0 0 0" xyz="0 -0.02110 0.04295"/>
     </collision>
-    -->
-    <collision>
+   
+    <!-- <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision>
+    </collision> -->
   </link>
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
@@ -663,21 +663,21 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
+    
     <collision>
       <geometry>
         <box size="0.028 0.010 0.036"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0.006 0.0275"/>
+      <origin rpy="0 0 0" xyz="0 0.02110 0.04295"/>
     </collision>
-    -->
+   
     
-    <collision>
+    <!-- <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision>
+    </collision> -->
     
   </link>
   <joint name="right_finger_joint" type="revolute">
@@ -701,7 +701,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <material name="Silver"/>
     </visual>
-    <!--
+<!--     
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_inner_knuckle.stl"/>
