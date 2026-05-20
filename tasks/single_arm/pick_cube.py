@@ -38,7 +38,7 @@ capabilities can be simulated and trained properly. Hence there is extra code fo
 """
 
 
-@register_env("MyXarm7PickCube-v1", max_episode_steps=50)
+@register_env("MyXarm7PickCube-v1", max_episode_steps=100)
 class PickCubeEnv(BaseEnv):
 
     _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"
@@ -138,7 +138,7 @@ class PickCubeEnv(BaseEnv):
                 torch.rand((b, 2)) * self.cube_spawn_half_size * 2
                 - self.cube_spawn_half_size
             )
-            goal_xyz[:, 0] += self.cube_spawn_center[0]
+            goal_xyz[:, 0] += self.cube_spawn_center[0] -0.20
             goal_xyz[:, 1] += self.cube_spawn_center[1]
             goal_xyz[:, 2] = torch.rand((b)) * self.max_goal_height + xyz[:, 2]
             self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
@@ -177,28 +177,28 @@ class PickCubeEnv(BaseEnv):
             self.cube.pose.p - self.agent.tcp_pose.p, axis=1
         )
         reaching_reward = 1 - torch.tanh(5 * tcp_to_obj_dist)
-        reward = reaching_reward*0.0
+        reward = reaching_reward
 
-        # is_grasped = info["is_grasped"]
-        # reward += is_grasped
+        is_grasped = info["is_grasped"]
+        reward += is_grasped * 0.5
 
-        # obj_to_goal_dist = torch.linalg.norm(
-        #     self.goal_site.pose.p - self.cube.pose.p, axis=1
-        # )
-        # place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
-        # reward += place_reward * is_grasped
+        obj_to_goal_dist = torch.linalg.norm(
+            self.goal_site.pose.p - self.cube.pose.p, axis=1
+        )
+        place_reward = 3.0 * (1 - torch.tanh(5 * obj_to_goal_dist))
+        reward += place_reward * is_grasped
 
-        # qvel = self.agent.robot.get_qvel()
-        # if self.robot_uids in ["panda", "widowxai"]:
-        #     qvel = qvel[..., :-2]
-        # elif self.robot_uids == "so100":
-        #     qvel = qvel[..., :-1]
-        # static_reward = 1 - torch.tanh(5 * torch.linalg.norm(qvel, axis=1))
-        # reward += static_reward * info["is_obj_placed"]
+        qvel = self.agent.robot.get_qvel()
+        if self.robot_uids in ["panda", "widowxai"]:
+            qvel = qvel[..., :-2]
+        elif self.robot_uids == "so100":
+            qvel = qvel[..., :-1]
+        static_reward = 1 - torch.tanh(5 * torch.linalg.norm(qvel, axis=1))
+        reward += static_reward * info["is_obj_placed"]
 
         qpos = self.agent.robot.get_qpos()
         gripper_opening = qpos[..., 7]
-        reward += gripper_opening #encourage closing the gripper
+        reward += torch.clamp(gripper_opening, max=0.5) #encourage closing the gripper 
 
 
         reward[info["success"]] = 5

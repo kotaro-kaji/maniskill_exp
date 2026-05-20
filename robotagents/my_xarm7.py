@@ -23,13 +23,13 @@ class Xarm7(BaseAgent):
     # We set all gripper joints to the same opening value.
     init_qpos = np.asarray(
         [
-            0.0,
-            0.0,
-            0.0,
-            1.0471976,
-            0.0,
-            1.0471976,
-            -1.5707964,
+            -0.00001,
+            -0.5236051678657532,
+            0.00,
+            0.7853981852531433,
+            -0.00001,
+            1.30899178981781,
+            -0.000001,
             # Gripper DOFs (6):
             0.0,  # drive_joint (0 rad = fully open, 0.85 rad = fully closed)
             0.0,  # left_inner_knuckle_joint
@@ -69,13 +69,13 @@ class Xarm7(BaseAgent):
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 110))
-        self.arm_damping = float(os.getenv("XARM_ARM_KD", 8))
-        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 100))
+        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 1e3))
+        self.arm_damping = float(os.getenv("XARM_ARM_KD", 1e2))
+        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 500))
         # Gripper (driver + mimics)
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 50))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 8))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.3))
+        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1e3))
+        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 5e2))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.7))
 
         super().__init__(*args, **kwargs)
 
