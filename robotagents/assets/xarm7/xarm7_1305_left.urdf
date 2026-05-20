@@ -575,14 +575,12 @@
       <origin rpy="0 0 0" xyz="0 -0.024 0.0575"/>
     </collision>
     -->
-    <!--     
     <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
-     -->
   </link>
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
@@ -674,12 +672,12 @@
     </collision>
     -->
     
-    <!-- <collision>
+    <collision>
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision> -->
+    </collision>
     
   </link>
   <joint name="right_finger_joint" type="revolute">
