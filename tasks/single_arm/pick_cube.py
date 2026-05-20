@@ -198,7 +198,7 @@ class PickCubeEnv(BaseEnv):
 
         qpos = self.agent.robot.get_qpos()
         gripper_opening = qpos[..., 7]
-        reward += torch.clamp(gripper_opening, max=0.5) #encourage closing the gripper 
+        reward += torch.clamp(gripper_opening, max=0.25) #encourage closing the gripper 
 
 
         reward[info["success"]] = 5
