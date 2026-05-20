@@ -177,24 +177,29 @@ class PickCubeEnv(BaseEnv):
             self.cube.pose.p - self.agent.tcp_pose.p, axis=1
         )
         reaching_reward = 1 - torch.tanh(5 * tcp_to_obj_dist)
-        reward = reaching_reward
+        reward = reaching_reward*0.0
 
-        is_grasped = info["is_grasped"]
-        reward += is_grasped
+        # is_grasped = info["is_grasped"]
+        # reward += is_grasped
 
-        obj_to_goal_dist = torch.linalg.norm(
-            self.goal_site.pose.p - self.cube.pose.p, axis=1
-        )
-        place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
-        reward += place_reward * is_grasped
+        # obj_to_goal_dist = torch.linalg.norm(
+        #     self.goal_site.pose.p - self.cube.pose.p, axis=1
+        # )
+        # place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
+        # reward += place_reward * is_grasped
 
-        qvel = self.agent.robot.get_qvel()
-        if self.robot_uids in ["panda", "widowxai"]:
-            qvel = qvel[..., :-2]
-        elif self.robot_uids == "so100":
-            qvel = qvel[..., :-1]
-        static_reward = 1 - torch.tanh(5 * torch.linalg.norm(qvel, axis=1))
-        reward += static_reward * info["is_obj_placed"]
+        # qvel = self.agent.robot.get_qvel()
+        # if self.robot_uids in ["panda", "widowxai"]:
+        #     qvel = qvel[..., :-2]
+        # elif self.robot_uids == "so100":
+        #     qvel = qvel[..., :-1]
+        # static_reward = 1 - torch.tanh(5 * torch.linalg.norm(qvel, axis=1))
+        # reward += static_reward * info["is_obj_placed"]
+
+        qpos = self.agent.robot.get_qpos()
+        gripper_opening = qpos[..., 7]
+        reward += gripper_opening #encourage closing the gripper
+
 
         reward[info["success"]] = 5
         return reward

@@ -31,12 +31,12 @@ class Xarm7(BaseAgent):
             1.0471976,
             -1.5707964,
             # Gripper DOFs (6):
-            0.85,  # drive_joint (0 rad = fully open, 0.85 rad = fully closed)
-            0.85,  # left_inner_knuckle_joint
-            0.85,  # right_outer_knuckle_joint
-            0.85,  # right_inner_knuckle_joint
-            0.85,  # left_finger_joint
-            0.85,  # right_finger_joint
+            0.0,  # drive_joint (0 rad = fully open, 0.85 rad = fully closed)
+            0.0,  # left_inner_knuckle_joint
+            0.0,  # right_outer_knuckle_joint
+            0.0,  # right_inner_knuckle_joint
+            0.0,  # left_finger_joint
+            0.0,  # right_finger_joint
         ],
         dtype=np.float32,
     )
@@ -73,9 +73,9 @@ class Xarm7(BaseAgent):
         self.arm_damping = float(os.getenv("XARM_ARM_KD", 8))
         self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 100))
         # Gripper (driver + mimics)
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1.5))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 0.5))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.3)) #when it's bigger than 1.0, the robot arm goes out of control.
+        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 50))
+        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 8))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 50)) #when it's bigger than 1.0, the robot arm goes out of control.
 
         super().__init__(*args, **kwargs)
 
