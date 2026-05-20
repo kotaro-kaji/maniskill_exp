@@ -126,7 +126,7 @@ class PickCubeEnv(BaseEnv):
                 torch.rand((b, 2)) * self.cube_spawn_half_size * 2
                 - self.cube_spawn_half_size
             )
-            xyz[:, 0] += self.cube_spawn_center[0]
+            xyz[:, 0] += self.cube_spawn_center[0] - 0.20
             xyz[:, 1] += self.cube_spawn_center[1]
 
             xyz[:, 2] = self.cube_half_size
