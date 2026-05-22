@@ -39,7 +39,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
     OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
     CABINET_SPEC = replace(OUTER_CARDBOARD_BASE_SPEC, color_hex="#4C78A8")
-    INNER_BOX_SPEC = make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC)
+    INNER_BOX_SPEC = replace(
+        make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC),
+        wall_thickness=OUTER_CARDBOARD_BASE_SPEC.wall_thickness / 2,
+    )
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.30
     INSERT_TARGET_RADIUS = 0.004

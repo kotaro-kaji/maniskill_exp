@@ -13,6 +13,8 @@ commit.sh
 
 rollout_dual_info.jsonl
 rollout_dual_log.csv
+teleop_logs/
+tmp_note/gripper_diagnostics/
 
 
 /wandb
