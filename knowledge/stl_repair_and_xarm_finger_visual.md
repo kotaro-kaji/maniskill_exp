@@ -9,6 +9,7 @@
 最初は `robotagents/assets/` 直下に置いたが、最終的には `package://xarm_description/...` を使うため `xarm_description/meshes/gripper/xarm/` へ move した。
 ただし ROS2/RViz では `xarm_description` が `colcon build` と `source install/setup.bash` 済みでないと `package://xarm_description/...` を解決できない。
 `ros2 pkg prefix xarm_description` が `Package not found` の場合は、RViz用URDFでは絶対 `file:///...` を使うのが早い。
+一方、ManiSkill/Sapien では `file:///...` URI は失敗する。今回のURDFでは、URDFファイル位置 `robotagents/assets/xarm7/` からの相対パス `../../../xarm_description/...` が動作した。
 
 ## STL repair attempts
 
@@ -75,7 +76,7 @@ URDF/Sapien ではメートルとして解釈されるため、scale を入れ�
 `robotagents/assets/xarm7/xarm7_1305_left.urdf` で visual mesh に使う場合:
 
 ```xml
-<mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
+<mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
 ```
 
 right finger の visual には `right_kirisute1.stl` を使った。
@@ -86,8 +87,8 @@ collision は box のままにした方が、見た目確認でシミュレー�
 現在の visual mesh 参照:
 
 ```xml
-<mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
-<mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
+<mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
+<mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
 ```
 
 ## Correct environment for visual check
@@ -135,4 +136,5 @@ left finger の点群最近傍距離の改善:
 - 最適化後: median 約 0.54 mm、p90 約 1.44 mm
 
 注意:
-RViz向けに `file:///home/...` をURDFへ書くと、ROS2/RVizでは読みやすいが、ManiSkill/SapienのURDF loaderでは `file:///...` をそのままパスとして扱い、`cannot make canonical path` で失敗することがある。
+RViz向けに `file:///home/...` をURDFへ書くと、ROS2/RVizでは読みやすいが、ManiSkill/SapienのURDF loaderでは `file:///...` をそのままパスとして扱い、`cannot make canonical path` で失敗する。
+ManiSkill/Sapien ではスキームなしの絶対パス `/home/.../mesh.stl` と、URDF位置基準の相対パス `../../../xarm_description/...` なら `MyXarm7PickCube-v1` の env 作成と reset まで通った。
