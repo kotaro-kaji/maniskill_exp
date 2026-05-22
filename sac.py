@@ -469,6 +469,7 @@ if __name__ == "__main__":
         a_optimizer = optim.Adam([log_alpha], lr=args.q_lr)
     else:
         alpha = args.alpha
+        log_alpha = torch.log(torch.tensor([alpha], device=device))
 
     envs.single_observation_space.dtype = np.float32
     rb = ReplayBuffer(
