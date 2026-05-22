@@ -14,6 +14,17 @@ Use `uv` for environment management because the repo includes `pyproject.toml` a
 - `uv run python ppo_rollout_dual_xarm7.py --checkpoint <path>`: evaluate or replay a saved policy.
 - `uv run python tests/ppo.py` or `uv run python tests/rollout_record.py`: run the lightweight validation scripts in `tests/`.
 
+## Remote GPU / RunPod Notes
+The user often provides RunPod-style GPU servers for long ManiSkill experiments.
+Before setting up or debugging a new server, read `knowledge/runpod_maniskill_gpu.md`
+and `knowledge/remote_experiment_workflow.md`. Reuse those notes when the server
+looks similar, but still verify the actual GPU, Python environment, CUDA, Vulkan,
+and ManiSkill smoke tests on the current server.
+
+Keep server-specific runtime files such as `server_env.sh` untracked unless the
+user explicitly asks to commit them. Store durable operational findings in
+`knowledge/`, and keep throwaway scripts/logs in `tmp_note/`.
+
 ## Coding Style & Naming Conventions
 Follow existing Python style: 4-space indentation, snake_case for functions and modules, PascalCase for classes, and explicit constant names such as `SIM_FREQUENCY_HZ`. Keep task registrations and environment IDs descriptive, for example `MyDualBoxRotation-v0`. Prefer small, focused changes; many scripts are experiment entry points rather than reusable packages.
 
