@@ -18,7 +18,6 @@ from scenebuilders.cardboard_cabinet_builder import (
     DEFAULT_CARDBOARD_CABINET_SPEC,
     build_cardboard_cabinet_actor,
     build_cardboard_inner_box_actor,
-    cardboard_cabinet_grasp_targets_local,
     cardboard_cabinet_quaternion,
     make_cardboard_inner_box_spec,
 )
@@ -43,10 +42,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     INNER_BOX_SPEC = make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC)
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.30
-    TARGET_RADIUS = 0.018
-    LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0)
-    RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0)
-    DISTANCE_SCALE = 6.0
+    INSERT_TARGET_RADIUS = 0.004
+    INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
 
     def __init__(
         self,
@@ -96,24 +93,15 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             initial_pose=self._initial_inner_box_pose(),
             spec=self.INNER_BOX_SPEC,
         )
-        left_target, right_target = self._current_grasp_targets_world()
-        self.left_target_site = actors.build_sphere(
+        insert_target = self._current_insert_target_world()
+        self.insert_target_site = actors.build_sphere(
             self.scene,
-            radius=self.TARGET_RADIUS,
-            color=self.LEFT_TARGET_COLOR,
-            name="left_target_site",
+            radius=self.INSERT_TARGET_RADIUS,
+            color=self.INSERT_TARGET_COLOR,
+            name="insert_target_site",
             body_type="kinematic",
             add_collision=False,
-            initial_pose=sapien.Pose(p=left_target[0].detach().cpu().tolist()),
-        )
-        self.right_target_site = actors.build_sphere(
-            self.scene,
-            radius=self.TARGET_RADIUS,
-            color=self.RIGHT_TARGET_COLOR,
-            name="right_target_site",
-            body_type="kinematic",
-            add_collision=False,
-            initial_pose=sapien.Pose(p=right_target[0].detach().cpu().tolist()),
+            initial_pose=sapien.Pose(p=insert_target[0].detach().cpu().tolist()),
         )
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
@@ -258,49 +246,36 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         position[1] += self.INNER_BOX_WORLD_Y_OFFSET
         return position
 
-    def _box_grasp_targets_local(self) -> torch.Tensor:
-        return cardboard_cabinet_grasp_targets_local(
-            self.CABINET_SPEC,
+    def _box_insert_target_local(self) -> torch.Tensor:
+        return torch.tensor(
+            [
+                -self.INNER_BOX_SPEC.outer_length_x / 2 + 0.012,
+                0.0,
+                self.INNER_BOX_SPEC.outer_height_z / 2
+                - self.INNER_BOX_SPEC.notch_height_z * 0.7,
+            ],
+            dtype=torch.float32,
             device=self.device,
         )
 
-    def _current_grasp_targets_world(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        pose = self.cardboard_cabinet.pose
+    def _current_insert_target_world(self) -> torch.Tensor:
+        pose = self.cardboard_inner_box.pose
         matrix = pose.to_transformation_matrix()[..., :3, :3]
         position = pose.p
         if position.ndim == 1:
             position = position.unsqueeze(0)
             matrix = matrix.unsqueeze(0)
-        local_points = self._box_grasp_targets_local().unsqueeze(0).repeat(
-            position.shape[0], 1, 1
+        local_point = self._box_insert_target_local().unsqueeze(0).repeat(
+            position.shape[0], 1
         )
-        world_points = torch.matmul(local_points, matrix.transpose(-1, -2))
-        world_points = world_points + position.unsqueeze(1)
-        return world_points[:, 0], world_points[:, 1]
+        return torch.matmul(local_point.unsqueeze(1), matrix.transpose(-1, -2)).squeeze(
+            1
+        ) + position
 
     def _sync_target_sites(self):
-        left_target, right_target = self._current_grasp_targets_world()
-        self.left_target_site.set_pose(Pose.create_from_pq(p=left_target))
-        self.right_target_site.set_pose(Pose.create_from_pq(p=right_target))
+        self.insert_target_site.set_pose(
+            Pose.create_from_pq(p=self._current_insert_target_world())
+        )
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        if not isinstance(self.agent, MultiAgent):
-            return torch.zeros(self.num_envs, device=self.device)
-
-        left_target, right_target = self._current_grasp_targets_world()
-        self.left_target_site.set_pose(Pose.create_from_pq(p=left_target))
-        self.right_target_site.set_pose(Pose.create_from_pq(p=right_target))
-
-        left_tcp_pos = self.agent.agents[0].tcp.pose.p
-        right_tcp_pos = self.agent.agents[1].tcp.pose.p
-
-        left_dist = torch.linalg.norm(left_tcp_pos - left_target, dim=-1)
-        right_dist = torch.linalg.norm(right_tcp_pos - right_target, dim=-1)
-
-        left_reward = 1 - torch.tanh(self.DISTANCE_SCALE * left_dist)
-        right_reward = 1 - torch.tanh(self.DISTANCE_SCALE * right_dist)
-
-        reward = 0.5 * (left_reward + right_reward)
-        if reward.ndim == 0:
-            reward = reward.unsqueeze(0)
-        return reward
+        return torch.zeros(self.num_envs, device=self.device)
