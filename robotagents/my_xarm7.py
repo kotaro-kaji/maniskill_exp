@@ -102,7 +102,7 @@ class Xarm7(BaseAgent):
         rforce = torch.linalg.norm(r_contact_forces, axis=1)
 
         ldirection = self.finger1_link.pose.to_transformation_matrix()[..., :3, 1]
-        rdirection = self.finger2_link.pose.to_transformation_matrix()[..., :3, 1]
+        rdirection = -self.finger2_link.pose.to_transformation_matrix()[..., :3, 1]
         langle = common.compute_angle_between(ldirection, l_contact_forces)
         rangle = common.compute_angle_between(rdirection, r_contact_forces)
         lflag = torch.logical_and(

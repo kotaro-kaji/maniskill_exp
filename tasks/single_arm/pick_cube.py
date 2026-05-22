@@ -38,7 +38,7 @@ capabilities can be simulated and trained properly. Hence there is extra code fo
 """
 
 
-@register_env("MyXarm7PickCube-v1", max_episode_steps=100)
+@register_env("MyXarm7PickCube-v1", max_episode_steps=150)
 class PickCubeEnv(BaseEnv):
 
     _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"
@@ -143,17 +143,48 @@ class PickCubeEnv(BaseEnv):
             goal_xyz[:, 2] = torch.rand((b)) * self.max_goal_height + xyz[:, 2]
             self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
 
+    def _tcp_pos_for_task(self):
+        if self.robot_uids != "my_xarm7":
+            return self.agent.tcp_pose.p
+
+        b = self.agent.tcp_pose.p.shape[0]
+        grasp_offset = torch.tensor([[0.0, 0.0, 0.1564]], device=self.device).repeat(
+            b, 1
+        )
+        gripper_base = self.agent.robot.links_map["xarm_gripper_base_link"]
+        return (gripper_base.pose * Pose.create_from_pq(grasp_offset)).p
+
+    def _finger_pad_pos_for_task(self):
+        assert self.robot_uids == "my_xarm7"
+        b = self.agent.tcp_pose.p.shape[0]
+        left_pad_offset = torch.tensor(
+            [[0.0, -0.02110, 0.04295]], device=self.device
+        ).repeat(b, 1)
+        right_pad_offset = torch.tensor(
+            [[0.0, 0.02110, 0.04295]], device=self.device
+        ).repeat(b, 1)
+        left_pad_pos = (
+            self.agent.finger1_link.pose * Pose.create_from_pq(left_pad_offset)
+        ).p
+        right_pad_pos = (
+            self.agent.finger2_link.pose * Pose.create_from_pq(right_pad_offset)
+        ).p
+        return left_pad_pos, right_pad_pos
+
     def _get_obs_extra(self, info: dict):
         # in reality some people hack is_grasped into observations by checking if the gripper can close fully or not
+        tcp_pos = self._tcp_pos_for_task()
+        tcp_pose = self.agent.tcp_pose.raw_pose.clone()
+        tcp_pose[..., :3] = tcp_pos
         obs = dict(
             is_grasped=info["is_grasped"],
-            tcp_pose=self.agent.tcp_pose.raw_pose,
+            tcp_pose=tcp_pose,
             goal_pos=self.goal_site.pose.p,
         )
         if "state" in self.obs_mode:
             obs.update(
                 obj_pose=self.cube.pose.raw_pose,
-                tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp_pose.p,
+                tcp_to_obj_pos=self.cube.pose.p - tcp_pos,
                 obj_to_goal_pos=self.goal_site.pose.p - self.cube.pose.p,
             )
         return obs
@@ -163,7 +194,8 @@ class PickCubeEnv(BaseEnv):
             torch.linalg.norm(self.goal_site.pose.p - self.cube.pose.p, axis=1)
             <= self.goal_thresh
         )
-        is_grasped = self.agent.is_grasping(self.cube)
+        grasp_min_force = 0.1 if self.robot_uids == "my_xarm7" else 0.5
+        is_grasped = self.agent.is_grasping(self.cube, min_force=grasp_min_force)
         is_robot_static = self.agent.is_static(0.2)
         return {
             "success": is_obj_placed & is_robot_static,
@@ -174,19 +206,37 @@ class PickCubeEnv(BaseEnv):
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
         tcp_to_obj_dist = torch.linalg.norm(
-            self.cube.pose.p - self.agent.tcp_pose.p, axis=1
+            self.cube.pose.p - self._tcp_pos_for_task(), axis=1
         )
         reaching_reward = 1 - torch.tanh(5 * tcp_to_obj_dist)
-        reward = reaching_reward
+        fine_reaching_reward = 1 - torch.tanh(20 * tcp_to_obj_dist)
 
         is_grasped = info["is_grasped"]
-        reward += is_grasped * 0.5
+        grasped = is_grasped.to(torch.float32)
+        pre_grasp = 1.0 - grasped
+        reward = pre_grasp * (reaching_reward + fine_reaching_reward)
 
         obj_to_goal_dist = torch.linalg.norm(
             self.goal_site.pose.p - self.cube.pose.p, axis=1
         )
-        place_reward = 3.0 * (1 - torch.tanh(5 * obj_to_goal_dist))
-        reward += place_reward * is_grasped
+        obj_to_goal_pos = self.goal_site.pose.p - self.cube.pose.p
+        obj_to_goal_xy_dist = torch.linalg.norm(obj_to_goal_pos[..., :2], axis=1)
+        obj_to_goal_z_dist = torch.abs(obj_to_goal_pos[..., 2])
+        place_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
+        place_xy_reward = 1 - torch.tanh(5 * obj_to_goal_xy_dist)
+        place_z_reward = 1 - torch.tanh(5 * obj_to_goal_z_dist)
+        lift_reward = torch.clamp(
+            (self.cube.pose.p[..., 2] - self.cube_half_size) / 0.12,
+            min=0.0,
+            max=1.0,
+        )
+        reward += grasped * (
+            2.0
+            + lift_reward
+            + 4.0 * place_reward
+            + 2.0 * place_xy_reward
+            + 4.0 * place_z_reward
+        )
 
         qvel = self.agent.robot.get_qvel()
         if self.robot_uids in ["panda", "widowxai"]:
@@ -195,19 +245,32 @@ class PickCubeEnv(BaseEnv):
             qvel = qvel[..., :-1]
         static_reward = 1 - torch.tanh(5 * torch.linalg.norm(qvel, axis=1))
         reward += static_reward * info["is_obj_placed"]
+        reward += info["is_obj_placed"] * (3.0 + 2.0 * static_reward)
 
         qpos = self.agent.robot.get_qpos()
-        gripper_opening = qpos[..., 7]
-        reward += torch.clamp(gripper_opening, max=0.25) #encourage closing the gripper 
+        gripper_closed = torch.clamp(qpos[..., 7], min=0.0, max=0.85) / 0.85
+        if self.robot_uids == "my_xarm7":
+            left_pad_pos, right_pad_pos = self._finger_pad_pos_for_task()
+            pad_mid_pos = (left_pad_pos + right_pad_pos) / 2
+            pad_to_obj_dist = torch.linalg.norm(self.cube.pose.p - pad_mid_pos, axis=1)
+            pad_center_reward = 1 - torch.tanh(20 * pad_to_obj_dist)
+
+            pad_width = torch.linalg.norm(left_pad_pos - right_pad_pos, axis=1)
+            target_width = self.cube_half_size * 2
+            pad_width_reward = 1 - torch.tanh(60 * torch.abs(pad_width - target_width))
+            reward += pre_grasp * 3.0 * pad_center_reward * pad_width_reward
+            reward += pre_grasp * 3.0 * pad_center_reward * gripper_closed
+        else:
+            reward += pre_grasp * reaching_reward * gripper_closed
 
 
-        reward[info["success"]] = 5
+        reward[info["success"]] = 10
         return reward
 
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: dict
     ):
-        return self.compute_dense_reward(obs=obs, action=action, info=info) / 5
+        return self.compute_dense_reward(obs=obs, action=action, info=info) / 10
 
 
 PickCubeEnv.__doc__ = PICK_CUBE_DOC_STRING.format(robot_id="Panda")
