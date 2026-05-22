@@ -75,7 +75,8 @@ class Xarm7(BaseAgent):
         # Gripper (driver + mimics)
         self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1e3))
         self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 5e2))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.7))
+        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 0.1))
+        self.gripper_friction = float(os.getenv("XARM_GRIP_FRICTION", 1.0))
 
         super().__init__(*args, **kwargs)
 
@@ -202,6 +203,18 @@ class Xarm7(BaseAgent):
             force_limit = self.arm_force_limit,
             use_delta=True,
         )
+        arm_pd_ee_delta_pose = PDEEPoseControllerConfig(
+            joint_names=self.arm_joint_names,
+            pos_lower=-1e-2,
+            pos_upper=1e-2,
+            rot_lower=-1.5e-2,
+            rot_upper=1.5e-2,
+            stiffness=self.arm_stiffness,
+            damping=self.arm_damping,
+            force_limit=self.arm_force_limit,
+            ee_link=self.ee_link_name,
+            urdf_path=self.urdf_path,
+        )
 
         # 1-DOF gripper via mimic controller
         gripper_mimic_map = {
@@ -219,6 +232,7 @@ class Xarm7(BaseAgent):
             self.gripper_stiffness,
             self.gripper_damping,
             self.gripper_force_limit,
+            friction=self.gripper_friction,
             normalize_action=False,
         )
         gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
@@ -229,6 +243,7 @@ class Xarm7(BaseAgent):
             stiffness = self.gripper_stiffness,
             damping =  self.gripper_damping,
             force_limit = self.gripper_force_limit,
+            friction=self.gripper_friction,
             use_delta=True,
         )
         gripper_pd_joint_delta_pos_mimic.mimic = gripper_mimic_map
@@ -241,6 +256,11 @@ class Xarm7(BaseAgent):
             ),
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
+                gripper=gripper_pd_joint_delta_pos_mimic,
+                #balance_passive_force=False
+            ),
+            pd_ee_delta_pose=dict(
+                arm=arm_pd_ee_delta_pose,
                 gripper=gripper_pd_joint_delta_pos_mimic,
                 #balance_passive_force=False
             ),
