@@ -570,17 +570,10 @@
     
     <collision>
       <geometry>
-        <box size="0.028 0.010 0.036"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.02110 0.04295"/>
+      <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
     </collision>
-   
-    <!-- <collision>
-      <geometry>
-        <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision> -->
   </link>
   <joint name="left_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.035465 0.042039"/>
@@ -666,19 +659,10 @@
     
     <collision>
       <geometry>
-        <box size="0.028 0.010 0.036"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0.02110 0.04295"/>
+      <origin rpy="0 0 0" xyz="-0.010475 -0.005449 -0.006592"/>
     </collision>
-   
-    
-    <!-- <collision>
-      <geometry>
-        <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision> -->
-    
   </link>
   <joint name="right_finger_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.035465 0.042039"/>
