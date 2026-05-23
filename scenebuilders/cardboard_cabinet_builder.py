@@ -34,6 +34,7 @@ class CardboardInnerBoxSpec:
     color_hex: str = "#B0916E"
     notch_width_x: float = 0.06
     notch_height_z: float = 0.018
+    notch_side_collision: bool = True
     name: str = "cardboard_inner_box"
 
 
@@ -109,13 +110,14 @@ def build_cardboard_inner_box_actor(
         roughness=0.6,
     )
 
-    for panel_pose, half_size in cardboard_inner_box_panel_specs(spec):
-        builder.add_box_collision(
-            pose=panel_pose,
-            half_size=half_size,
-            density=spec.density,
-            material=material,
-        )
+    for panel_idx, (panel_pose, half_size) in enumerate(cardboard_inner_box_panel_specs(spec)):
+        if spec.notch_side_collision or panel_idx < 4:
+            builder.add_box_collision(
+                pose=panel_pose,
+                half_size=half_size,
+                density=spec.density,
+                material=material,
+            )
         builder.add_box_visual(
             pose=panel_pose,
             half_size=half_size,

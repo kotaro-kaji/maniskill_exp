@@ -431,3 +431,11 @@ class MyDualCardboardCabinetTallSlotEnv(MyDualCardboardCabinetYzShapedEnv):
         notch_height_z=0.04,
     )
     INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.03725)
+
+
+@register_env("MyDualCardboardCabinetNoNotchCollision-v0", max_episode_steps=200)
+class MyDualCardboardCabinetNoNotchCollisionEnv(MyDualCardboardCabinetYzShapedEnv):
+    INNER_BOX_SPEC = replace(
+        MyDualCardboardCabinetEnv.INNER_BOX_SPEC,
+        notch_side_collision=False,
+    )
