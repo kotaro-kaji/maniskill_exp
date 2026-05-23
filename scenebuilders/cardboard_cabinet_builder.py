@@ -160,6 +160,7 @@ def cardboard_inner_box_panel_specs(spec: CardboardInnerBoxSpec):
     width = spec.outer_width_y
     height = spec.outer_height_z
     thickness = spec.wall_thickness
+    rear_thickness = thickness * 2
     notch_width = spec.notch_width_x
     notch_height = spec.notch_height_z
     side_width = max(0.0, (width - notch_width) / 2.0)
@@ -180,7 +181,7 @@ def cardboard_inner_box_panel_specs(spec: CardboardInnerBoxSpec):
         ),
         (
             sapien.Pose(p=[length / 2 - thickness / 2, 0.0, 0.0]),
-            [thickness / 2, width / 2, height / 2],
+            [rear_thickness / 2, width / 2, height / 2],
         ),
         (
             sapien.Pose(

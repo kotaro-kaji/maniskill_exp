@@ -47,6 +47,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.30
     INSERT_TARGET_RADIUS = 0.004
     INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
+    INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.03925)
+    FINGER_INSERT_MARKER_LOCAL = (0.0, -0.01790, 0.05340)
+    INSERT_REWARD_DISTANCE_SCALE = 20.0
+    INSERT_SUCCESS_DISTANCE = 0.005
+    BOX_POSITION_SHIFT_TOLERANCE = 0.002
+    BOX_POSITION_PENALTY_SCALE = 250.0
+    BOX_POSITION_PENALTY_MAX = 0.995
 
     def __init__(
         self,
@@ -96,7 +103,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             initial_pose=self._initial_inner_box_pose(),
             spec=self.INNER_BOX_SPEC,
         )
-        insert_target = self._current_insert_target_world()
         self.insert_target_site = actors.build_sphere(
             self.scene,
             radius=self.INSERT_TARGET_RADIUS,
@@ -104,7 +110,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             name="insert_target_site",
             body_type="kinematic",
             add_collision=False,
-            initial_pose=sapien.Pose(p=insert_target[0].detach().cpu().tolist()),
+            initial_pose=sapien.Pose(),
         )
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
@@ -134,7 +140,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                     orientations,
                 )
             )
-            self._sync_target_sites()
+            self._sync_target_sites(env_idx)
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
         base_left = torch.tensor(
@@ -249,17 +255,27 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         position[1] += self.INNER_BOX_WORLD_Y_OFFSET
         return position
 
-    def _box_insert_target_local(self) -> torch.Tensor:
+    def _insert_side_origin_box_local(self) -> torch.Tensor:
+        spec = self.INNER_BOX_SPEC
         return torch.tensor(
             [
-                -self.INNER_BOX_SPEC.outer_length_x / 2 + 0.012,
+                -spec.outer_length_x / 2 + spec.wall_thickness / 2,
                 0.0,
-                self.INNER_BOX_SPEC.outer_height_z / 2
-                - self.INNER_BOX_SPEC.notch_height_z * 0.7,
+                0.0,
             ],
             dtype=torch.float32,
             device=self.device,
         )
+
+    def _insert_target_side_local(self) -> torch.Tensor:
+        return torch.tensor(
+            self.INSERT_TARGET_SIDE_LOCAL,
+            dtype=torch.float32,
+            device=self.device,
+        )
+
+    def _box_insert_target_local(self) -> torch.Tensor:
+        return self._insert_side_origin_box_local() + self._insert_target_side_local()
 
     def _current_insert_target_world(self) -> torch.Tensor:
         pose = self.cardboard_inner_box.pose
@@ -275,10 +291,78 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             1
         ) + position
 
-    def _sync_target_sites(self):
-        self.insert_target_site.set_pose(
-            Pose.create_from_pq(p=self._current_insert_target_world())
+    def _finger_insert_marker_world(self) -> torch.Tensor:
+        pose = self.agent.agents[0].finger1_link.pose
+        matrix = pose.to_transformation_matrix()[..., :3, :3]
+        position = pose.p
+        if position.ndim == 1:
+            position = position.unsqueeze(0)
+            matrix = matrix.unsqueeze(0)
+        local_point = torch.tensor(
+            self.FINGER_INSERT_MARKER_LOCAL,
+            dtype=torch.float32,
+            device=self.device,
+        ).unsqueeze(0).repeat(position.shape[0], 1)
+        return torch.matmul(local_point.unsqueeze(1), matrix.transpose(-1, -2)).squeeze(
+            1
+        ) + position
+
+    def _inner_box_position_shift(self) -> torch.Tensor:
+        position = self.cardboard_inner_box.pose.p
+        if position.ndim == 1:
+            position = position.unsqueeze(0)
+        initial_position = self._initial_inner_box_world_position().unsqueeze(0)
+        return torch.linalg.norm(position - initial_position, dim=-1)
+
+    def _inner_box_position_penalty(self) -> torch.Tensor:
+        shift = self._inner_box_position_shift()
+        penalized_shift = torch.clamp(
+            shift - self.BOX_POSITION_SHIFT_TOLERANCE,
+            min=0.0,
+        )
+        return self.BOX_POSITION_PENALTY_MAX * torch.tanh(
+            self.BOX_POSITION_PENALTY_SCALE * penalized_shift
         )
 
+    def _sync_target_sites(self, env_idx: Optional[torch.Tensor] = None):
+        target_pos = self._current_insert_target_world()
+        if env_idx is not None:
+            target_pos = target_pos[env_idx]
+        self.insert_target_site.set_pose(
+            Pose.create_from_pq(p=target_pos)
+        )
+
+    def evaluate(self):
+        marker_pos = self._finger_insert_marker_world()
+        target_pos = self._current_insert_target_world()
+        distance = torch.linalg.norm(marker_pos - target_pos, dim=-1)
+        box_position_shift = self._inner_box_position_shift()
+        self._sync_target_sites()
+        return {
+            "success": distance < self.INSERT_SUCCESS_DISTANCE,
+            "insert_marker_distance": distance,
+            "box_position_shift": box_position_shift,
+            "box_position_penalty": self._inner_box_position_penalty(),
+        }
+
+    def _get_obs_extra(self, info: Dict[str, Any]):
+        marker_pos = self._finger_insert_marker_world()
+        target_pos = self._current_insert_target_world()
+        center = torch.tensor(
+            self.bimanual_center_pose.p,
+            dtype=torch.float32,
+            device=self.device,
+        )
+        return {
+            "finger_insert_marker_from_bimanual_center": marker_pos - center,
+            "insert_target_from_bimanual_center": target_pos - center,
+            "insert_target_delta": target_pos - marker_pos,
+        }
+
     def compute_normalized_dense_reward(self, obs, action, info):
-        return torch.zeros(self.num_envs, device=self.device)
+        marker_pos = self._finger_insert_marker_world()
+        target_pos = self._current_insert_target_world()
+        distance = torch.linalg.norm(marker_pos - target_pos, dim=-1)
+        reward = 1 - torch.tanh(self.INSERT_REWARD_DISTANCE_SCALE * distance)
+        reward[distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())

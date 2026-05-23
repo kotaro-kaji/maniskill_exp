@@ -25,6 +25,12 @@ Keep server-specific runtime files such as `server_env.sh` untracked unless the
 user explicitly asks to commit them. Store durable operational findings in
 `knowledge/`, and keep throwaway scripts/logs in `tmp_note/`.
 
+When an experiment finds a strong checkpoint or otherwise produces a good
+behavioral result, always generate an evaluation video and show the video path to
+the user together with the scalar metrics. Do not report only metrics for good
+robotics results unless video generation is genuinely blocked; if blocked,
+explain the blocker and keep the checkpoint path clear.
+
 ## Coding Style & Naming Conventions
 Follow existing Python style: 4-space indentation, snake_case for functions and modules, PascalCase for classes, and explicit constant names such as `SIM_FREQUENCY_HZ`. Keep task registrations and environment IDs descriptive, for example `MyDualBoxRotation-v0`. Prefer small, focused changes; many scripts are experiment entry points rather than reusable packages.
 

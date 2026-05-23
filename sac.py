@@ -243,6 +243,29 @@ class ReplayBuffer:
             dones=self.dones[batch_inds, env_inds].to(self.sample_device)
         )
 
+
+def sanitize_tensor(tensor: torch.Tensor, clamp_abs: float = 1e6) -> torch.Tensor:
+    if torch.isfinite(tensor).all():
+        return tensor
+    return torch.nan_to_num(
+        tensor,
+        nan=0.0,
+        posinf=clamp_abs,
+        neginf=-clamp_abs,
+    ).clamp(-clamp_abs, clamp_abs)
+
+
+def optimizer_step_if_finite(loss: torch.Tensor, optimizer, parameters) -> bool:
+    if not torch.isfinite(loss).all():
+        optimizer.zero_grad()
+        return False
+    optimizer.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(list(parameters), max_norm=10.0)
+    optimizer.step()
+    return True
+
+
 # ALGO LOGIC: initialize agent here:
 class SoftQNetwork(nn.Module):
     def __init__(self, env):
@@ -451,6 +474,7 @@ if __name__ == "__main__":
     qf2 = SoftQNetwork(envs).to(device)
     qf1_target = SoftQNetwork(envs).to(device)
     qf2_target = SoftQNetwork(envs).to(device)
+    ckpt = None
     if args.checkpoint is not None:
         ckpt = torch.load(args.checkpoint)
         actor.load_state_dict(ckpt['actor'])
@@ -465,6 +489,9 @@ if __name__ == "__main__":
     if args.autotune:
         target_entropy = -torch.prod(torch.Tensor(envs.single_action_space.shape).to(device)).item()
         log_alpha = torch.zeros(1, requires_grad=True, device=device)
+        if ckpt is not None and "log_alpha" in ckpt:
+            log_alpha = ckpt["log_alpha"].detach().clone().to(device)
+            log_alpha.requires_grad_(True)
         alpha = log_alpha.exp().item()
         a_optimizer = optim.Adam([log_alpha], lr=args.q_lr)
     else:
@@ -488,7 +515,7 @@ if __name__ == "__main__":
         eval_video_obs, _ = eval_video_envs.reset()
     global_step = 0
     global_update = 0
-    learning_has_started = False
+    learning_has_started = args.checkpoint is not None
 
     global_steps_per_iteration = args.num_envs * (args.steps_per_env)
     pbar = tqdm.tqdm(range(args.total_timesteps))
@@ -580,11 +607,14 @@ if __name__ == "__main__":
             if not learning_has_started:
                 actions = 2 * torch.rand(size=envs.action_space.shape, dtype=torch.float32, device=device) - 1
             else:
-                actions, _, _ = actor.get_action(obs)
+                actions, _, _ = actor.get_action(sanitize_tensor(obs))
                 actions = actions.detach()
+            actions = sanitize_tensor(actions, clamp_abs=1.0).clamp(-1.0, 1.0)
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+            next_obs = sanitize_tensor(next_obs)
+            rewards = sanitize_tensor(rewards)
             # if isinstance(infos, dict) and "positive_flip_count" in infos:
             #     flip_val = infos["positive_flip_count"]
             #     flip_tensor = torch.as_tensor(flip_val)
@@ -604,11 +634,12 @@ if __name__ == "__main__":
             if "final_info" in infos:
                 final_info = infos["final_info"]
                 done_mask = infos["_final_info"]
-                real_next_obs[need_final_obs] = infos["final_observation"][need_final_obs]
+                final_observation = sanitize_tensor(infos["final_observation"])
+                real_next_obs[need_final_obs] = final_observation[need_final_obs]
                 for k, v in final_info["episode"].items():
                     logger.add_scalar(f"train/{k}", v[done_mask].float().mean(), global_step)
 
-            rb.add(obs, real_next_obs, actions, rewards, stop_bootstrap)
+            rb.add(sanitize_tensor(obs), sanitize_tensor(real_next_obs), actions, rewards, stop_bootstrap)
 
             # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
             obs = next_obs
@@ -632,6 +663,10 @@ if __name__ == "__main__":
         for local_update in range(args.grad_steps_per_iteration):
             global_update += 1
             data = rb.sample(args.batch_size)
+            data.obs = sanitize_tensor(data.obs)
+            data.next_obs = sanitize_tensor(data.next_obs)
+            data.actions = sanitize_tensor(data.actions, clamp_abs=1.0).clamp(-1.0, 1.0)
+            data.rewards = sanitize_tensor(data.rewards)
 
             # update the value networks
             with torch.no_grad():
@@ -640,6 +675,7 @@ if __name__ == "__main__":
                 qf2_next_target = qf2_target(data.next_obs, next_state_actions)
                 min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - alpha * next_state_log_pi
                 next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (min_qf_next_target).view(-1)
+                next_q_value = sanitize_tensor(next_q_value, clamp_abs=100.0)
                 # data.dones is "stop_bootstrap", which is computed earlier according to args.bootstrap_at_done
 
             qf1_a_values = qf1(data.obs, data.actions).view(-1)
@@ -648,9 +684,11 @@ if __name__ == "__main__":
             qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
             qf_loss = qf1_loss + qf2_loss
 
-            q_optimizer.zero_grad()
-            qf_loss.backward()
-            q_optimizer.step()
+            optimizer_step_if_finite(
+                qf_loss,
+                q_optimizer,
+                list(qf1.parameters()) + list(qf2.parameters()),
+            )
 
             # update the policy network
             if global_update % args.policy_frequency == 0:  # TD 3 Delayed update support
@@ -660,9 +698,7 @@ if __name__ == "__main__":
                 min_qf_pi = torch.min(qf1_pi, qf2_pi)
                 actor_loss = ((alpha * log_pi) - min_qf_pi).mean()
 
-                actor_optimizer.zero_grad()
-                actor_loss.backward()
-                actor_optimizer.step()
+                optimizer_step_if_finite(actor_loss, actor_optimizer, actor.parameters())
 
                 if args.autotune:
                     with torch.no_grad():
@@ -673,9 +709,7 @@ if __name__ == "__main__":
                     #     alpha_loss = (-log_alpha * (log_pi + target_entropy)).mean()
                     # log_alpha has a legacy reason: https://github.com/rail-berkeley/softlearning/issues/136#issuecomment-619535356
 
-                    a_optimizer.zero_grad()
-                    alpha_loss.backward()
-                    a_optimizer.step()
+                    optimizer_step_if_finite(alpha_loss, a_optimizer, [log_alpha])
                     alpha = log_alpha.exp().item()
 
             # update the target networks

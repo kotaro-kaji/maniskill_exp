@@ -15,3 +15,6 @@ python sac.py --env_id="MyXarm7PushCube-v1" \
 
 #簡単な可視化
 python quick_visualization/test2_gpu.py --env-id "MyXarm7PickCube-v1"
+
+# cabinet を SpaceMouse で teleop
+uv run python src/bin/teleop_spacemouse_dual_xarm7.py --env-id MyDualCardboardCabinet-v0

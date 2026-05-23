@@ -16,6 +16,22 @@ Host runpod-gpu
     IdentityFile ~/.ssh/id_ed25519
     ServerAliveInterval 60
     ServerAliveCountMax 5
+
+Current aliases used in this project:
+
+```sshconfig
+Host runpod-gpu
+    HostName 69.30.85.182
+    Port 22172
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+
+Host runpod-gpu-2
+    HostName 157.157.221.29
+    Port 30906
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+```
 ```
 
 Then use:
@@ -67,7 +83,7 @@ pattern was:
 2. Install or extract matching NVIDIA GL/Vulkan libraries.
 3. Point `LD_LIBRARY_PATH` and `VK_ICD_FILENAMES` at that runtime.
 
-The working server used an extracted NVIDIA 580.126.09 runtime under:
+The A5000 server used an extracted NVIDIA 580.126.09 runtime under:
 
 ```bash
 /opt/nvidia-gl-580-126
@@ -83,6 +99,66 @@ export LD_LIBRARY_PATH="$NVIDIA_GL/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 export VK_ICD_FILENAMES=/opt/nvidia-gl-580-126/nvidia_icd_egl.json
 export __GLX_VENDOR_LIBRARY_NAME=nvidia
 ```
+
+The RTX 4090 server had driver `580.126.20` and initially had CUDA working but
+Vulkan failing with `vk::createInstanceUnique: ErrorIncompatibleDriver`. The
+working fix was to install the loader/tools and extract matching NVIDIA GL
+userspace packages without installing the full driver:
+
+```bash
+apt-get update -y
+apt-get install -y libvulkan1 vulkan-tools
+mkdir -p /tmp/nvidia-gl-debs /opt/nvidia-gl-580-126-20
+cd /tmp/nvidia-gl-debs
+apt-get download \
+  libnvidia-gl-580=580.126.20-1ubuntu1 \
+  libnvidia-common-580=580.126.20-1ubuntu1 \
+  libnvidia-gpucomp-580=580.126.20-1ubuntu1
+for deb in *.deb; do dpkg-deb -x "$deb" /opt/nvidia-gl-580-126-20; done
+cat > /opt/nvidia-gl-580-126-20/nvidia_icd_egl.json <<'EOF'
+{
+  "file_format_version": "1.0.0",
+  "ICD": {
+    "library_path": "/opt/nvidia-gl-580-126-20/usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.580.126.20",
+    "api_version": "1.3.280"
+  }
+}
+EOF
+```
+
+Then use this repo-local `server_env.sh`:
+
+```bash
+#!/usr/bin/env bash
+export PATH="$HOME/.local/bin:$PATH"
+export NVIDIA_GL=/opt/nvidia-gl-580-126-20/usr
+export LD_LIBRARY_PATH="$NVIDIA_GL/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+export VK_ICD_FILENAMES=/opt/nvidia-gl-580-126-20/nvidia_icd_egl.json
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+```
+
+For this server, the relative-path ICD at `/etc/vulkan/icd.d/nvidia_icd.json`
+continued to fail. Use the absolute `libEGL_nvidia` ICD file above.
+
+## RunPod Cost Notes
+
+Observed RunPod prices:
+
+- RTX A5000: about `$0.29/hour`
+- RTX 4090: about `$0.69/hour`
+
+Use the cheaper A5000 for overnight runs when waiting is acceptable, especially
+from around midnight to 7am. Use the RTX 4090 during the day when fast feedback
+matters or when running short ablations that should finish quickly.
+
+Measured on the cardboard SAC run with `num_envs=256`, `training_freq=256`,
+and `utd=0.5`:
+
+- RTX A5000: roughly `65-75 env steps/s`, 100k steps in about 24 minutes.
+- RTX 4090: roughly `100-150 env steps/s`, 100k steps in about 15 minutes.
+
+The 4090 is faster, but the SAC loop is not purely GPU-compute bound, so expect
+about `1.5-2x` rather than a raw TFLOPS-speedup.
 
 Always source it before running repo scripts on that server:
 
@@ -179,4 +255,3 @@ Long-running process:
 ps -eo pid,pcpu,pmem,cmd | grep -E "ppo_xarm7|sac.py|python" | grep -v grep
 nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader
 ```
-
