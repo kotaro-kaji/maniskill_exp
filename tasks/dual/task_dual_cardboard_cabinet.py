@@ -417,3 +417,8 @@ class MyDualCardboardCabinetAxisEnv(MyDualCardboardCabinetEnv):
 @register_env("MyDualCardboardCabinetYzShaped-v0", max_episode_steps=200)
 class MyDualCardboardCabinetYzShapedEnv(MyDualCardboardCabinetEnv):
     INSERT_YZ_REWARD_WEIGHT = 0.5
+
+
+@register_env("MyDualCardboardCabinetSlotCenter-v0", max_episode_steps=200)
+class MyDualCardboardCabinetSlotCenterEnv(MyDualCardboardCabinetYzShapedEnv):
+    INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.04825)
