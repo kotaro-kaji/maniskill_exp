@@ -44,3 +44,23 @@ under_0.030 128 / 128
   3. resume the best checkpoint with `utd=0.1`, `policy_lr=q_lr=1e-4`,
      and evaluate every 50k.
 - Later checkpoints after `ckpt_350208.pt` started to degrade, so the run was stopped.
+
+## Cardboard insertion PPO diagnostics
+
+- `MyDualCardboardCabinet-v0` / `SlotCenter` policies consistently left a
+  vertical residual around 20-30 mm while keeping x/y nearly aligned.
+- Correcting the eval scripts to accept `--env-id` was necessary. Earlier variant
+  checkpoint distance checks were accidentally evaluated in `MyDualCardboardCabinet-v0`.
+- `MyDualCardboardCabinetHighTarget-v0` moves only the target z to the height
+  the policy naturally reaches. With the same PPO setup it reached:
+  - checkpoint: `runs/cardboard_insert_high_target_ppo_3m_seed1/ckpt_16.pt`
+  - mean distance: `0.00569`
+  - median distance: `0.00465`
+  - under 5 mm: `67 / 128`
+  - under 10 mm: `106 / 128`
+  - max box shift mean: `0.00159`
+- This strongly suggests PPO and the controller can solve the point-matching
+  problem at 5 mm scale. The remaining failure in the original slot target is
+  dominated by the target/marker vertical geometry, not by PPO capacity.
+- Diagnostic video copied locally:
+  `runs/cardboard_insert_high_target_ppo_3m_seed1/test_videos/0.mp4`

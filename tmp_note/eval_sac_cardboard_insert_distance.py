@@ -17,6 +17,7 @@ from sac import Actor
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v0")
     parser.add_argument("--num-envs", type=int, default=128)
     parser.add_argument("--num-steps", type=int, default=120)
     parser.add_argument("--control-mode", default="pd_joint_delta_pos")
@@ -24,7 +25,7 @@ def main():
     args = parser.parse_args()
 
     env = gym.make(
-        "MyDualCardboardCabinet-v0",
+        args.env_id,
         num_envs=args.num_envs,
         obs_mode="state",
         render_mode="rgb_array",
@@ -67,6 +68,7 @@ def main():
     finite_best = best[torch.isfinite(best)]
     finite_shift = shift[torch.isfinite(shift)]
     print("checkpoint", args.checkpoint)
+    print("env_id", args.env_id)
     print("num_envs", args.num_envs)
     print("num_steps", args.num_steps)
     print("finite", int(finite_best.numel()), "/", int(best.numel()))
