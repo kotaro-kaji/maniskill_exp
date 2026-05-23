@@ -422,3 +422,12 @@ class MyDualCardboardCabinetYzShapedEnv(MyDualCardboardCabinetEnv):
 @register_env("MyDualCardboardCabinetSlotCenter-v0", max_episode_steps=200)
 class MyDualCardboardCabinetSlotCenterEnv(MyDualCardboardCabinetYzShapedEnv):
     INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.04825)
+
+
+@register_env("MyDualCardboardCabinetTallSlot-v0", max_episode_steps=200)
+class MyDualCardboardCabinetTallSlotEnv(MyDualCardboardCabinetYzShapedEnv):
+    INNER_BOX_SPEC = replace(
+        MyDualCardboardCabinetEnv.INNER_BOX_SPEC,
+        notch_height_z=0.04,
+    )
+    INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.03725)
