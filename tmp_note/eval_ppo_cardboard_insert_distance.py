@@ -52,18 +52,22 @@ def main():
 
     obs, _ = env.reset(seed=1)
     best_distance = torch.full((args.num_envs,), float("inf"), device=device)
+    best_delta = torch.zeros((args.num_envs, 3), device=device)
     max_box_shift = torch.zeros((args.num_envs,), device=device)
 
     for _ in range(args.num_steps):
         with torch.no_grad():
             action = agent.get_action(obs, deterministic=True)
         obs, _, _, _, info = env.step(action)
-        best_distance = torch.minimum(
-            best_distance, info["insert_marker_distance"].to(device)
-        )
+        distance = info["insert_marker_distance"].to(device)
+        improved = distance < best_distance
+        best_distance = torch.minimum(best_distance, distance)
+        obs_delta = obs[:, -4:-1]
+        best_delta[improved] = obs_delta[improved]
         max_box_shift = torch.maximum(max_box_shift, info["box_position_shift"].to(device))
 
     best = best_distance.detach().cpu()
+    delta = best_delta.detach().cpu()
     shift = max_box_shift.detach().cpu()
     finite_best = best[torch.isfinite(best)]
     finite_shift = shift[torch.isfinite(shift)]
@@ -75,6 +79,9 @@ def main():
     print("median", float(finite_best.median()))
     print("min", float(finite_best.min()))
     print("max", float(finite_best.max()))
+    print("best_delta_mean", [float(v) for v in delta.mean(dim=0)])
+    print("best_abs_delta_mean", [float(v) for v in delta.abs().mean(dim=0)])
+    print("best_abs_delta_median", [float(v) for v in delta.abs().median(dim=0).values])
     print("max_box_shift_mean", float(finite_shift.mean()))
     print("max_box_shift_median", float(finite_shift.median()))
     print("max_box_shift_max", float(finite_shift.max()))

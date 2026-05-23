@@ -50,8 +50,15 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.03925)
     FINGER_INSERT_MARKER_LOCAL = (0.0, -0.01790, 0.05340)
     INSERT_REWARD_DISTANCE_SCALE = 20.0
+    INSERT_PRECISION_REWARD_WEIGHT = 0.0
+    INSERT_PRECISION_REWARD_DISTANCE_SCALE = 80.0
+    INSERT_AXIS_REWARD_WEIGHT = 0.0
+    INSERT_AXIS_REWARD_DISTANCE_SCALE = 80.0
+    INSERT_YZ_REWARD_WEIGHT = 0.0
+    INSERT_YZ_REWARD_DISTANCE_SCALE = 60.0
     INSERT_SUCCESS_DISTANCE = 0.005
     BOX_POSITION_SHIFT_TOLERANCE = 0.002
+    BOX_SUCCESS_MAX_SHIFT = 0.005
     BOX_POSITION_PENALTY_SCALE = 250.0
     BOX_POSITION_PENALTY_MAX = 0.995
 
@@ -339,7 +346,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         box_position_shift = self._inner_box_position_shift()
         self._sync_target_sites()
         return {
-            "success": distance < self.INSERT_SUCCESS_DISTANCE,
+            "success": (distance < self.INSERT_SUCCESS_DISTANCE)
+            & (box_position_shift < self.BOX_SUCCESS_MAX_SHIFT),
             "insert_marker_distance": distance,
             "box_position_shift": box_position_shift,
             "box_position_penalty": self._inner_box_position_penalty(),
@@ -357,12 +365,55 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "finger_insert_marker_from_bimanual_center": marker_pos - center,
             "insert_target_from_bimanual_center": target_pos - center,
             "insert_target_delta": target_pos - marker_pos,
+            "inner_box_position_shift": self._inner_box_position_shift().unsqueeze(-1),
         }
 
     def compute_normalized_dense_reward(self, obs, action, info):
         marker_pos = self._finger_insert_marker_world()
         target_pos = self._current_insert_target_world()
-        distance = torch.linalg.norm(marker_pos - target_pos, dim=-1)
+        delta = target_pos - marker_pos
+        distance = torch.linalg.norm(delta, dim=-1)
         reward = 1 - torch.tanh(self.INSERT_REWARD_DISTANCE_SCALE * distance)
+        if self.INSERT_PRECISION_REWARD_WEIGHT > 0:
+            precision_reward = 1 - torch.tanh(
+                self.INSERT_PRECISION_REWARD_DISTANCE_SCALE * distance
+            )
+            reward = (
+                reward
+                + self.INSERT_PRECISION_REWARD_WEIGHT * precision_reward
+            ) / (1 + self.INSERT_PRECISION_REWARD_WEIGHT)
+        if self.INSERT_AXIS_REWARD_WEIGHT > 0:
+            axis_reward = 1 - torch.tanh(
+                self.INSERT_AXIS_REWARD_DISTANCE_SCALE * torch.abs(delta)
+            )
+            axis_reward = axis_reward.mean(dim=-1)
+            reward = (
+                reward
+                + self.INSERT_AXIS_REWARD_WEIGHT * axis_reward
+            ) / (1 + self.INSERT_AXIS_REWARD_WEIGHT)
+        if self.INSERT_YZ_REWARD_WEIGHT > 0:
+            yz_distance = torch.linalg.norm(delta[:, 1:], dim=-1)
+            yz_reward = 1 - torch.tanh(
+                self.INSERT_YZ_REWARD_DISTANCE_SCALE * yz_distance
+            )
+            reward = (
+                reward
+                + self.INSERT_YZ_REWARD_WEIGHT * yz_reward
+            ) / (1 + self.INSERT_YZ_REWARD_WEIGHT)
         reward[distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
         return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetPrecision-v0", max_episode_steps=200)
+class MyDualCardboardCabinetPrecisionEnv(MyDualCardboardCabinetEnv):
+    INSERT_PRECISION_REWARD_WEIGHT = 1.0
+
+
+@register_env("MyDualCardboardCabinetAxis-v0", max_episode_steps=200)
+class MyDualCardboardCabinetAxisEnv(MyDualCardboardCabinetEnv):
+    INSERT_AXIS_REWARD_WEIGHT = 1.0
+
+
+@register_env("MyDualCardboardCabinetYzShaped-v0", max_episode_steps=200)
+class MyDualCardboardCabinetYzShapedEnv(MyDualCardboardCabinetEnv):
+    INSERT_YZ_REWARD_WEIGHT = 0.5
