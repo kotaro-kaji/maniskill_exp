@@ -439,3 +439,8 @@ class MyDualCardboardCabinetNoNotchCollisionEnv(MyDualCardboardCabinetYzShapedEn
         MyDualCardboardCabinetEnv.INNER_BOX_SPEC,
         notch_side_collision=False,
     )
+
+
+@register_env("MyDualCardboardCabinetHighTarget-v0", max_episode_steps=200)
+class MyDualCardboardCabinetHighTargetEnv(MyDualCardboardCabinetYzShapedEnv):
+    INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.07525)
