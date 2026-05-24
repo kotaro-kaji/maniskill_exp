@@ -429,7 +429,6 @@ if __name__ == "__main__":
             save_video_trigger = lambda x : (x // args.num_steps) % args.save_train_video_freq == 0
             envs = RecordEpisode(envs, output_dir=f"runs/{run_name}/train_videos", save_trajectory=False, save_video_trigger=save_video_trigger, max_steps_per_video=args.num_steps, video_fps=30)
         eval_video_envs = RecordEpisode(eval_video_envs, output_dir=eval_output_dir, save_trajectory=args.save_trajectory, save_video=args.capture_video, trajectory_name="trajectory", max_steps_per_video=args.num_eval_steps, video_fps=30)
-        info_output_root = os.path.join(os.path.dirname(eval_output_dir), "info")
     envs = ManiSkillVectorEnv(envs, args.num_envs, ignore_terminations=not args.partial_reset, record_metrics=True)
     if eval_video_envs is not None:
         eval_video_envs = ManiSkillVectorEnv(eval_video_envs, args.num_eval_video_envs, ignore_terminations=not args.eval_partial_reset, record_metrics=True)
