@@ -212,6 +212,27 @@ test succeeds.
 - `apt-get` may fail on some RunPod images because NVIDIA files are bind-mounted
   or partially managed by the base image. Prefer non-invasive runtime extraction
   when driver packages conflict.
+- The root filesystem can fill quickly because each copied workspace may have its
+  own `.venv`, and `uv sync` leaves a large cache under `/root/.cache/uv`.
+  On a 20GB pod, two workspaces with `.venv` plus the uv cache can consume more
+  than 16GB. Keep only the active workspace `.venv`, and remove the uv cache
+  after the environment is installed:
+
+```bash
+rm -rf /root/.cache/uv /root/.cache/pip /tmp/*
+rm -rf /root/work/maniskill_exp/.venv  # only if using another active workspace
+```
+
+- Do not leave training-time eval videos or per-env `info/` CSV dumps enabled for
+  long runs. Record videos only for selected checkpoints after a run shows a good
+  distance metric. If disk usage rises during training, check:
+
+```bash
+df -h /root/work
+du -xh -d 2 /root /root/work 2>/dev/null | sort -h | tail -60
+find /root/work -maxdepth 4 -type d -name info -exec du -sh {} \;
+```
+
 - On GPU simulation, manually changing actor poses may require:
 
 ```python
