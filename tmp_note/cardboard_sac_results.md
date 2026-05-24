@@ -47,20 +47,23 @@ under_0.030 128 / 128
 
 ## Cardboard insertion PPO diagnostics
 
-- `MyDualCardboardCabinet-v0` / `SlotCenter` policies consistently left a
-  vertical residual around 20-30 mm while keeping x/y nearly aligned.
 - Correcting the eval scripts to accept `--env-id` was necessary. Earlier variant
   checkpoint distance checks were accidentally evaluated in `MyDualCardboardCabinet-v0`.
-- `MyDualCardboardCabinetHighTarget-v0` moves only the target z to the height
-  the policy naturally reaches. With the same PPO setup it reached:
-  - checkpoint: `runs/cardboard_insert_high_target_ppo_3m_seed1/ckpt_16.pt`
-  - mean distance: `0.00569`
-  - median distance: `0.00465`
-  - under 5 mm: `67 / 128`
-  - under 10 mm: `106 / 128`
-  - max box shift mean: `0.00159`
-- This strongly suggests PPO and the controller can solve the point-matching
-  problem at 5 mm scale. The remaining failure in the original slot target is
-  dominated by the target/marker vertical geometry, not by PPO capacity.
-- Diagnostic video copied locally:
-  `runs/cardboard_insert_high_target_ppo_3m_seed1/test_videos/0.mp4`
+- Geometric variants such as `SlotCenter` and `HighTarget` were removed because
+  they changed the task geometry. They are not valid baselines for the cabinet
+  insertion task. Use `MyDualCardboardCabinet-v0` as the single source of
+  geometric truth, and keep variants limited to reward shaping only.
+- The removed high-target PPO result was useful only as a diagnostic that PPO and
+  the controller can solve a nearby point-matching task. It should not be reported
+  as task success.
+
+## Base geometry runs started on 2026-05-24
+
+Both runs use the same target geometry as `MyDualCardboardCabinet-v0`.
+
+- A5000 / `runpod-gpu`: PPO with reward-only variant
+  `MyDualCardboardCabinetYzShaped-v0`.
+  Log: `/root/work/maniskill_exp_basegeom/tmp_note/logs/basegeom_ppo_yz_10m_seed1.out`
+- RTX 4090 / `runpod-gpu-2`: SAC with base env
+  `MyDualCardboardCabinet-v0`.
+  Log: `/root/work/maniskill_exp_basegeom/tmp_note/logs/basegeom_sac_base_5m_seed1.out`

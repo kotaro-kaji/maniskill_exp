@@ -50,8 +50,6 @@ class InfoDirectoryLogger:
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self.num_envs = num_envs
-        self._files = {}
-        self._writers = {}
         self._column_names = {}
 
     def register_field(self, key: str, column_names):
@@ -82,30 +80,24 @@ class InfoDirectoryLogger:
                 self._write_row(key, env_id, step_idx, array[env_id])
 
     def close(self):
-        for file in self._files.values():
-            file.close()
-        self._files.clear()
-        self._writers.clear()
+        pass
 
     def _write_row(self, key: str, env_id: int, step_idx: int, row):
         directory = self.root_dir / key
         directory.mkdir(parents=True, exist_ok=True)
-        handle_key = (key, env_id)
         row_array = np.asarray(row).reshape(-1)
         column_headers = self._column_names.get(key)
         if column_headers is None or len(column_headers) != len(row_array):
             column_headers = [f"{key}_{i}" for i in range(len(row_array))]
-        if handle_key not in self._writers:
-            file_path = directory / f"env_{env_id:03d}.csv"
-            f = open(file_path, "w", newline="")
+        file_path = directory / f"env_{env_id:03d}.csv"
+        write_header = not file_path.exists()
+        with open(file_path, "a", newline="") as f:
             writer = csv.writer(f)
-            headers = ["step"] + column_headers
-            writer.writerow(headers)
-            self._files[handle_key] = f
-            self._writers[handle_key] = writer
-        writer = self._writers[handle_key]
-        row_values = row_array.tolist()
-        writer.writerow([step_idx] + row_values)
+            if write_header:
+                headers = ["step"] + column_headers
+                writer.writerow(headers)
+            row_values = row_array.tolist()
+            writer.writerow([step_idx] + row_values)
 
     @staticmethod
     def _to_numpy(value):
