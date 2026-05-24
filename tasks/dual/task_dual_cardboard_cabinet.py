@@ -417,3 +417,24 @@ class MyDualCardboardCabinetAxisEnv(MyDualCardboardCabinetEnv):
 @register_env("MyDualCardboardCabinetYzShaped-v0", max_episode_steps=200)
 class MyDualCardboardCabinetYzShapedEnv(MyDualCardboardCabinetEnv):
     INSERT_YZ_REWARD_WEIGHT = 0.5
+
+
+@register_env("MyDualCardboardCabinetBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetBoxStrictEnv(MyDualCardboardCabinetEnv):
+    BOX_POSITION_SHIFT_TOLERANCE = 0.0005
+    BOX_POSITION_PENALTY_SCALE = 1200.0
+    BOX_POSITION_PENALTY_MAX = 0.999
+
+
+@register_env("MyDualCardboardCabinetAxisBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetAxisBoxStrictEnv(MyDualCardboardCabinetAxisEnv):
+    BOX_POSITION_SHIFT_TOLERANCE = 0.0005
+    BOX_POSITION_PENALTY_SCALE = 1200.0
+    BOX_POSITION_PENALTY_MAX = 0.999
+
+
+@register_env("MyDualCardboardCabinetYzBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetYzBoxStrictEnv(MyDualCardboardCabinetYzShapedEnv):
+    BOX_POSITION_SHIFT_TOLERANCE = 0.0005
+    BOX_POSITION_PENALTY_SCALE = 1200.0
+    BOX_POSITION_PENALTY_MAX = 0.999
