@@ -54,6 +54,9 @@ def main():
     obs, _ = env.reset(seed=1)
     best_distance = torch.full((args.num_envs,), float("inf"), device=device)
     best_delta = torch.zeros((args.num_envs, 3), device=device)
+    best_eef_x_dot = torch.zeros((args.num_envs,), device=device)
+    best_eef_x_error = torch.zeros((args.num_envs,), device=device)
+    best_gripper_qpos = torch.zeros((args.num_envs,), device=device)
     valid_best_distance = torch.full((args.num_envs,), float("inf"), device=device)
     valid_best_delta = torch.zeros((args.num_envs, 3), device=device)
     max_box_shift = torch.zeros((args.num_envs,), device=device)
@@ -67,6 +70,9 @@ def main():
         obs, _, _, _, info = env.step(action)
         distance = info["insert_marker_distance"].to(device)
         box_shift = info["box_position_shift"].to(device)
+        eef_x_dot = info["eef_x_axis_world"].to(device)[:, 0]
+        eef_x_error = info["eef_x_world_error"].to(device)
+        gripper_qpos = info["gripper_drive_qpos"].to(device)
         obs_delta = obs[:, -4:-1]
         final_distance = distance
         final_delta = obs_delta
@@ -74,6 +80,9 @@ def main():
         improved = distance < best_distance
         best_distance = torch.minimum(best_distance, distance)
         best_delta[improved] = obs_delta[improved]
+        best_eef_x_dot[improved] = eef_x_dot[improved]
+        best_eef_x_error[improved] = eef_x_error[improved]
+        best_gripper_qpos[improved] = gripper_qpos[improved]
         max_box_shift = torch.maximum(max_box_shift, box_shift)
         valid = max_box_shift <= args.valid_box_shift
         valid_improved = valid & (distance < valid_best_distance)
@@ -84,6 +93,9 @@ def main():
 
     best = best_distance.detach().cpu()
     delta = best_delta.detach().cpu()
+    eef_x_dot = best_eef_x_dot.detach().cpu()
+    eef_x_error = best_eef_x_error.detach().cpu()
+    gripper_qpos = best_gripper_qpos.detach().cpu()
     valid_best = valid_best_distance.detach().cpu()
     valid_delta = valid_best_delta.detach().cpu()
     shift = max_box_shift.detach().cpu()
@@ -106,6 +118,9 @@ def main():
     print("max", float(finite_best.max()))
     print("best_delta_mean", [float(v) for v in delta.mean(dim=0)])
     print("best_abs_delta_mean", [float(v) for v in delta.abs().mean(dim=0)])
+    print("best_eef_x_dot_mean", float(eef_x_dot.mean()))
+    print("best_eef_x_error_mean", float(eef_x_error.mean()))
+    print("best_gripper_qpos_mean", float(gripper_qpos.mean()))
     print("max_box_shift_mean", float(finite_shift.mean()))
     print("max_box_shift_median", float(finite_shift.median()))
     print("max_box_shift_max", float(finite_shift.max()))

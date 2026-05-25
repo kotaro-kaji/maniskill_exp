@@ -165,6 +165,10 @@ class Args:
     """if toggled, only runs evaluation with the given model checkpoint and saves the evaluation trajectories"""
     checkpoint: Optional[str] = None
     """path to a pretrained checkpoint file to start evaluation/training from"""
+    anchor_checkpoint: Optional[str] = None
+    """path to a fixed policy checkpoint used to regularize PPO fine-tuning"""
+    anchor_coef: float = 0.0
+    """MSE weight for keeping deterministic actions close to the anchor policy"""
     print_eval_actions: bool = False
     """if toggled, prints the actions issued during evaluation"""
 
@@ -435,6 +439,14 @@ if __name__ == "__main__":
 
     if args.checkpoint:
         agent.load_state_dict(torch.load(args.checkpoint))
+    anchor_agent = None
+    if args.anchor_checkpoint is not None:
+        assert args.anchor_coef > 0
+        anchor_agent = Agent(envs).to(device)
+        anchor_agent.load_state_dict(torch.load(args.anchor_checkpoint))
+        anchor_agent.eval()
+        for param in anchor_agent.parameters():
+            param.requires_grad_(False)
 
     for iteration in range(1, args.num_iterations + 1):
         print(f"Epoch: {iteration}, global_step={global_step}")
@@ -681,6 +693,18 @@ if __name__ == "__main__":
 
                 entropy_loss = entropy.mean()
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+                if anchor_agent is not None:
+                    with torch.no_grad():
+                        anchor_action = anchor_agent.get_action(
+                            b_obs[mb_inds],
+                            deterministic=True,
+                        )
+                    current_action = agent.get_action(
+                        b_obs[mb_inds],
+                        deterministic=True,
+                    )
+                    anchor_loss = ((current_action - anchor_action) ** 2).mean()
+                    loss = loss + args.anchor_coef * anchor_loss
 
                 optimizer.zero_grad()
                 loss.backward()

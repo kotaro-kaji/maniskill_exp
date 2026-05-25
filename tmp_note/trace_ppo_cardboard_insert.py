@@ -65,6 +65,8 @@ def main():
         box_delta = (box_position - initial_box_position).detach().cpu()
         delta = obs[0, -4:-1].detach().cpu()
         action_cpu = action[0].detach().cpu()
+        eef_x_dot = float(info["eef_x_axis_world"][0, 0])
+        gripper_qpos = float(info["gripper_drive_qpos"][0])
         row = (
             step,
             distance,
@@ -77,6 +79,9 @@ def main():
             float(box_delta[2]),
             float(action_cpu.abs().mean()),
             float(action_cpu.abs().max()),
+            eef_x_dot,
+            gripper_qpos,
+            float(action_cpu[7]),
         )
         rows.append(row)
         if best is None or distance < best[1]:
@@ -89,7 +94,7 @@ def main():
     print("seed", args.seed)
     print(
         "columns step distance dx dy dz box_shift box_dx box_dy box_dz "
-        "action_abs_mean action_abs_max"
+        "action_abs_mean action_abs_max eef_x_dot gripper_qpos left_gripper_action"
     )
     print("best", " ".join(str(v) for v in best))
     print("max_shift", " ".join(str(v) for v in max_shift))

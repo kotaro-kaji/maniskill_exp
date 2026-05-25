@@ -55,6 +55,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     INSERT_WAYPOINT_SIDE_LOCALS = (
         (-0.0295, 0.0, 0.04025),
     )
+    EEF_FRAME_AXIS_LENGTH = 0.035
+    EEF_FRAME_MARKER_RADIUS = 0.003
     FINGER_INSERT_MARKER_LOCAL = (0.0, -0.01790, 0.05340)
     INSERT_REWARD_DISTANCE_SCALE = 20.0
     INSERT_PRECISION_REWARD_WEIGHT = 0.0
@@ -80,6 +82,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     HOLD_SUCCESS_STEPS = 5
     HOLD_REWARD_WEIGHT = 0.0
     INSERT_AXIS_ALIGN_REWARD_WEIGHT = 0.0
+    GRIPPER_OPENING_TARGET_QPOS = 0.44
+    GRIPPER_OPENING_REWARD_WEIGHT = 0.0
+    GRIPPER_OPENING_REWARD_SCALE = 8.0
+    EEF_X_WORLD_REWARD_WEIGHT = 0.0
+    EEF_X_WORLD_REWARD_SCALE = 8.0
+    EEF_X_WORLD_MIN_DOT = 1.0
 
     def __init__(
         self,
@@ -150,6 +158,44 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 initial_pose=sapien.Pose(),
             )
             self.insert_waypoint_sites.append(site)
+        self.eef_frame_sites = {
+            "origin": actors.build_sphere(
+                self.scene,
+                radius=self.EEF_FRAME_MARKER_RADIUS,
+                color=(1.0, 1.0, 1.0, 1.0),
+                name="eef_frame_origin_site",
+                body_type="kinematic",
+                add_collision=False,
+                initial_pose=sapien.Pose(),
+            ),
+            "x": actors.build_sphere(
+                self.scene,
+                radius=self.EEF_FRAME_MARKER_RADIUS,
+                color=(1.0, 0.0, 0.0, 1.0),
+                name="eef_frame_x_site",
+                body_type="kinematic",
+                add_collision=False,
+                initial_pose=sapien.Pose(),
+            ),
+            "y": actors.build_sphere(
+                self.scene,
+                radius=self.EEF_FRAME_MARKER_RADIUS,
+                color=(0.0, 1.0, 0.0, 1.0),
+                name="eef_frame_y_site",
+                body_type="kinematic",
+                add_collision=False,
+                initial_pose=sapien.Pose(),
+            ),
+            "z": actors.build_sphere(
+                self.scene,
+                radius=self.EEF_FRAME_MARKER_RADIUS,
+                color=(0.0, 0.25, 1.0, 1.0),
+                name="eef_frame_z_site",
+                body_type="kinematic",
+                add_collision=False,
+                initial_pose=sapien.Pose(),
+            ),
+        }
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -401,6 +447,72 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             matrix = matrix.unsqueeze(0)
         return matrix
 
+    def _eef_frame_points_world(self) -> Dict[str, torch.Tensor]:
+        pose = self.agent.agents[0].tcp.pose
+        matrix = pose.to_transformation_matrix()[..., :3, :3]
+        position = pose.p
+        if position.ndim == 1:
+            position = position.unsqueeze(0)
+            matrix = matrix.unsqueeze(0)
+        axis_length = self.EEF_FRAME_AXIS_LENGTH
+        return {
+            "origin": position,
+            "x": position + axis_length * matrix[..., :, 0],
+            "y": position + axis_length * matrix[..., :, 1],
+            "z": position + axis_length * matrix[..., :, 2],
+        }
+
+    def _eef_x_axis_world(self) -> torch.Tensor:
+        pose = self.agent.agents[0].tcp.pose
+        matrix = pose.to_transformation_matrix()[..., :3, :3]
+        if matrix.ndim == 2:
+            matrix = matrix.unsqueeze(0)
+        return matrix[..., :, 0]
+
+    def _eef_x_world_error(self) -> torch.Tensor:
+        x_axis = self._eef_x_axis_world()
+        target = torch.tensor(
+            [1.0, 0.0, 0.0],
+            dtype=torch.float32,
+            device=self.device,
+        ).unsqueeze(0)
+        return torch.linalg.norm(x_axis - target, dim=-1)
+
+    def _gripper_drive_qpos(self) -> torch.Tensor:
+        qpos = self.agent.agents[0].robot.get_qpos()
+        if qpos.ndim == 1:
+            qpos = qpos.unsqueeze(0)
+        return qpos[:, 7]
+
+    def _apply_gripper_and_eef_rewards(
+        self,
+        reward: torch.Tensor,
+        info: Dict[str, Any],
+    ) -> torch.Tensor:
+        if self.GRIPPER_OPENING_REWARD_WEIGHT > 0:
+            gripper_error = torch.abs(
+                info["gripper_drive_qpos"] - self.GRIPPER_OPENING_TARGET_QPOS
+            )
+            gripper_reward = 1 - torch.tanh(
+                self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
+            )
+            reward = (
+                reward
+                + self.GRIPPER_OPENING_REWARD_WEIGHT * gripper_reward
+            ) / (1 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+        if self.EEF_X_WORLD_REWARD_WEIGHT > 0:
+            eef_x_dot = info["eef_x_axis_world"][:, 0]
+            eef_error = torch.clamp(self.EEF_X_WORLD_MIN_DOT - eef_x_dot, min=0.0)
+            eef_reward = 1 - torch.tanh(
+                self.EEF_X_WORLD_REWARD_SCALE * eef_error
+            )
+            eef_gate = (
+                (1 - self.EEF_X_WORLD_REWARD_WEIGHT)
+                + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
+            )
+            reward = reward * eef_gate
+        return reward
+
     def _target_insert_direction_world(self) -> torch.Tensor:
         offset = torch.tensor(
             [0.001, 0.0, 0.0],
@@ -513,6 +625,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             if env_idx is not None:
                 waypoint_pos = waypoint_pos[env_idx]
             site.set_pose(Pose.create_from_pq(p=waypoint_pos))
+        eef_frame_points = self._eef_frame_points_world()
+        for axis_name, site in self.eef_frame_sites.items():
+            position = eef_frame_points[axis_name]
+            if env_idx is not None:
+                position = position[env_idx]
+            site.set_pose(Pose.create_from_pq(p=position))
 
     def evaluate(self):
         marker_pos = self._finger_insert_marker_world()
@@ -543,6 +661,9 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "box_position_shift": box_position_shift,
             "box_episode_max_shift": box_episode_max_shift,
             "finger_axis_alignment": self._finger_axis_alignment(),
+            "eef_x_axis_world": self._eef_x_axis_world(),
+            "eef_x_world_error": self._eef_x_world_error(),
+            "gripper_drive_qpos": self._gripper_drive_qpos(),
             "valid_close_streak": valid_close_streak,
             "box_position_penalty": self._inner_box_position_penalty(),
         }
@@ -639,6 +760,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 reward
                 + self.INSERT_AXIS_ALIGN_REWARD_WEIGHT * align_reward
             ) / (1 + self.INSERT_AXIS_ALIGN_REWARD_WEIGHT)
+        reward = self._apply_gripper_and_eef_rewards(reward, info)
         if self.USE_HOLD_SUCCESS:
             reward[info["success"]] = 1.0
         else:
@@ -1169,6 +1291,7 @@ class MyDualCardboardCabinetLowerFixedStagedFinalBoxStrictEnv(
 
         final_distance = stage_distances[-1]
         reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        reward = self._apply_gripper_and_eef_rewards(reward, info)
         return reward * (1 - self._inner_box_position_penalty())
 
 
@@ -1397,6 +1520,118 @@ class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionBoxStri
         static_friction=0.2,
         dynamic_friction=0.1,
     )
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionPoseGripBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionPoseGripBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionBoxStrictEnv
+):
+    GRIPPER_OPENING_REWARD_WEIGHT = 0.5
+    EEF_X_WORLD_REWARD_WEIGHT = 1.0
+    EEF_X_WORLD_MIN_DOT = 0.85
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionGripBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionGripBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionBoxStrictEnv
+):
+    GRIPPER_OPENING_REWARD_WEIGHT = 0.5
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripOpenBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripOpenBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionBoxStrictEnv
+):
+    INSERT_Y_DISTANCE_SCALE = 160.0
+    INSERT_XZ_DISTANCE_SCALE = 200.0
+    INSERT_Y_REWARD_WEIGHT = 4.0
+    GRIPPER_MIN_QPOS = 0.40
+    GRIPPER_MIN_REWARD_WEIGHT = 0.25
+    GRIPPER_MIN_REWARD_SCALE = 8.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        first_target, final_target = self._stage_targets_world()
+
+        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
+        first_reward = 1 - torch.tanh(
+            self.STAGE_REWARD_DISTANCE_SCALE * first_distance
+        )
+
+        final_delta = final_target - marker_pos
+        y_distance = torch.abs(final_delta[:, 1])
+        xz_distance = torch.linalg.norm(final_delta[:, [0, 2]], dim=-1)
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+
+        y_reward = 1 - torch.tanh(self.INSERT_Y_DISTANCE_SCALE * y_distance)
+        xz_reward = 1 - torch.tanh(self.INSERT_XZ_DISTANCE_SCALE * xz_distance)
+        point_reward = 1 - torch.tanh(
+            self.STAGE_REWARD_DISTANCE_SCALE * final_distance
+        )
+        final_reward = (
+            self.INSERT_Y_REWARD_WEIGHT * y_reward
+            + xz_reward
+            + point_reward
+        ) / (self.INSERT_Y_REWARD_WEIGHT + 2)
+
+        reward = first_reward / 2
+        passed_first = first_distance < self.STAGE_GATE_DISTANCE
+        reward = torch.where(passed_first, (1 + final_reward) / 2, reward)
+
+        gripper_shortfall = torch.clamp(
+            self.GRIPPER_MIN_QPOS - info["gripper_drive_qpos"],
+            min=0.0,
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_MIN_REWARD_SCALE * gripper_shortfall
+        )
+        shaped_reward = (
+            reward + self.GRIPPER_MIN_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_MIN_REWARD_WEIGHT)
+        reward = shaped_reward
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripActionBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripActionBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripOpenBoxStrictEnv
+):
+    pass
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction005BoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction005BoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripActionBoxStrictEnv
+):
+    pass
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020BoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020BoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripActionBoxStrictEnv
+):
+    pass
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020EefBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020EefBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020BoxStrictEnv
+):
+    EEF_X_WORLD_REWARD_WEIGHT = 0.10
+    EEF_X_WORLD_REWARD_SCALE = 30.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        reward = super().compute_normalized_dense_reward(obs, action, info)
+        eef_x_dot = info["eef_x_axis_world"][:, 0]
+        eef_angle_error = torch.acos(torch.clamp(eef_x_dot, min=-1.0, max=1.0))
+        eef_reward = 1 - torch.tanh(
+            self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
+        )
+        return (
+            reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
+        ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
 
 
 @register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity7000LowFrictionBoxStrict-v0", max_episode_steps=200)

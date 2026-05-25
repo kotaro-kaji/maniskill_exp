@@ -57,6 +57,9 @@ def main():
     best_distance = torch.full((args.num_envs,), float("inf"), device=device)
     best_delta = torch.zeros((args.num_envs, 3), device=device)
     best_axis_alignment = torch.zeros((args.num_envs, 3), device=device)
+    best_eef_x_dot = torch.zeros((args.num_envs,), device=device)
+    best_eef_x_error = torch.zeros((args.num_envs,), device=device)
+    best_gripper_qpos = torch.zeros((args.num_envs,), device=device)
     valid_best_distance = torch.full((args.num_envs,), float("inf"), device=device)
     valid_best_delta = torch.zeros((args.num_envs, 3), device=device)
     valid_best_axis_alignment = torch.zeros((args.num_envs, 3), device=device)
@@ -76,6 +79,9 @@ def main():
         distance = info["insert_marker_distance"].to(device)
         box_shift = info["box_position_shift"].to(device)
         axis_alignment = info["finger_axis_alignment"].to(device)
+        eef_x_dot = info["eef_x_axis_world"].to(device)[:, 0]
+        eef_x_error = info["eef_x_world_error"].to(device)
+        gripper_qpos = info["gripper_drive_qpos"].to(device)
         obs_delta = obs[:, -4:-1]
         final_distance = distance
         final_delta = obs_delta
@@ -84,6 +90,9 @@ def main():
         best_distance = torch.minimum(best_distance, distance)
         best_delta[improved] = obs_delta[improved]
         best_axis_alignment[improved] = axis_alignment[improved]
+        best_eef_x_dot[improved] = eef_x_dot[improved]
+        best_eef_x_error[improved] = eef_x_error[improved]
+        best_gripper_qpos[improved] = gripper_qpos[improved]
         max_box_shift = torch.maximum(max_box_shift, box_shift)
         valid = max_box_shift <= args.valid_box_shift
         valid_close = valid & (distance < 0.005)
@@ -104,6 +113,9 @@ def main():
     best = best_distance.detach().cpu()
     delta = best_delta.detach().cpu()
     axis = best_axis_alignment.detach().cpu()
+    eef_x_dot = best_eef_x_dot.detach().cpu()
+    eef_x_error = best_eef_x_error.detach().cpu()
+    gripper_qpos = best_gripper_qpos.detach().cpu()
     valid_best = valid_best_distance.detach().cpu()
     valid_delta = valid_best_delta.detach().cpu()
     valid_axis = valid_best_axis_alignment.detach().cpu()
@@ -132,6 +144,9 @@ def main():
     print("best_abs_delta_median", [float(v) for v in delta.abs().median(dim=0).values])
     print("best_axis_alignment_mean", [float(v) for v in axis.mean(dim=0)])
     print("best_abs_axis_alignment_mean", [float(v) for v in axis.abs().mean(dim=0)])
+    print("best_eef_x_dot_mean", float(eef_x_dot.mean()))
+    print("best_eef_x_error_mean", float(eef_x_error.mean()))
+    print("best_gripper_qpos_mean", float(gripper_qpos.mean()))
     print("max_box_shift_mean", float(finite_shift.mean()))
     print("max_box_shift_median", float(finite_shift.median()))
     print("max_box_shift_max", float(finite_shift.max()))

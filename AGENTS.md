@@ -25,6 +25,11 @@ Keep server-specific runtime files such as `server_env.sh` untracked unless the
 user explicitly asks to commit them. Store durable operational findings in
 `knowledge/`, and keep throwaway scripts/logs in `tmp_note/`.
 
+For cardboard insertion experiments, read
+`knowledge/cardboard_insertion_policy.md` before reporting results. Do not use
+fixed evaluation-time action offsets; results should reflect the policy action
+itself, with only normal action clipping.
+
 When an experiment finds a strong checkpoint or otherwise produces a good
 behavioral result, always generate an evaluation video and show the video path to
 the user together with the scalar metrics. Do not report only metrics for good
