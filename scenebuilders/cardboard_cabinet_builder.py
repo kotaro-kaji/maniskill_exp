@@ -16,6 +16,8 @@ class CardboardCabinetSpec:
     outer_height_z: float = 0.1295
     wall_thickness: float = 0.006
     density: float = 250.0
+    static_friction: float = 0.9
+    dynamic_friction: float = 0.75
     color_hex: str = "#B0916E"
     yaw_deg: float = -90.0
     name: str = "cardboard_cabinet"
@@ -31,6 +33,8 @@ class CardboardInnerBoxSpec:
     outer_height_z: float
     wall_thickness: float = 0.006
     density: float = 250.0
+    static_friction: float = 0.9
+    dynamic_friction: float = 0.75
     color_hex: str = "#B0916E"
     notch_width_x: float = 0.06
     notch_height_z: float = 0.018
@@ -53,6 +57,8 @@ def make_cardboard_inner_box_spec(
         outer_height_z=cabinet_spec.outer_height_z - height_delta,
         wall_thickness=cabinet_spec.wall_thickness,
         density=cabinet_spec.density,
+        static_friction=cabinet_spec.static_friction,
+        dynamic_friction=cabinet_spec.dynamic_friction,
         color_hex=cabinet_spec.color_hex,
         notch_width_x=notch_width_x,
         notch_height_z=notch_height_z,
@@ -67,8 +73,8 @@ def build_cardboard_cabinet_actor(
 ):
     builder = scene.create_actor_builder()
     material = sapien.physx.PhysxMaterial(
-        static_friction=0.9,
-        dynamic_friction=0.75,
+        static_friction=spec.static_friction,
+        dynamic_friction=spec.dynamic_friction,
         restitution=0.05,
     )
     render_material = sapien.render.RenderMaterial(
@@ -101,8 +107,8 @@ def build_cardboard_inner_box_actor(
 ):
     builder = scene.create_actor_builder()
     material = sapien.physx.PhysxMaterial(
-        static_friction=0.9,
-        dynamic_friction=0.75,
+        static_friction=spec.static_friction,
+        dynamic_friction=spec.dynamic_friction,
         restitution=0.05,
     )
     render_material = sapien.render.RenderMaterial(
