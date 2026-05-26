@@ -72,9 +72,9 @@ def spacemouse_to_action(state, deadzone: float, gripper_action: float) -> np.nd
     )
     action[3:6] = np.array(
         [
+            -apply_deadzone(state.roll, deadzone),
             -apply_deadzone(state.pitch, deadzone),
-            apply_deadzone(state.roll, deadzone),
-            apply_deadzone(state.yaw, deadzone),
+            -2.0 * apply_deadzone(state.yaw, deadzone),
         ],
         dtype=np.float32,
     )
