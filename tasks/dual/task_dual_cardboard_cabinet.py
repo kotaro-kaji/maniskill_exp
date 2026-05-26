@@ -62,8 +62,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     EEF_FRAME_MARKER_RADIUS = 0.003
     FINGER_INSERT_MARKER_LOCAL = (0.0, -0.01790, 0.05340)
     FIRST_WAYPOINT_GATE_DISTANCE = 0.005
-    FIRST_WAYPOINT_REWARD_DISTANCE_SCALE = 120.0
-    FIRST_WAYPOINT_FINE_DISTANCE_SCALE = 360.0
+    FIRST_WAYPOINT_REWARD_DISTANCE_SCALE = 5.0
+    FIRST_WAYPOINT_FINE_DISTANCE_SCALE = 40.0
     FINAL_REWARD_DISTANCE_SCALE = 180.0
     FINAL_Y_REWARD_DISTANCE_SCALE = 180.0
     FINAL_Y_REWARD_WEIGHT = 0.25
@@ -650,20 +650,16 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
-        marker_pos = self._finger_insert_marker_world()
-        first_target, target_pos = self._stage_targets_world()
-        center = torch.tensor(
-            self.bimanual_center_pose.p,
-            dtype=torch.float32,
-            device=self.device,
-        )
+        pose = self.cardboard_inner_box.pose
+        matrix = pose.to_transformation_matrix()[..., :3, :3]
+        position = pose.p
+        if position.ndim == 1:
+            position = position.unsqueeze(0)
+            matrix = matrix.unsqueeze(0)
+        rotation_6d = matrix[..., :, :2].reshape(position.shape[0], 6)
         return {
-            "finger_insert_marker_from_bimanual_center": marker_pos - center,
-            "insert_target_from_bimanual_center": target_pos - center,
-            "insert_target_delta": target_pos - marker_pos,
-            "first_waypoint_from_bimanual_center": first_target - center,
-            "first_waypoint_delta": first_target - marker_pos,
-            "inner_box_position_shift": self._inner_box_position_shift().unsqueeze(-1),
+            "inner_box_position": position,
+            "inner_box_rotation_6d": rotation_6d,
         }
 
     def compute_normalized_dense_reward(self, obs, action, info):
