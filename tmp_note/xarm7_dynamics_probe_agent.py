@@ -12,9 +12,9 @@ from mani_skill.utils.structs.actor import Actor
 
 
 @register_agent()
-class Xarm7(BaseAgent):
-    uid = "my_xarm7"
-    urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
+class Xarm7DynamicsProbe(BaseAgent):
+    uid = "my_xarm7_dynamics_probe"
+    urdf_path = "tmp_note/xarm7_dynamics_probe.urdf"
     urdf_config = dict(
         _materials=dict(
             gripper=dict(static_friction=2.0, dynamic_friction=2.0, restitution=0.0)

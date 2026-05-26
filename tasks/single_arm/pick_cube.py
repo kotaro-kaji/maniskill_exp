@@ -38,7 +38,7 @@ capabilities can be simulated and trained properly. Hence there is extra code fo
 """
 
 
-@register_env("MyXarm7PickCube-v1", max_episode_steps=150)
+@register_env("MyXarm7PickCube-v1", max_episode_steps=300)
 class PickCubeEnv(BaseEnv):
 
     _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"

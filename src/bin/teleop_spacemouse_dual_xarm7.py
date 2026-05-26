@@ -59,8 +59,12 @@ def apply_deadzone(value: float, deadzone: float) -> float:
     return float(value)
 
 
-def spacemouse_to_action(state, deadzone: float, gripper_action: float) -> np.ndarray:
-    action = np.zeros(7, dtype=np.float32)
+def spacemouse_to_action(
+    state, action_shape, deadzone: float, gripper_action: float
+) -> np.ndarray:
+    assert len(action_shape) == 1, action_shape
+    action = np.zeros(action_shape, dtype=np.float32)
+    assert action.shape[0] in (7, 8), action.shape
 
     # Same axis convention as RoboManipBaselines SpacemouseInputDevice.
     action[:3] = np.array(
@@ -81,9 +85,9 @@ def spacemouse_to_action(state, deadzone: float, gripper_action: float) -> np.nd
     )
 
     if len(state.buttons) > 0 and state.buttons[0] > 0 and state.buttons[-1] <= 0:
-        action[6] = gripper_action
+        action[6:] = gripper_action
     elif len(state.buttons) > 0 and state.buttons[-1] > 0 and state.buttons[0] <= 0:
-        action[6] = -gripper_action
+        action[6:] = -gripper_action
 
     return np.clip(action, -1.0, 1.0)
 
@@ -116,6 +120,12 @@ def sub_agents(env):
     return agent.agents if hasattr(agent, "agents") else (agent,)
 
 
+def action_shape(env, uid):
+    if isinstance(env.action_space, gym.spaces.Dict):
+        return env.action_space[uid].shape
+    return env.action_space.shape
+
+
 def render_human(env):
     return env.unwrapped.render_human()
 
@@ -142,6 +152,13 @@ def tensor_row(tensor):
 
 def pose_row(pose):
     return tensor_row(pose.raw_pose)
+
+
+def action_log_row(action):
+    row = action.tolist()
+    if len(row) == 8:
+        row = row[:6] + [row[6]]
+    return row
 
 
 def open_log_files(log_dir: str, env_id: str):
@@ -205,7 +222,7 @@ def log_step(
         command_writer.writerow(
             [step_idx, elapsed, uid, source, int(source != "none")]
             + state_values(state)
-            + action[uid].tolist()
+            + action_log_row(action[uid])
         )
         state_writer.writerow(
             [step_idx, elapsed, uid]
@@ -230,9 +247,12 @@ def main():
     assert len(uids) in (1, 2), uids
     if isinstance(env.action_space, gym.spaces.Dict):
         for uid in uids:
-            assert env.action_space[uid].shape == (7,), (uid, env.action_space[uid])
+            assert env.action_space[uid].shape in ((7,), (8,)), (
+                uid,
+                env.action_space[uid],
+            )
     else:
-        assert env.action_space.shape == (7,), env.action_space
+        assert env.action_space.shape in ((7,), (8,)), env.action_space
 
     devices = []
     left_device = open_spacemouse(args.left_device_path, args.left_device_index)
@@ -282,17 +302,26 @@ def main():
             left_state = read_latest(left_device)
             if right_device is None:
                 action[uids[active_arm]] = spacemouse_to_action(
-                    left_state, args.deadzone, args.gripper_action
+                    left_state,
+                    action_shape(env, uids[active_arm]),
+                    args.deadzone,
+                    args.gripper_action,
                 )
                 states_by_uid[uids[active_arm]] = left_state
                 sources_by_uid[uids[active_arm]] = "left"
             else:
                 right_state = read_latest(right_device)
                 action[uids[0]] = spacemouse_to_action(
-                    left_state, args.deadzone, args.gripper_action
+                    left_state,
+                    action_shape(env, uids[0]),
+                    args.deadzone,
+                    args.gripper_action,
                 )
                 action[uids[1]] = spacemouse_to_action(
-                    right_state, args.deadzone, args.gripper_action
+                    right_state,
+                    action_shape(env, uids[1]),
+                    args.deadzone,
+                    args.gripper_action,
                 )
                 states_by_uid[uids[0]] = left_state
                 states_by_uid[uids[1]] = right_state
