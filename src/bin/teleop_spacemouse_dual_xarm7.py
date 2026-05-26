@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import tasks.dual.task_dual_cardboard_cabinet  # noqa: F401
+import tasks.single_arm.pick_cube  # noqa: F401
 
 
 def parse_args():
@@ -88,7 +89,35 @@ def spacemouse_to_action(state, deadzone: float, gripper_action: float) -> np.nd
 
 
 def zero_action(env) -> OrderedDict:
-    return OrderedDict((uid, np.zeros(space.shape, dtype=np.float32)) for uid, space in env.action_space.items())
+    if isinstance(env.action_space, gym.spaces.Dict):
+        return OrderedDict(
+            (uid, np.zeros(space.shape, dtype=np.float32))
+            for uid, space in env.action_space.items()
+        )
+    return OrderedDict(
+        [(env.unwrapped.agent.uid, np.zeros(env.action_space.shape, dtype=np.float32))]
+    )
+
+
+def step_action(env, action_by_uid):
+    if isinstance(env.action_space, gym.spaces.Dict):
+        return action_by_uid
+    return next(iter(action_by_uid.values()))
+
+
+def agent_uids(env):
+    if isinstance(env.action_space, gym.spaces.Dict):
+        return tuple(env.action_space.keys())
+    return (env.unwrapped.agent.uid,)
+
+
+def sub_agents(env):
+    agent = env.unwrapped.agent
+    return agent.agents if hasattr(agent, "agents") else (agent,)
+
+
+def render_human(env):
+    return env.unwrapped.render_human()
 
 
 def state_values(state):
@@ -197,10 +226,13 @@ def main():
         control_mode="pd_ee_delta_pose",
         render_mode="human",
     )
-    uids = tuple(env.action_space.keys())
-    assert len(uids) == 2, uids
-    for uid in uids:
-        assert env.action_space[uid].shape == (7,), (uid, env.action_space[uid])
+    uids = agent_uids(env)
+    assert len(uids) in (1, 2), uids
+    if isinstance(env.action_space, gym.spaces.Dict):
+        for uid in uids:
+            assert env.action_space[uid].shape == (7,), (uid, env.action_space[uid])
+    else:
+        assert env.action_space.shape == (7,), env.action_space
 
     devices = []
     left_device = open_spacemouse(args.left_device_path, args.left_device_index)
@@ -212,7 +244,7 @@ def main():
 
     active_arm = 0
     env.reset(seed=0)
-    viewer = env.render_human()
+    viewer = render_human(env)
     print("SpaceMouse teleop started.")
     print("TAB: switch active arm when using one SpaceMouse | r: reset | escape: quit")
     print("button 0: close gripper | last button: open gripper")
@@ -232,7 +264,7 @@ def main():
     dt = 1.0 / args.control_hz
     try:
         while True:
-            viewer = env.render_human()
+            viewer = render_human(env)
             window = viewer.window
             if hasattr(viewer, "closed") and viewer.closed:
                 break
@@ -240,7 +272,7 @@ def main():
                 break
             if window.key_press("r"):
                 env.reset()
-            if right_device is None and window.key_press("tab"):
+            if right_device is None and len(uids) == 2 and window.key_press("tab"):
                 active_arm = 1 - active_arm
                 print(f"active arm: {uids[active_arm]}")
 
@@ -267,13 +299,13 @@ def main():
                 sources_by_uid[uids[0]] = "left"
                 sources_by_uid[uids[1]] = "right"
 
-            env.step(action)
+            env.step(step_action(env, action))
             elapsed = time.time() - start_time
             log_step(
                 step_idx,
                 elapsed,
                 uids,
-                env.unwrapped.agent.agents,
+                sub_agents(env),
                 action,
                 states_by_uid,
                 sources_by_uid,

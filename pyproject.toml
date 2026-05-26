@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mani-skill>=3.0.0b22",
+    "mani-skill-nightly>=2026.5.20.2110",
     "pyspacemouse>=2.0.0",
     "tensorboard>=2.20.0",
     "torch>=2.11.0",

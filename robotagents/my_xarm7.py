@@ -15,6 +15,15 @@ from mani_skill.utils.structs.actor import Actor
 class Xarm7(BaseAgent):
     uid = "my_xarm7"
     urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
+    urdf_config = dict(
+        _materials=dict(
+            gripper=dict(static_friction=2.0, dynamic_friction=2.0, restitution=0.0)
+        ),
+        link=dict(
+            left_finger=dict(material="gripper", patch_radius=0.1, min_patch_radius=0.1),
+            right_finger=dict(material="gripper", patch_radius=0.1, min_patch_radius=0.1),
+        ),
+    )
     # Default TCP link defined in the URDF (fixed joint from gripper base)
     ee_link_name = "link_tcp"
 
@@ -31,9 +40,9 @@ class Xarm7(BaseAgent):
             1.30899178981781,
             -0.000001,
             # Gripper DOFs (6):
-            0.0,  # drive_joint (0 rad = fully open, 0.85 rad = fully closed)
+            0.0,  # left_drive_joint (0 rad = fully open, 0.85 rad = fully closed)
             0.0,  # left_inner_knuckle_joint
-            0.0,  # right_outer_knuckle_joint
+            0.0,  # right_drive_joint
             0.0,  # right_inner_knuckle_joint
             0.0,  # left_finger_joint
             0.0,  # right_finger_joint
@@ -57,26 +66,18 @@ class Xarm7(BaseAgent):
             "joint6",
             "joint7",
         ]
-        # Active gripper joints in this URDF
-        self.gripper_joint_names = [
-            "drive_joint",
-            "left_inner_knuckle_joint",
-            "right_outer_knuckle_joint",
-            "right_inner_knuckle_joint",
-            "left_finger_joint",
-            "right_finger_joint",
-        ]
+        self.gripper_joint_names = ["left_drive_joint", "right_drive_joint"]
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 1e3))
-        self.arm_damping = float(os.getenv("XARM_ARM_KD", 1e2))
-        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 500))
-        # Gripper (driver + mimics)
-        self.gripper_stiffness = float(os.getenv("XARM_GRIP_KP", 1e3))
-        self.gripper_damping = float(os.getenv("XARM_GRIP_KD", 5e2))
-        self.gripper_force_limit = float(os.getenv("XARM_GRIP_FMAX", 1.0))
-        self.gripper_friction = float(os.getenv("XARM_GRIP_FRICTION", 1.0))
+        self.arm_stiffness = float( 1e3)        
+        self.arm_damping = float( 1e2)
+        self.arm_force_limit = float(500)
+        # Gripper
+        self.gripper_stiffness = float( 1e3)
+        self.gripper_damping = float( 5e2)
+        self.gripper_force_limit = float( 0.1)
+        self.gripper_friction = float(1.0)
 
         super().__init__(*args, **kwargs)
 
@@ -227,16 +228,10 @@ class Xarm7(BaseAgent):
             urdf_path=self.urdf_path,
         )
 
-        # 1-DOF gripper via mimic controller
         gripper_mimic_map = {
-            # mimic_joint: {"joint": control_joint}
-            "left_inner_knuckle_joint": {"joint": "drive_joint"},
-            "right_outer_knuckle_joint": {"joint": "drive_joint"},
-            "right_inner_knuckle_joint": {"joint": "drive_joint"},
-            "left_finger_joint": {"joint": "drive_joint"},
-            "right_finger_joint": {"joint": "drive_joint"},
+            "right_drive_joint": {"joint": "left_drive_joint"},
         }
-        gripper_pd_joint_pos_mimic = PDJointPosMimicControllerConfig(
+        gripper_pd_joint_pos = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
             0.05,
             0.84,
@@ -246,38 +241,38 @@ class Xarm7(BaseAgent):
             friction=self.gripper_friction,
             normalize_action=False,
         )
-        gripper_pd_joint_pos_mimic.mimic = gripper_mimic_map
-        gripper_pd_joint_delta_pos_mimic = PDJointPosMimicControllerConfig(
+        gripper_pd_joint_pos.mimic = gripper_mimic_map
+        gripper_pd_joint_delta_pos = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            lower = -0.05,
-            upper = 0.05,
+            lower = -0.1,
+            upper = 0.1,
             stiffness = self.gripper_stiffness,
             damping =  self.gripper_damping,
             force_limit = self.gripper_force_limit,
             friction=self.gripper_friction,
             use_delta=True,
         )
-        gripper_pd_joint_delta_pos_mimic.mimic = gripper_mimic_map
+        gripper_pd_joint_delta_pos.mimic = gripper_mimic_map
 
         controller_configs = dict(
             pd_joint_pos=dict(
                 arm=arm_pd_joint_pos,
-                gripper=gripper_pd_joint_pos_mimic,
+                gripper=gripper_pd_joint_pos,
                 #balance_passive_force=False
             ),
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
-                gripper=gripper_pd_joint_delta_pos_mimic,
+                gripper=gripper_pd_joint_delta_pos,
                 #balance_passive_force=False
             ),
             pd_ee_delta_pos=dict(
                 arm=arm_pd_ee_delta_pos,
-                gripper=gripper_pd_joint_delta_pos_mimic,
+                gripper=gripper_pd_joint_delta_pos,
                 #balance_passive_force=False
             ),
             pd_ee_delta_pose=dict(
                 arm=arm_pd_ee_delta_pose,
-                gripper=gripper_pd_joint_delta_pos_mimic,
+                gripper=gripper_pd_joint_delta_pos,
                 #balance_passive_force=False
             ),
         )
