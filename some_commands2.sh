@@ -24,7 +24,8 @@ uv run python ppo_dual_xarm7.py \
     --env-id MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmFullCoarseBoxStrict-v0 \
     --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \
     --num-envs 1024 --num-steps 120 --num-eval-steps 120 \
-    --num-eval-envs 64 --update-epochs 8 --num-minibatches 32 \
+    --num-eval-envs 64 --num-eval-video-envs 4 \
+    --update-epochs 8 --num-minibatches 32 \
     --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
 
 # cardboard cabinet 挿入 SAC: joint delta controller での比較

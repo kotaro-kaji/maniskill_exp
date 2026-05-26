@@ -183,6 +183,8 @@ class Args:
     """the number of parallel environments"""
     num_eval_envs: int = 8
     """the number of parallel evaluation environments"""
+    num_eval_video_envs: int = 4
+    """the number of parallel evaluation environments used only for video recording"""
     partial_reset: bool = True
     """whether to let parallel environments reset upon termination instead of truncation"""
     eval_partial_reset: bool = False
@@ -350,9 +352,19 @@ if __name__ == "__main__":
     env_kwargs["control_mode"] = control_mode
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, **env_kwargs)
+    eval_video_envs = None
+    if args.capture_video:
+        eval_video_envs = gym.make(
+            args.env_id,
+            num_envs=args.num_eval_video_envs,
+            reconfiguration_freq=args.eval_reconfiguration_freq,
+            **env_kwargs,
+        )
     if isinstance(envs.action_space, gym.spaces.Dict):
         envs = FlattenActionSpaceWrapper(envs)
         eval_envs = FlattenActionSpaceWrapper(eval_envs)
+        if eval_video_envs is not None:
+            eval_video_envs = FlattenActionSpaceWrapper(eval_video_envs)
     info_output_root = None
     if args.capture_video:
         eval_output_dir = f"runs/{run_name}/videos"
@@ -369,8 +381,8 @@ if __name__ == "__main__":
                 max_steps_per_video=args.num_steps,
                 video_fps=CONTROL_FREQUENCY_HZ,
             )
-        eval_envs = RecordEpisode(
-            eval_envs,
+        eval_video_envs = RecordEpisode(
+            eval_video_envs,
             output_dir=eval_output_dir,
             save_trajectory=args.evaluate,
             trajectory_name="trajectory",
@@ -379,6 +391,13 @@ if __name__ == "__main__":
         )
     envs = ManiSkillVectorEnv(envs, args.num_envs, ignore_terminations=not args.partial_reset, record_metrics=True)
     eval_envs = ManiSkillVectorEnv(eval_envs, args.num_eval_envs, ignore_terminations=not args.eval_partial_reset, record_metrics=True)
+    if eval_video_envs is not None:
+        eval_video_envs = ManiSkillVectorEnv(
+            eval_video_envs,
+            args.num_eval_video_envs,
+            ignore_terminations=not args.eval_partial_reset,
+            record_metrics=True,
+        )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     max_episode_steps = gym_utils.find_max_episode_steps_value(envs._env)
@@ -430,7 +449,12 @@ if __name__ == "__main__":
     eval_obs, _ = eval_envs.reset(seed=args.seed)
     next_done = torch.zeros(args.num_envs, device=device)
     print(f"####")
-    print(f"args.num_iterations={args.num_iterations} args.num_envs={args.num_envs} args.num_eval_envs={args.num_eval_envs}")
+    print(
+        f"args.num_iterations={args.num_iterations} "
+        f"args.num_envs={args.num_envs} "
+        f"args.num_eval_envs={args.num_eval_envs} "
+        f"args.num_eval_video_envs={args.num_eval_video_envs}"
+    )
     print(f"args.minibatch_size={args.minibatch_size} args.batch_size={args.batch_size} args.update_epochs={args.update_epochs}")
     print(f"####")
     action_space_low, action_space_high = torch.from_numpy(envs.single_action_space.low).to(device), torch.from_numpy(envs.single_action_space.high).to(device)
@@ -486,6 +510,17 @@ if __name__ == "__main__":
                             eval_metrics[k].append(v)
             if eval_info_logger is not None:
                 eval_info_logger.close()
+            if eval_video_envs is not None:
+                eval_video_obs, _ = eval_video_envs.reset()
+                for eval_step in range(args.num_eval_steps):
+                    with torch.no_grad():
+                        eval_video_action = agent.get_action(
+                            eval_video_obs,
+                            deterministic=True,
+                        )
+                        eval_video_obs, _, _, _, _ = eval_video_envs.step(
+                            eval_video_action
+                        )
             print(f"Evaluated {args.num_eval_steps * args.num_eval_envs} steps resulting in {num_episodes} episodes")
             eval_metrics_mean = {}
             for k, v in eval_metrics.items():
@@ -742,3 +777,5 @@ if __name__ == "__main__":
         logger.close()
     envs.close()
     eval_envs.close()
+    if eval_video_envs is not None:
+        eval_video_envs.close()
