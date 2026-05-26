@@ -20,12 +20,12 @@ Current v1 properties:
 
 ## Current reward design
 
-The reward no longer tracks the finger marker distance to the final target.
+The reward now follows the first stage of the official drawer task: move the
+TCP point to the target point.
 
-1. Gripper opening target reward around `qpos=0.44` is applied throughout the
-   episode.
-2. EEF local x-axis alignment toward world +x is applied throughout the episode.
-3. Box shift scales the reward by `reward * (1 - penalty)`.
+1. TCP-to-target reward: `1 - tanh(5 * distance)`.
+2. No waypoint, success flag, finger marker term, gripper term, EEF-axis term,
+   or box-shift penalty is currently used.
 
 ## Current commands
 
@@ -53,9 +53,6 @@ oversized `7680x7680` mp4.
 
 Kept artifacts are intentionally minimal:
 
-- `tmp_note/eval_ppo_cardboard_insert_distance.py`
-- `tmp_note/eval_sac_cardboard_insert_distance.py`
-- `tmp_note/optimize_ppo_final_bias_rollout.py`
 - `tmp_note/ckpt_cardboard_cem_broad_finalbias_pose_stable.pt`
 - `tmp_note/eval_videos/CEM探索_姿勢改善3mm候補_俯瞰視点.mp4`
 - `tmp_note/eval_videos/CEM探索_姿勢改善3mm候補_近接視点.mp4`

@@ -5,7 +5,6 @@ import sapien
 import torch
 
 from mani_skill.agents.multi_agent import MultiAgent
-from mani_skill.agents.utils import get_active_joint_indices
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -53,15 +52,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.01525)
     EEF_FRAME_AXIS_LENGTH = 0.035
     EEF_FRAME_MARKER_RADIUS = 0.003
-    FINGER_INSERT_MARKER_LOCAL = (0.0, -0.01790, 0.05340)
-    BOX_POSITION_SHIFT_TOLERANCE = 0.003
-    BOX_POSITION_PENALTY_SCALE = 180.0
-    BOX_POSITION_PENALTY_MAX = 0.995
-    GRIPPER_OPENING_TARGET_QPOS = 0.44
-    GRIPPER_OPENING_REWARD_WEIGHT = 0.05
-    GRIPPER_OPENING_REWARD_SCALE = 8.0
-    EEF_X_WORLD_REWARD_WEIGHT = 0.20
-    EEF_X_WORLD_REWARD_SCALE = 20.0
+    TCP_TO_TARGET_REWARD_SCALE = 5.0
 
     def __init__(
         self,
@@ -73,7 +64,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     ):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
-        self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -81,7 +71,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             options,
             [sapien.Pose(p=[0, -1, 0]), sapien.Pose(p=[0, 1, 0])],
         )
-        self._configure_observed_joint_indices()
 
     @property
     def _default_human_render_camera_configs(self):
@@ -186,7 +175,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                     orientations,
                 )
             )
-            self._reset_episode_box_shift(env_idx)
             self._sync_target_sites(env_idx)
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
@@ -200,75 +188,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )
         center = 0.5 * (base_right + base_left)
         return sapien.Pose(p=center.tolist())
-
-    def _clear(self):
-        super()._clear()
-        self._agent_obs_joint_indices = dict()
-
-    def _configure_observed_joint_indices(self):
-        self._agent_obs_joint_indices = dict()
-        if not isinstance(self.agent, MultiAgent):
-            return
-        for idx, sub_agent in enumerate(self.agent.agents):
-            key = f"{sub_agent.uid}-{idx}"
-            indices = self._build_agent_joint_indices(sub_agent)
-            if indices is None:
-                if hasattr(sub_agent, "_obs_joint_indices"):
-                    delattr(sub_agent, "_obs_joint_indices")
-                continue
-            self._agent_obs_joint_indices[key] = indices
-            sub_agent._obs_joint_indices = indices
-
-    def _build_agent_joint_indices(self, sub_agent) -> Optional[torch.Tensor]:
-        observed_joint_names: List[str] = []
-        arm_joint_names = getattr(sub_agent, "arm_joint_names", None)
-        if arm_joint_names is not None:
-            observed_joint_names.extend(list(arm_joint_names))
-        gripper_joint_names = getattr(sub_agent, "gripper_joint_names", None)
-        if gripper_joint_names:
-            drive_joint = gripper_joint_names[0]
-            if drive_joint not in observed_joint_names:
-                observed_joint_names.append(drive_joint)
-        if not observed_joint_names:
-            return None
-        return get_active_joint_indices(sub_agent.robot, observed_joint_names).long()
-
-    def _get_obs_agent(self):
-        obs = super()._get_obs_agent()
-        if not isinstance(obs, dict):
-            return obs
-        index_map = getattr(self, "_agent_obs_joint_indices", None)
-        if not index_map:
-            return obs
-        filtered = {}
-        for key, value in obs.items():
-            indices = index_map.get(key)
-            if indices is None:
-                filtered[key] = value
-                continue
-            filtered[key] = self._filter_agent_obs_entry(value, indices)
-        return filtered
-
-    def _filter_agent_obs_entry(self, obs_entry: Any, indices: torch.Tensor) -> Any:
-        if not isinstance(obs_entry, dict):
-            return obs_entry
-        filtered_entry = dict(obs_entry)
-        if "qpos" in obs_entry and obs_entry["qpos"] is not None:
-            filtered_entry["qpos"] = self._index_select_joint_tensor(
-                obs_entry["qpos"], indices
-            )
-        if "qvel" in filtered_entry:
-            filtered_entry.pop("qvel", None)
-        return filtered_entry
-
-    def _index_select_joint_tensor(
-        self, tensor: torch.Tensor, indices: torch.Tensor
-    ) -> torch.Tensor:
-        if tensor is None:
-            return tensor
-        idx = indices.to(device=tensor.device, dtype=torch.long)
-        dim = tensor.dim() - 1
-        return tensor.index_select(dim, idx)
 
     def _initial_box_world_position(self) -> torch.Tensor:
         local = torch.tensor(
@@ -336,48 +255,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             1
         ) + position
 
-    def _initial_box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
-        current_position = self.cardboard_inner_box.pose.p
-        batch_size = 1 if current_position.ndim == 1 else current_position.shape[0]
-        position = self._initial_inner_box_world_position().unsqueeze(0).repeat(
-            batch_size, 1
-        )
-        orientation = cardboard_cabinet_quaternion(
-            self.CABINET_SPEC,
-            device=self.device,
-        ).unsqueeze(0).repeat(batch_size, 1)
-        pose = Pose.create_from_pq(position, orientation)
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        local_point = local_point.unsqueeze(0).repeat(batch_size, 1)
-        return torch.matmul(local_point.unsqueeze(1), matrix.transpose(-1, -2)).squeeze(
-            1
-        ) + position
-
     def _current_insert_target_world(self) -> torch.Tensor:
         return self._box_local_point_world(self._box_insert_target_local())
-
-    def _finger_insert_marker_world(self) -> torch.Tensor:
-        pose = self.agent.agents[0].finger1_link.pose
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        position = pose.p
-        if position.ndim == 1:
-            position = position.unsqueeze(0)
-            matrix = matrix.unsqueeze(0)
-        local_point = torch.tensor(
-            self.FINGER_INSERT_MARKER_LOCAL,
-            dtype=torch.float32,
-            device=self.device,
-        ).unsqueeze(0).repeat(position.shape[0], 1)
-        return torch.matmul(local_point.unsqueeze(1), matrix.transpose(-1, -2)).squeeze(
-            1
-        ) + position
-
-    def _finger_insert_axes_world(self) -> torch.Tensor:
-        pose = self.agent.agents[0].finger1_link.pose
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        if matrix.ndim == 2:
-            matrix = matrix.unsqueeze(0)
-        return matrix
 
     def _eef_frame_points_world(self) -> Dict[str, torch.Tensor]:
         pose = self.agent.agents[0].tcp.pose
@@ -394,106 +273,28 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "z": position + axis_length * matrix[..., :, 2],
         }
 
-    def _eef_x_axis_world(self) -> torch.Tensor:
-        pose = self.agent.agents[0].tcp.pose
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        if matrix.ndim == 2:
-            matrix = matrix.unsqueeze(0)
-        return matrix[..., :, 0]
-
-    def _eef_x_roll_world(self) -> torch.Tensor:
-        pose = self.agent.agents[0].tcp.pose
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        if matrix.ndim == 2:
-            matrix = matrix.unsqueeze(0)
-        y_axis = matrix[..., :, 1]
-        return torch.atan2(y_axis[..., 2], y_axis[..., 1])
-
-    def _eef_x_world_error(self) -> torch.Tensor:
-        x_axis = self._eef_x_axis_world()
-        target = torch.tensor(
-            [1.0, 0.0, 0.0],
-            dtype=torch.float32,
-            device=self.device,
-        ).unsqueeze(0)
-        return torch.linalg.norm(x_axis - target, dim=-1)
-
-    def _gripper_drive_qpos(self) -> torch.Tensor:
-        qpos = self.agent.agents[0].robot.get_qpos()
-        if qpos.ndim == 1:
-            qpos = qpos.unsqueeze(0)
-        return qpos[:, 7]
-
-    def _target_insert_direction_world(self) -> torch.Tensor:
-        offset = torch.tensor(
-            [0.001, 0.0, 0.0],
-            dtype=torch.float32,
-            device=self.device,
-        )
-        current_target = self._initial_box_local_point_world(
-            self._box_insert_target_local()
-        )
-        next_target = self._initial_box_local_point_world(
-            self._box_insert_target_local() + offset
-        )
-        direction = next_target - current_target
-        return torch.nn.functional.normalize(direction, dim=-1)
-
-    def _finger_axis_alignment(self) -> torch.Tensor:
-        direction = self._target_insert_direction_world()
-        axes = self._finger_insert_axes_world()
-        return torch.matmul(axes.transpose(-1, -2), direction.unsqueeze(-1)).squeeze(-1)
-
-    def _inner_box_position_shift(self) -> torch.Tensor:
-        position = self.cardboard_inner_box.pose.p
+    def _tcp_position(self) -> torch.Tensor:
+        position = self.agent.agents[0].tcp.pose.p
         if position.ndim == 1:
             position = position.unsqueeze(0)
-        initial_position = self._initial_inner_box_world_position().unsqueeze(0)
-        return torch.linalg.norm(position - initial_position, dim=-1)
+        return position
 
-    def _reset_episode_box_shift(self, env_idx: torch.Tensor):
-        if not hasattr(self, "_episode_max_inner_box_shift"):
-            self._episode_max_inner_box_shift = torch.zeros(
-                self.num_envs,
-                dtype=torch.float32,
-                device=self.device,
-            )
-        self._episode_max_inner_box_shift[env_idx] = 0.0
-
-    def _inner_box_episode_max_shift(self) -> torch.Tensor:
-        current_shift = self._inner_box_position_shift()
-        if not hasattr(self, "_episode_max_inner_box_shift"):
-            self._episode_max_inner_box_shift = torch.zeros_like(current_shift)
-        self._episode_max_inner_box_shift = torch.maximum(
-            self._episode_max_inner_box_shift,
-            current_shift,
-        )
-        return self._episode_max_inner_box_shift
-
-    def _box_position_shift_for_reward(self) -> torch.Tensor:
-        return self._inner_box_position_shift()
-
-    def _inner_box_position_penalty_from_shift(self, shift: torch.Tensor) -> torch.Tensor:
-        penalized_shift = torch.clamp(
-            shift - self.BOX_POSITION_SHIFT_TOLERANCE,
-            min=0.0,
-        )
-        return self.BOX_POSITION_PENALTY_MAX * torch.tanh(
-            self.BOX_POSITION_PENALTY_SCALE * penalized_shift
+    def _tcp_to_target_distance(self) -> torch.Tensor:
+        return torch.linalg.norm(
+            self._tcp_position() - self._current_insert_target_world(),
+            dim=-1,
         )
 
-    def _inner_box_position_penalty(self) -> torch.Tensor:
-        return self._inner_box_position_penalty_from_shift(
-            self._box_position_shift_for_reward()
-        )
+    def _tcp_to_target_reward(self) -> torch.Tensor:
+        return 1 - torch.tanh(
+            self.TCP_TO_TARGET_REWARD_SCALE * self._tcp_to_target_distance()
+        )  # min = 0.0, max = 1.0
 
     def _sync_target_sites(self, env_idx: Optional[torch.Tensor] = None):
         target_pos = self._current_insert_target_world()
         if env_idx is not None:
             target_pos = target_pos[env_idx]
-        self.insert_target_site.set_pose(
-            Pose.create_from_pq(p=target_pos)
-        )
+        self.insert_target_site.set_pose(Pose.create_from_pq(p=target_pos))
         eef_frame_points = self._eef_frame_points_world()
         for axis_name, site in self.eef_frame_sites.items():
             position = eef_frame_points[axis_name]
@@ -502,22 +303,9 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             site.set_pose(Pose.create_from_pq(p=position))
 
     def evaluate(self):
-        marker_pos = self._finger_insert_marker_world()
-        target_pos = self._current_insert_target_world()
-        distance = torch.linalg.norm(marker_pos - target_pos, dim=-1)
-        box_position_shift = self._inner_box_position_shift()
-        box_episode_max_shift = self._inner_box_episode_max_shift()
         self._sync_target_sites()
         return {
-            "insert_marker_distance": distance,
-            "box_position_shift": box_position_shift,
-            "box_episode_max_shift": box_episode_max_shift,
-            "finger_axis_alignment": self._finger_axis_alignment(),
-            "eef_x_axis_world": self._eef_x_axis_world(),
-            "eef_x_roll_world": self._eef_x_roll_world(),
-            "eef_x_world_error": self._eef_x_world_error(),
-            "gripper_drive_qpos": self._gripper_drive_qpos(),
-            "box_position_penalty": self._inner_box_position_penalty(),
+            "tcp_to_target_distance": self._tcp_to_target_distance(),
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
@@ -534,30 +322,4 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         }
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        # Keep the left gripper near the desired opening through the episode.
-        gripper_error = torch.abs(
-            info["gripper_drive_qpos"] - self.GRIPPER_OPENING_TARGET_QPOS
-        )
-        reward_gripper_opening = 1 - torch.tanh(
-            self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
-        )  # min = 0.0, max = 1.0
-        reward = self.GRIPPER_OPENING_REWARD_WEIGHT * reward_gripper_opening
-        reward_weight = self.GRIPPER_OPENING_REWARD_WEIGHT
-
-        # Align the EEF local x-axis with world +x.
-        if self.EEF_X_WORLD_REWARD_WEIGHT > 0:
-            eef_x_dot = info["eef_x_axis_world"][:, 0]
-            eef_angle_error = torch.acos(
-                torch.clamp(eef_x_dot, min=-1.0, max=1.0)
-            )
-            reward_eef_x_world = 1 - torch.tanh(
-                self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
-            )  # min = 0.0, max = 1.0
-            reward = reward + self.EEF_X_WORLD_REWARD_WEIGHT * reward_eef_x_world
-            reward_weight = reward_weight + self.EEF_X_WORLD_REWARD_WEIGHT
-
-        reward = reward / reward_weight  # min = 0.0, max = 1.0
-
-        box_position_penalty = self._inner_box_position_penalty()
-        reward = reward * (1 - box_position_penalty)
-        return reward
+        return self._tcp_to_target_reward()

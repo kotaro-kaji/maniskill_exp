@@ -6,8 +6,8 @@ insertion experiments.
 ## Current target
 
 - The next performance target is not just 5 mm insertion distance.
-- Aim for stable 3 mm-level distance between the finger marker and the lime
-  cabinet target.
+- Aim for stable 3 mm-level distance between the TCP point and the lime cabinet
+  target.
 - Good results must still be fixed-action-bias free and should be shown with
   evaluation video.
 
