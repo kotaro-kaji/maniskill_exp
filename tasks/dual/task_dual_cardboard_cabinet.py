@@ -1,5 +1,5 @@
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import sapien
 import torch
@@ -48,28 +48,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     )
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.30
-    INSERT_TARGET_RADIUS = 0.004
+    INSERT_TARGET_RADIUS = 0.008
     INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
-    INSERT_TARGET_SIDE_LOCAL = (0.0105, 0.0, 0.04025)
-    INSERT_WAYPOINT_RADIUS = 0.0035
-    INSERT_WAYPOINT_COLORS = (
-        (1.0, 0.55, 0.0, 1.0),
-    )
-    INSERT_WAYPOINT_SIDE_LOCALS = (
-        (-0.0295, 0.0, 0.04025),
-    )
+    INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.01525)
     EEF_FRAME_AXIS_LENGTH = 0.035
     EEF_FRAME_MARKER_RADIUS = 0.003
     FINGER_INSERT_MARKER_LOCAL = (0.0, -0.01790, 0.05340)
-    FIRST_WAYPOINT_GATE_DISTANCE = 0.005
-    FIRST_WAYPOINT_REWARD_DISTANCE_SCALE = 5.0
-    FIRST_WAYPOINT_FINE_DISTANCE_SCALE = 40.0
-    FINAL_REWARD_DISTANCE_SCALE = 40.0
-    FINAL_Y_REWARD_DISTANCE_SCALE = 40.0
-    FINAL_Y_REWARD_WEIGHT = 0.25
-    INSERT_SUCCESS_DISTANCE = 0.003
     BOX_POSITION_SHIFT_TOLERANCE = 0.003
-    BOX_SUCCESS_MAX_SHIFT = 0.007
     BOX_POSITION_PENALTY_SCALE = 180.0
     BOX_POSITION_PENALTY_MAX = 0.995
     GRIPPER_OPENING_TARGET_QPOS = 0.44
@@ -135,18 +120,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             add_collision=False,
             initial_pose=sapien.Pose(),
         )
-        self.insert_waypoint_sites = []
-        for idx, color in enumerate(self.INSERT_WAYPOINT_COLORS):
-            site = actors.build_sphere(
-                self.scene,
-                radius=self.INSERT_WAYPOINT_RADIUS,
-                color=color,
-                name=f"insert_waypoint_site_{idx}",
-                body_type="kinematic",
-                add_collision=False,
-                initial_pose=sapien.Pose(),
-            )
-            self.insert_waypoint_sites.append(site)
         self.eef_frame_sites = {
             "origin": actors.build_sphere(
                 self.scene,
@@ -351,19 +324,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _box_insert_target_local(self) -> torch.Tensor:
         return self._insert_side_origin_box_local() + self._insert_target_side_local()
 
-    def _insert_waypoint_side_locals(self) -> torch.Tensor:
-        return torch.tensor(
-            self.INSERT_WAYPOINT_SIDE_LOCALS,
-            dtype=torch.float32,
-            device=self.device,
-        )
-
-    def _box_insert_waypoint_locals(self) -> torch.Tensor:
-        return (
-            self._insert_side_origin_box_local().unsqueeze(0)
-            + self._insert_waypoint_side_locals()
-        )
-
     def _box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
         pose = self.cardboard_inner_box.pose
         matrix = pose.to_transformation_matrix()[..., :3, :3]
@@ -395,18 +355,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
     def _current_insert_target_world(self) -> torch.Tensor:
         return self._box_local_point_world(self._box_insert_target_local())
-
-    def _current_insert_waypoint_worlds(self) -> List[torch.Tensor]:
-        return [
-            self._box_local_point_world(local_point)
-            for local_point in self._box_insert_waypoint_locals()
-        ]
-
-    def _stage_targets_world(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        return (
-            self._current_insert_waypoint_worlds()[0],
-            self._current_insert_target_world(),
-        )
 
     def _finger_insert_marker_world(self) -> torch.Tensor:
         pose = self.agent.agents[0].finger1_link.pose
@@ -511,56 +459,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 device=self.device,
             )
         self._episode_max_inner_box_shift[env_idx] = 0.0
-        if not hasattr(self, "_valid_close_streak"):
-            self._valid_close_streak = torch.zeros(
-                self.num_envs,
-                dtype=torch.long,
-                device=self.device,
-            )
-        self._valid_close_streak[env_idx] = 0
-        if not hasattr(self, "_first_waypoint_reached"):
-            self._first_waypoint_reached = torch.zeros(
-                self.num_envs,
-                dtype=torch.bool,
-                device=self.device,
-            )
-        self._first_waypoint_reached[env_idx] = False
-
-    def _update_first_waypoint_reached(
-        self,
-        first_distance: torch.Tensor,
-    ) -> torch.Tensor:
-        if not hasattr(self, "_first_waypoint_reached"):
-            self._first_waypoint_reached = torch.zeros(
-                self.num_envs,
-                dtype=torch.bool,
-                device=self.device,
-            )
-        self._first_waypoint_reached = self._first_waypoint_reached | (
-            first_distance < self.FIRST_WAYPOINT_GATE_DISTANCE
-        )
-        return self._first_waypoint_reached
-
-    def _update_valid_close_streak(
-        self,
-        distance: torch.Tensor,
-        success_box_shift: torch.Tensor,
-    ) -> torch.Tensor:
-        if not hasattr(self, "_valid_close_streak"):
-            self._valid_close_streak = torch.zeros(
-                self.num_envs,
-                dtype=torch.long,
-                device=self.device,
-            )
-        valid_close = (distance < self.INSERT_SUCCESS_DISTANCE) & (
-            success_box_shift < self.BOX_SUCCESS_MAX_SHIFT
-        )
-        self._valid_close_streak = torch.where(
-            valid_close,
-            self._valid_close_streak + 1,
-            torch.zeros_like(self._valid_close_streak),
-        )
-        return self._valid_close_streak
 
     def _inner_box_episode_max_shift(self) -> torch.Tensor:
         current_shift = self._inner_box_position_shift()
@@ -573,9 +471,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return self._episode_max_inner_box_shift
 
     def _box_position_shift_for_reward(self) -> torch.Tensor:
-        return self._inner_box_position_shift()
-
-    def _box_position_shift_for_success(self) -> torch.Tensor:
         return self._inner_box_position_shift()
 
     def _inner_box_position_penalty_from_shift(self, shift: torch.Tensor) -> torch.Tensor:
@@ -599,13 +494,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         self.insert_target_site.set_pose(
             Pose.create_from_pq(p=target_pos)
         )
-        for site, waypoint_pos in zip(
-            self.insert_waypoint_sites,
-            self._current_insert_waypoint_worlds(),
-        ):
-            if env_idx is not None:
-                waypoint_pos = waypoint_pos[env_idx]
-            site.set_pose(Pose.create_from_pq(p=waypoint_pos))
         eef_frame_points = self._eef_frame_points_world()
         for axis_name, site in self.eef_frame_sites.items():
             position = eef_frame_points[axis_name]
@@ -615,26 +503,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
     def evaluate(self):
         marker_pos = self._finger_insert_marker_world()
-        first_target, target_pos = self._stage_targets_world()
-        first_distance = torch.linalg.norm(marker_pos - first_target, dim=-1)
+        target_pos = self._current_insert_target_world()
         distance = torch.linalg.norm(marker_pos - target_pos, dim=-1)
-        first_waypoint_reached = self._update_first_waypoint_reached(first_distance)
         box_position_shift = self._inner_box_position_shift()
         box_episode_max_shift = self._inner_box_episode_max_shift()
-        success_box_shift = self._box_position_shift_for_success()
-        valid_close_streak = self._update_valid_close_streak(
-            distance,
-            success_box_shift,
-        )
-        close_success = (distance < self.INSERT_SUCCESS_DISTANCE) & (
-            success_box_shift < self.BOX_SUCCESS_MAX_SHIFT
-        )
-        success = close_success
-        fail = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self._sync_target_sites()
         return {
-            "success": success,
-            "fail": fail,
             "insert_marker_distance": distance,
             "box_position_shift": box_position_shift,
             "box_episode_max_shift": box_episode_max_shift,
@@ -643,10 +517,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "eef_x_roll_world": self._eef_x_roll_world(),
             "eef_x_world_error": self._eef_x_world_error(),
             "gripper_drive_qpos": self._gripper_drive_qpos(),
-            "valid_close_streak": valid_close_streak,
             "box_position_penalty": self._inner_box_position_penalty(),
-            "first_waypoint_distance": first_distance,
-            "first_waypoint_reached": first_waypoint_reached,
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
@@ -663,41 +534,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         }
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        marker_pos = self._finger_insert_marker_world()
-        first_target, final_target = self._stage_targets_world()
-
-        # Stage 1: move the insert marker to the first waypoint.
-        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
-        first_reached = self._update_first_waypoint_reached(first_distance)
-        first_coarse_reward = 1 - torch.tanh(
-            self.FIRST_WAYPOINT_REWARD_DISTANCE_SCALE * first_distance
-        )  # min = 0.0, max = 1.0
-        first_fine_reward = 1 - torch.tanh(
-            self.FIRST_WAYPOINT_FINE_DISTANCE_SCALE * first_distance
-        )  # min = 0.0, max = 1.0
-        reward_first_waypoint = (
-            0.7 * first_coarse_reward + 0.3 * first_fine_reward
-        )  # min = 0.0, max = 1.0
-
-        # Stage 2: after the first waypoint has ever been reached, move to final.
-        final_delta = final_target - marker_pos
-        final_distance = torch.linalg.norm(final_delta, dim=-1)
-        final_point_reward = 1 - torch.tanh(
-            self.FINAL_REWARD_DISTANCE_SCALE * final_distance
-        )  # min = 0.0, max = 1.0
-        final_y_reward = 1 - torch.tanh(
-            self.FINAL_Y_REWARD_DISTANCE_SCALE * torch.abs(final_delta[:, 1])
-        )  # min = 0.0, max = 1.0
-        reward_final_target = (
-            final_point_reward + self.FINAL_Y_REWARD_WEIGHT * final_y_reward
-        ) / (1 + self.FINAL_Y_REWARD_WEIGHT)  # min = 0.0, max = 1.0
-
-        stage_reward = torch.where(
-            first_reached,
-            0.5 + 0.5 * reward_final_target,
-            0.5 * reward_first_waypoint,
-        )  # min = 0.0, max = 1.0
-
         # Keep the left gripper near the desired opening through the episode.
         gripper_error = torch.abs(
             info["gripper_drive_qpos"] - self.GRIPPER_OPENING_TARGET_QPOS
@@ -705,12 +541,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         reward_gripper_opening = 1 - torch.tanh(
             self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
         )  # min = 0.0, max = 1.0
-        reward = (
-            stage_reward
-            + self.GRIPPER_OPENING_REWARD_WEIGHT * reward_gripper_opening
-        ) / (1 + self.GRIPPER_OPENING_REWARD_WEIGHT)  # min = 0.0, max = 1.0
+        reward = self.GRIPPER_OPENING_REWARD_WEIGHT * reward_gripper_opening
+        reward_weight = self.GRIPPER_OPENING_REWARD_WEIGHT
 
-        # After the first waypoint, align the EEF local x-axis with world +x.
+        # Align the EEF local x-axis with world +x.
         if self.EEF_X_WORLD_REWARD_WEIGHT > 0:
             eef_x_dot = info["eef_x_axis_world"][:, 0]
             eef_angle_error = torch.acos(
@@ -719,13 +553,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             reward_eef_x_world = 1 - torch.tanh(
                 self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
             )  # min = 0.0, max = 1.0
-            reward_with_pose = (
-                reward + self.EEF_X_WORLD_REWARD_WEIGHT * reward_eef_x_world
-            ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)  # min = 0.0, max = 1.0
-            reward = torch.where(first_reached, reward_with_pose, reward)
+            reward = reward + self.EEF_X_WORLD_REWARD_WEIGHT * reward_eef_x_world
+            reward_weight = reward_weight + self.EEF_X_WORLD_REWARD_WEIGHT
 
-        # Final target success overrides shaping before the box-shift multiplier.
-        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        reward = reward / reward_weight  # min = 0.0, max = 1.0
 
         box_position_penalty = self._inner_box_position_penalty()
         reward = reward * (1 - box_position_penalty)

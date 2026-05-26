@@ -6,8 +6,8 @@ insertion experiments.
 ## Current target
 
 - The next performance target is not just 5 mm insertion distance.
-- Aim for stable 3 mm-level distance between the purple finger marker and the
-  lime cabinet target.
+- Aim for stable 3 mm-level distance between the finger marker and the lime
+  cabinet target.
 - Good results must still be fixed-action-bias free and should be shown with
   evaluation video.
 
@@ -28,7 +28,7 @@ or curriculum variants.
 
 The gripper opening seen in the user's Spacemouse success example is important.
 Rewarding the gripper qpos to stay near that open configuration should apply
-throughout the episode, including before and while reaching the first waypoint.
+throughout the episode.
 
 ## Video filenames
 

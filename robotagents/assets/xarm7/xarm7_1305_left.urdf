@@ -17,9 +17,6 @@
   <material name="Silver">
     <color rgba="0.753 0.753 0.753 1.0"/>
   </material>
-  <material name="Purple">
-    <color rgba="0.5 0.0 0.8 1.0"/>
-  </material>
   <link name="world"/>
   <joint name="world_joint" type="fixed">
     <parent link="world"/>
@@ -570,14 +567,6 @@
       <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
       <material name="Silver"/>
     </visual>
-    <visual>
-      <geometry>
-        <sphere radius="0.006"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.01790 0.05340"/>
-      <material name="Purple"/>
-    </visual>
-    
     <collision>
       <geometry>
         <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>

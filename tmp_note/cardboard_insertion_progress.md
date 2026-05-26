@@ -11,7 +11,7 @@ All old experimental `MyDualCardboardCabinet...` variants were removed from
 
 Current v1 properties:
 
-- one first waypoint and one final insertion target in the inner-box local frame
+- one final insertion target in the inner-box local frame
 - inner box wall thickness: `2 mm`
 - inner box density: `6000`
 - low friction: static `0.2`, dynamic `0.1`
@@ -20,20 +20,12 @@ Current v1 properties:
 
 ## Current reward design
 
-The reward is staged:
+The reward no longer tracks the finger marker distance to the final target.
 
-1. Before the first waypoint is reached, reward only tracks the first waypoint.
-2. Once the purple marker enters `5 mm` of the first waypoint, an episode-level
-   `first_waypoint_reached` flag is set.
-3. Only after that flag is set does the final green target reward become active.
-4. Gripper opening target reward around `qpos=0.44` is applied throughout the
+1. Gripper opening target reward around `qpos=0.44` is applied throughout the
    episode.
-5. EEF local x-axis alignment toward world +x is applied only after the first
-   waypoint has been reached.
-6. Box shift scales the reward by `reward * (1 - penalty)`.
-
-The old `4 cm` first-waypoint gate was removed because it allowed the policy to
-skip meaningful first-waypoint alignment.
+2. EEF local x-axis alignment toward world +x is applied throughout the episode.
+3. Box shift scales the reward by `reward * (1 - penalty)`.
 
 ## Current commands
 
