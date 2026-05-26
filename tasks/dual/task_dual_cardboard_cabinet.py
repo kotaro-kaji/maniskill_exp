@@ -53,6 +53,9 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     EEF_FRAME_AXIS_LENGTH = 0.035
     EEF_FRAME_MARKER_RADIUS = 0.003
     TCP_TO_TARGET_REWARD_SCALE = 5.0
+    GRIPPER_OPENING_TARGET_QPOS = 0.44
+    GRIPPER_OPENING_REWARD_WEIGHT = 0.05
+    GRIPPER_OPENING_REWARD_SCALE = 8.0
 
     def __init__(
         self,
@@ -290,6 +293,20 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self.TCP_TO_TARGET_REWARD_SCALE * self._tcp_to_target_distance()
         )  # min = 0.0, max = 1.0
 
+    def _gripper_drive_qpos(self) -> torch.Tensor:
+        qpos = self.agent.agents[0].robot.get_qpos()
+        if qpos.ndim == 1:
+            qpos = qpos.unsqueeze(0)
+        return qpos[:, 7]
+
+    def _gripper_opening_reward(self) -> torch.Tensor:
+        gripper_error = torch.abs(
+            self._gripper_drive_qpos() - self.GRIPPER_OPENING_TARGET_QPOS
+        )
+        return 1 - torch.tanh(
+            self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
+        )  # min = 0.0, max = 1.0
+
     def _sync_target_sites(self, env_idx: Optional[torch.Tensor] = None):
         target_pos = self._current_insert_target_world()
         if env_idx is not None:
@@ -322,4 +339,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         }
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        return self._tcp_to_target_reward()
+        reward = (
+            self._tcp_to_target_reward()
+            + self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
+        )
+        return reward / (1 + self.GRIPPER_OPENING_REWARD_WEIGHT)
