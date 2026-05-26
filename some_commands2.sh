@@ -33,7 +33,7 @@ uv run python sac.py \
     --env-id MyDualCardboardCabinet-v1 \
     --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \
     --num-envs 256 --training-freq 256 --utd 0.5 --buffer-size 1_000_000 \
-    --total-timesteps 25_000_000 --eval-freq 100_000 \
+    --total-timesteps 25_000_000 --eval-freq 25_000 \
     --num-eval-envs 64 --num-eval-video-envs 4 --num-steps 120 --num-eval-steps 120 \
     --gamma 0.99
 
@@ -42,6 +42,6 @@ uv run python sac.py \
     --env-id MyDualCardboardCabinet-v1 \
     --control-mode pd_ee_delta_pose --robot-init-noise-scale 0.0 \
     --num-envs 128 --training-freq 128 --utd 0.5 --buffer-size 1_000_000 \
-    --total-timesteps 25_000_000 --eval-freq 100_000 \
+    --total-timesteps 25_000_000 --eval-freq 25_000 \
     --num-eval-envs 64 --num-eval-video-envs 4 --num-steps 120 --num-eval-steps 120 \
     --gamma 0.99
