@@ -56,7 +56,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         (1.0, 0.55, 0.0, 1.0),
     )
     INSERT_WAYPOINT_SIDE_LOCALS = (
-        (0.0055, 0.0, 0.04025),
+        (-0.0295, 0.0, 0.04025),
     )
     EEF_FRAME_AXIS_LENGTH = 0.035
     EEF_FRAME_MARKER_RADIUS = 0.003
