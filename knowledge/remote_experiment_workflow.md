@@ -9,6 +9,26 @@ server, especially RunPod.
 ssh runpod-gpu 'cd /root/work/maniskill_exp && source ./server_env.sh && uv run python ppo_xarm7.py ...'
 ```
 
+## Keep Rental GPUs Busy
+
+For RunPod-style rental GPUs, after diagnosing a training issue and applying a
+plausible fix, restart the relevant learning run by default instead of leaving
+the GPU idle. The user can often learn from the next eval video even when scalar
+metrics are inconclusive, so it is usually better to keep a PPO/SAC run moving
+while reporting the change and log path.
+
+If the pod has an older driver and `uv run` would reinstall an incompatible
+PyTorch build, run through the existing virtualenv interpreter instead:
+
+```bash
+cd /workspace/maniskill_exp
+source ./server_env.sh
+.venv/bin/python ppo_dual_xarm7.py ...
+```
+
+When starting a long run, use `nohup` and write logs under `tmp_note/logs/`.
+Record the PID, log path, and exact command in the response.
+
 For long batches, prefer `nohup` with logs:
 
 ```bash

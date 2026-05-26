@@ -64,8 +64,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     FIRST_WAYPOINT_GATE_DISTANCE = 0.005
     FIRST_WAYPOINT_REWARD_DISTANCE_SCALE = 5.0
     FIRST_WAYPOINT_FINE_DISTANCE_SCALE = 40.0
-    FINAL_REWARD_DISTANCE_SCALE = 180.0
-    FINAL_Y_REWARD_DISTANCE_SCALE = 180.0
+    FINAL_REWARD_DISTANCE_SCALE = 40.0
+    FINAL_Y_REWARD_DISTANCE_SCALE = 40.0
     FINAL_Y_REWARD_WEIGHT = 0.25
     INSERT_SUCCESS_DISTANCE = 0.003
     BOX_POSITION_SHIFT_TOLERANCE = 0.003
@@ -666,56 +666,67 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         marker_pos = self._finger_insert_marker_world()
         first_target, final_target = self._stage_targets_world()
 
+        # Stage 1: move the insert marker to the first waypoint.
         first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
         first_reached = self._update_first_waypoint_reached(first_distance)
         first_coarse_reward = 1 - torch.tanh(
             self.FIRST_WAYPOINT_REWARD_DISTANCE_SCALE * first_distance
-        )
+        )  # min = 0.0, max = 1.0
         first_fine_reward = 1 - torch.tanh(
             self.FIRST_WAYPOINT_FINE_DISTANCE_SCALE * first_distance
-        )
-        first_reward = 0.7 * first_coarse_reward + 0.3 * first_fine_reward
+        )  # min = 0.0, max = 1.0
+        reward_first_waypoint = (
+            0.7 * first_coarse_reward + 0.3 * first_fine_reward
+        )  # min = 0.0, max = 1.0
 
+        # Stage 2: after the first waypoint has ever been reached, move to final.
         final_delta = final_target - marker_pos
         final_distance = torch.linalg.norm(final_delta, dim=-1)
         final_point_reward = 1 - torch.tanh(
             self.FINAL_REWARD_DISTANCE_SCALE * final_distance
-        )
+        )  # min = 0.0, max = 1.0
         final_y_reward = 1 - torch.tanh(
             self.FINAL_Y_REWARD_DISTANCE_SCALE * torch.abs(final_delta[:, 1])
-        )
-        final_reward = (
+        )  # min = 0.0, max = 1.0
+        reward_final_target = (
             final_point_reward + self.FINAL_Y_REWARD_WEIGHT * final_y_reward
-        ) / (1 + self.FINAL_Y_REWARD_WEIGHT)
+        ) / (1 + self.FINAL_Y_REWARD_WEIGHT)  # min = 0.0, max = 1.0
 
-        reward = torch.where(
+        stage_reward = torch.where(
             first_reached,
-            0.5 + 0.5 * final_reward,
-            0.5 * first_reward,
-        )
+            0.5 + 0.5 * reward_final_target,
+            0.5 * reward_first_waypoint,
+        )  # min = 0.0, max = 1.0
 
+        # Keep the left gripper near the desired opening through the episode.
         gripper_error = torch.abs(
             info["gripper_drive_qpos"] - self.GRIPPER_OPENING_TARGET_QPOS
         )
-        gripper_reward = 1 - torch.tanh(
+        reward_gripper_opening = 1 - torch.tanh(
             self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
-        )
+        )  # min = 0.0, max = 1.0
         reward = (
-            reward + self.GRIPPER_OPENING_REWARD_WEIGHT * gripper_reward
-        ) / (1 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+            stage_reward
+            + self.GRIPPER_OPENING_REWARD_WEIGHT * reward_gripper_opening
+        ) / (1 + self.GRIPPER_OPENING_REWARD_WEIGHT)  # min = 0.0, max = 1.0
 
+        # After the first waypoint, align the EEF local x-axis with world +x.
         if self.EEF_X_WORLD_REWARD_WEIGHT > 0:
             eef_x_dot = info["eef_x_axis_world"][:, 0]
             eef_angle_error = torch.acos(
                 torch.clamp(eef_x_dot, min=-1.0, max=1.0)
             )
-            eef_reward = 1 - torch.tanh(
+            reward_eef_x_world = 1 - torch.tanh(
                 self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
-            )
-            pose_reward = (
-                reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
-            ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
-            reward = torch.where(first_reached, pose_reward, reward)
+            )  # min = 0.0, max = 1.0
+            reward_with_pose = (
+                reward + self.EEF_X_WORLD_REWARD_WEIGHT * reward_eef_x_world
+            ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)  # min = 0.0, max = 1.0
+            reward = torch.where(first_reached, reward_with_pose, reward)
 
+        # Final target success overrides shaping before the box-shift multiplier.
         reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
-        return reward * (1 - self._inner_box_position_penalty())
+
+        box_position_penalty = self._inner_box_position_penalty()
+        reward = reward * (1 - box_position_penalty)
+        return reward
