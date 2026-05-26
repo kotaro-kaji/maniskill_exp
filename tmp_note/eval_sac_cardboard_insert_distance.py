@@ -58,18 +58,28 @@ def main():
     best_eef_x_error = torch.zeros((args.num_envs,), device=device)
     best_eef_x_roll = torch.zeros((args.num_envs,), device=device)
     best_gripper_qpos = torch.zeros((args.num_envs,), device=device)
+    best_first_waypoint_distance = torch.full(
+        (args.num_envs,), float("inf"), device=device
+    )
     valid_best_distance = torch.full((args.num_envs,), float("inf"), device=device)
     valid_best_delta = torch.zeros((args.num_envs, 3), device=device)
     max_box_shift = torch.zeros((args.num_envs,), device=device)
     final_distance = torch.full((args.num_envs,), float("inf"), device=device)
+    final_first_waypoint_distance = torch.full(
+        (args.num_envs,), float("inf"), device=device
+    )
     final_delta = torch.zeros((args.num_envs, 3), device=device)
     final_box_shift = torch.zeros((args.num_envs,), device=device)
+    first_waypoint_reached = torch.zeros(
+        (args.num_envs,), dtype=torch.bool, device=device
+    )
 
     for _ in range(args.num_steps):
         with torch.no_grad():
             action = actor.get_eval_action(obs)
         obs, _, _, _, info = env.step(action)
         distance = info["insert_marker_distance"].to(device)
+        first_distance = info["first_waypoint_distance"].to(device)
         box_shift = info["box_position_shift"].to(device)
         eef_x_dot = info["eef_x_axis_world"].to(device)[:, 0]
         eef_x_error = info["eef_x_world_error"].to(device)
@@ -77,8 +87,16 @@ def main():
         gripper_qpos = info["gripper_drive_qpos"].to(device)
         obs_delta = obs[:, -4:-1]
         final_distance = distance
+        final_first_waypoint_distance = first_distance
         final_delta = obs_delta
         final_box_shift = box_shift
+        first_waypoint_reached = (
+            first_waypoint_reached | info["first_waypoint_reached"].to(device)
+        )
+        best_first_waypoint_distance = torch.minimum(
+            best_first_waypoint_distance,
+            first_distance,
+        )
         improved = distance < best_distance
         best_distance = torch.minimum(best_distance, distance)
         best_delta[improved] = obs_delta[improved]
@@ -100,13 +118,18 @@ def main():
     eef_x_error = best_eef_x_error.detach().cpu()
     eef_x_roll = torch.rad2deg(best_eef_x_roll.detach().cpu())
     gripper_qpos = best_gripper_qpos.detach().cpu()
+    first_best = best_first_waypoint_distance.detach().cpu()
+    first_reached = first_waypoint_reached.detach().cpu()
     valid_best = valid_best_distance.detach().cpu()
     valid_delta = valid_best_delta.detach().cpu()
     shift = max_box_shift.detach().cpu()
     final = final_distance.detach().cpu()
+    final_first = final_first_waypoint_distance.detach().cpu()
     final_delta = final_delta.detach().cpu()
     final_shift = final_box_shift.detach().cpu()
     finite_best = best[torch.isfinite(best)]
+    finite_first_best = first_best[torch.isfinite(first_best)]
+    finite_final_first = final_first[torch.isfinite(final_first)]
     finite_valid_best = valid_best[torch.isfinite(valid_best)]
     finite_shift = shift[torch.isfinite(shift)]
     finite_final = final[torch.isfinite(final)]
@@ -127,6 +150,19 @@ def main():
     print("best_eef_x_roll_deg_mean", float(eef_x_roll.mean()))
     print("best_eef_x_roll_deg_abs_mean", float(eef_x_roll.abs().mean()))
     print("best_gripper_qpos_mean", float(gripper_qpos.mean()))
+    print("first_waypoint_reached", int(first_reached.sum()), "/", int(first_reached.numel()))
+    print("first_waypoint_reached_rate", float(first_reached.float().mean()))
+    print("first_waypoint_best_mean", float(finite_first_best.mean()))
+    print("first_waypoint_best_median", float(finite_first_best.median()))
+    print("first_waypoint_best_min", float(finite_first_best.min()))
+    print("first_waypoint_best_max", float(finite_first_best.max()))
+    for threshold in (0.003, 0.005, 0.01, 0.02, 0.03):
+        print(
+            f"first_waypoint_best_under_{threshold:.3f}",
+            int((finite_first_best < threshold).sum()),
+            "/",
+            int(finite_first_best.numel()),
+        )
     print("max_box_shift_mean", float(finite_shift.mean()))
     print("max_box_shift_median", float(finite_shift.median()))
     print("max_box_shift_max", float(finite_shift.max()))
@@ -161,6 +197,8 @@ def main():
     print("final_median", float(finite_final.median()))
     print("final_min", float(finite_final.min()))
     print("final_max", float(finite_final.max()))
+    print("final_first_waypoint_mean", float(finite_final_first.mean()))
+    print("final_first_waypoint_median", float(finite_final_first.median()))
     print("final_delta_mean", [float(v) for v in final_delta.mean(dim=0)])
     print("final_abs_delta_mean", [float(v) for v in final_delta.abs().mean(dim=0)])
     print("final_box_shift_mean", float(finite_final_shift.mean()))
