@@ -29,3 +29,17 @@ or curriculum variants.
 The gripper opening seen in the user's Spacemouse success example is important.
 Rewarding the gripper qpos to stay near that open configuration should apply
 throughout the episode, including before and while reaching the first waypoint.
+
+## Video filenames
+
+When creating evaluation videos intended to be shown to the user, or when the
+user asks to see a video, use Japanese filenames by default. This makes the
+purpose of the artifact easier to recognize in chat and file browsers. For
+example:
+
+- `こちらをご参照ください.mp4`
+- `現在のベスト結果_近接視点.mp4`
+- `現在のベスト結果_俯瞰視点.mp4`
+
+Internal throwaway logs and batch experiment directories can still use ASCII
+names when that is more convenient for scripts.

@@ -66,6 +66,7 @@ def main():
         delta = obs[0, -4:-1].detach().cpu()
         action_cpu = action[0].detach().cpu()
         eef_x_dot = float(info["eef_x_axis_world"][0, 0])
+        eef_x_roll_deg = float(torch.rad2deg(info["eef_x_roll_world"][0]))
         gripper_qpos = float(info["gripper_drive_qpos"][0])
         row = (
             step,
@@ -80,6 +81,7 @@ def main():
             float(action_cpu.abs().mean()),
             float(action_cpu.abs().max()),
             eef_x_dot,
+            eef_x_roll_deg,
             gripper_qpos,
             float(action_cpu[7]),
         )
@@ -94,7 +96,8 @@ def main():
     print("seed", args.seed)
     print(
         "columns step distance dx dy dz box_shift box_dx box_dy box_dz "
-        "action_abs_mean action_abs_max eef_x_dot gripper_qpos left_gripper_action"
+        "action_abs_mean action_abs_max eef_x_dot eef_x_roll_deg "
+        "gripper_qpos left_gripper_action"
     )
     print("best", " ".join(str(v) for v in best))
     print("max_shift", " ".join(str(v) for v in max_shift))

@@ -209,6 +209,29 @@ test succeeds.
 
 - `rg` may not be installed on the remote image. Fall back to `grep -R` or
   install tools only if needed.
+- Some RunPod images may not have `rsync` installed. Use `git archive | ssh tar`
+  for a clean tracked-file copy, or `scp` individual files when updating a small
+  set of scripts.
+- On the A6000 image with NVIDIA driver `550.127.05` / CUDA `12.4`, the default
+  `uv sync` resolved PyTorch `2.11.0+cu130`, which cannot use the older driver.
+  Install a CUDA 12.4 PyTorch build instead and run scripts with
+  `.venv/bin/python` directly so `uv run` does not resync the environment:
+
+```bash
+uv pip uninstall torch triton nvidia-cublas nvidia-cuda-cupti \
+  nvidia-cuda-nvrtc nvidia-cuda-runtime nvidia-cudnn-cu13 nvidia-cufft \
+  nvidia-cufile nvidia-curand nvidia-cusolver nvidia-cusparse \
+  nvidia-cusparselt-cu13 nvidia-nccl-cu13 nvidia-nvjitlink \
+  nvidia-nvshmem-cu13 nvidia-nvtx
+uv pip install --index-url https://download.pytorch.org/whl/cu124 torch==2.6.0
+.venv/bin/python -m pip install --force-reinstall --no-cache-dir \
+  --index-url https://download.pytorch.org/whl/cu124 \
+  nvidia-cudnn-cu12==9.1.0.70 nvidia-nccl-cu12==2.21.5 \
+  nvidia-cublas-cu12==12.4.5.8
+```
+
+  Add the `.venv` NVIDIA library directories to `LD_LIBRARY_PATH` in
+  `server_env.sh`.
 - `apt-get` may fail on some RunPod images because NVIDIA files are bind-mounted
   or partially managed by the base image. Prefer non-invasive runtime extraction
   when driver packages conflict.

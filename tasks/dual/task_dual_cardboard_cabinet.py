@@ -469,6 +469,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             matrix = matrix.unsqueeze(0)
         return matrix[..., :, 0]
 
+    def _eef_x_roll_world(self) -> torch.Tensor:
+        pose = self.agent.agents[0].tcp.pose
+        matrix = pose.to_transformation_matrix()[..., :3, :3]
+        if matrix.ndim == 2:
+            matrix = matrix.unsqueeze(0)
+        y_axis = matrix[..., :, 1]
+        return torch.atan2(y_axis[..., 2], y_axis[..., 1])
+
     def _eef_x_world_error(self) -> torch.Tensor:
         x_axis = self._eef_x_axis_world()
         target = torch.tensor(
@@ -662,6 +670,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "box_episode_max_shift": box_episode_max_shift,
             "finger_axis_alignment": self._finger_axis_alignment(),
             "eef_x_axis_world": self._eef_x_axis_world(),
+            "eef_x_roll_world": self._eef_x_roll_world(),
             "eef_x_world_error": self._eef_x_world_error(),
             "gripper_drive_qpos": self._gripper_drive_qpos(),
             "valid_close_streak": valid_close_streak,
@@ -1632,6 +1641,505 @@ class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAc
         return (
             reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
         ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020EefBoxStrictEnv
+):
+    INSERT_SUCCESS_DISTANCE = 0.003
+    STAGE_REWARD_DISTANCE_SCALE = 220.0
+    INSERT_Y_DISTANCE_SCALE = 220.0
+    INSERT_XZ_DISTANCE_SCALE = 320.0
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmStrongPoseBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmStrongPoseBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmBoxStrictEnv
+):
+    EEF_X_WORLD_REWARD_WEIGHT = 1.0
+    EEF_X_WORLD_REWARD_SCALE = 60.0
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmStableBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmStableBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmBoxStrictEnv
+):
+    USE_EPISODE_MAX_BOX_SHIFT = True
+    BOX_POSITION_SHIFT_TOLERANCE = 0.0015
+    BOX_POSITION_PENALTY_SCALE = 1200.0
+    BOX_POSITION_PENALTY_MAX = 0.999
+    GRIPPER_MIN_REWARD_WEIGHT = 1.0
+    GRIPPER_MIN_REWARD_SCALE = 20.0
+    EEF_X_WORLD_REWARD_WEIGHT = 0.5
+    EEF_X_WORLD_REWARD_SCALE = 80.0
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmCurriculumBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmCurriculumBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripEef3mmBoxStrictEnv
+):
+    FIRST_COARSE_DISTANCE_SCALE = 5.0
+    FIRST_FINE_DISTANCE_SCALE = 50.0
+    FINAL_COARSE_DISTANCE_SCALE = 20.0
+    FINAL_FINE_DISTANCE_SCALE = 220.0
+    FINAL_Y_DISTANCE_SCALE = 160.0
+    FINAL_XZ_DISTANCE_SCALE = 220.0
+    FIRST_GATE_DISTANCE = 0.04
+    EEF_X_WORLD_REWARD_WEIGHT = 0.05
+    EEF_X_WORLD_REWARD_SCALE = 20.0
+    EEF_X_WORLD_GATE_DISTANCE = 0.08
+    GRIPPER_MIN_REWARD_WEIGHT = 0.15
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        first_target, final_target = self._stage_targets_world()
+
+        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
+        first_coarse_reward = 1 - torch.tanh(
+            self.FIRST_COARSE_DISTANCE_SCALE * first_distance
+        )
+        first_fine_reward = 1 - torch.tanh(
+            self.FIRST_FINE_DISTANCE_SCALE * first_distance
+        )
+        first_reward = 0.7 * first_coarse_reward + 0.3 * first_fine_reward
+
+        final_delta = final_target - marker_pos
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+        y_distance = torch.abs(final_delta[:, 1])
+        xz_distance = torch.linalg.norm(final_delta[:, [0, 2]], dim=-1)
+        final_coarse_reward = 1 - torch.tanh(
+            self.FINAL_COARSE_DISTANCE_SCALE * final_distance
+        )
+        final_fine_reward = 1 - torch.tanh(
+            self.FINAL_FINE_DISTANCE_SCALE * final_distance
+        )
+        y_reward = 1 - torch.tanh(self.FINAL_Y_DISTANCE_SCALE * y_distance)
+        xz_reward = 1 - torch.tanh(self.FINAL_XZ_DISTANCE_SCALE * xz_distance)
+        final_reward = (
+            final_coarse_reward
+            + final_fine_reward
+            + y_reward
+            + xz_reward
+        ) / 4
+
+        reward = 0.5 * first_reward
+        passed_first = first_distance < self.FIRST_GATE_DISTANCE
+        reward = torch.where(passed_first, 0.5 + 0.5 * final_reward, reward)
+
+        gripper_shortfall = torch.clamp(
+            self.GRIPPER_MIN_QPOS - info["gripper_drive_qpos"],
+            min=0.0,
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_MIN_REWARD_SCALE * gripper_shortfall
+        )
+        reward = (
+            reward + self.GRIPPER_MIN_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_MIN_REWARD_WEIGHT)
+
+        eef_x_dot = info["eef_x_axis_world"][:, 0]
+        eef_angle_error = torch.acos(torch.clamp(eef_x_dot, min=-1.0, max=1.0))
+        eef_reward = 1 - torch.tanh(
+            self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
+        )
+        eef_shaped_reward = (
+            reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
+        ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
+        near_slot = first_distance < self.EEF_X_WORLD_GATE_DISTANCE
+        reward = torch.where(near_slot, eef_shaped_reward, reward)
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYCoarseBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYCoarseBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmCurriculumBoxStrictEnv
+):
+    FINAL_COARSE_DISTANCE_SCALE = 12.0
+    FINAL_Y_COARSE_DISTANCE_SCALE = 25.0
+    FINAL_Y_DISTANCE_SCALE = 160.0
+    FINAL_XZ_DISTANCE_SCALE = 160.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        first_target, final_target = self._stage_targets_world()
+
+        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
+        first_coarse_reward = 1 - torch.tanh(
+            self.FIRST_COARSE_DISTANCE_SCALE * first_distance
+        )
+        first_fine_reward = 1 - torch.tanh(
+            self.FIRST_FINE_DISTANCE_SCALE * first_distance
+        )
+        first_reward = 0.7 * first_coarse_reward + 0.3 * first_fine_reward
+
+        final_delta = final_target - marker_pos
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+        y_distance = torch.abs(final_delta[:, 1])
+        xz_distance = torch.linalg.norm(final_delta[:, [0, 2]], dim=-1)
+        final_coarse_reward = 1 - torch.tanh(
+            self.FINAL_COARSE_DISTANCE_SCALE * final_distance
+        )
+        final_fine_reward = 1 - torch.tanh(
+            self.FINAL_FINE_DISTANCE_SCALE * final_distance
+        )
+        y_coarse_reward = 1 - torch.tanh(
+            self.FINAL_Y_COARSE_DISTANCE_SCALE * y_distance
+        )
+        y_fine_reward = 1 - torch.tanh(self.FINAL_Y_DISTANCE_SCALE * y_distance)
+        xz_reward = 1 - torch.tanh(self.FINAL_XZ_DISTANCE_SCALE * xz_distance)
+        final_reward = (
+            0.20 * final_coarse_reward
+            + 0.15 * final_fine_reward
+            + 0.35 * y_coarse_reward
+            + 0.15 * y_fine_reward
+            + 0.15 * xz_reward
+        )
+
+        reward = 0.5 * first_reward
+        passed_first = first_distance < self.FIRST_GATE_DISTANCE
+        reward = torch.where(passed_first, 0.5 + 0.5 * final_reward, reward)
+
+        gripper_shortfall = torch.clamp(
+            self.GRIPPER_MIN_QPOS - info["gripper_drive_qpos"],
+            min=0.0,
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_MIN_REWARD_SCALE * gripper_shortfall
+        )
+        reward = (
+            reward + self.GRIPPER_MIN_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_MIN_REWARD_WEIGHT)
+
+        eef_x_dot = info["eef_x_axis_world"][:, 0]
+        eef_angle_error = torch.acos(torch.clamp(eef_x_dot, min=-1.0, max=1.0))
+        eef_reward = 1 - torch.tanh(
+            self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
+        )
+        eef_shaped_reward = (
+            reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
+        ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
+        near_slot = first_distance < self.EEF_X_WORLD_GATE_DISTANCE
+        reward = torch.where(near_slot, eef_shaped_reward, reward)
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmPoseTargetBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmPoseTargetBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYCoarseBoxStrictEnv
+):
+    GRIPPER_TARGET_QPOS = 0.44
+    GRIPPER_TARGET_REWARD_WEIGHT = 0.25
+    GRIPPER_TARGET_REWARD_SCALE = 8.0
+    EEF_ROLL_TARGET_DEG = 120.0
+    EEF_ROLL_REWARD_WEIGHT = 0.10
+    EEF_ROLL_REWARD_SCALE = 4.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        first_target, final_target = self._stage_targets_world()
+
+        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
+        first_coarse_reward = 1 - torch.tanh(
+            self.FIRST_COARSE_DISTANCE_SCALE * first_distance
+        )
+        first_fine_reward = 1 - torch.tanh(
+            self.FIRST_FINE_DISTANCE_SCALE * first_distance
+        )
+        first_reward = 0.7 * first_coarse_reward + 0.3 * first_fine_reward
+
+        final_delta = final_target - marker_pos
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+        y_distance = torch.abs(final_delta[:, 1])
+        xz_distance = torch.linalg.norm(final_delta[:, [0, 2]], dim=-1)
+        final_coarse_reward = 1 - torch.tanh(
+            self.FINAL_COARSE_DISTANCE_SCALE * final_distance
+        )
+        final_fine_reward = 1 - torch.tanh(
+            self.FINAL_FINE_DISTANCE_SCALE * final_distance
+        )
+        y_coarse_reward = 1 - torch.tanh(
+            self.FINAL_Y_COARSE_DISTANCE_SCALE * y_distance
+        )
+        y_fine_reward = 1 - torch.tanh(self.FINAL_Y_DISTANCE_SCALE * y_distance)
+        xz_reward = 1 - torch.tanh(self.FINAL_XZ_DISTANCE_SCALE * xz_distance)
+        final_reward = (
+            0.20 * final_coarse_reward
+            + 0.15 * final_fine_reward
+            + 0.35 * y_coarse_reward
+            + 0.15 * y_fine_reward
+            + 0.15 * xz_reward
+        )
+
+        reward = 0.5 * first_reward
+        passed_first = first_distance < self.FIRST_GATE_DISTANCE
+        reward = torch.where(passed_first, 0.5 + 0.5 * final_reward, reward)
+
+        gripper_error = torch.abs(
+            info["gripper_drive_qpos"] - self.GRIPPER_TARGET_QPOS
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_TARGET_REWARD_SCALE * gripper_error
+        )
+        reward = (
+            reward + self.GRIPPER_TARGET_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_TARGET_REWARD_WEIGHT)
+
+        eef_x_dot = info["eef_x_axis_world"][:, 0]
+        eef_angle_error = torch.acos(torch.clamp(eef_x_dot, min=-1.0, max=1.0))
+        eef_reward = 1 - torch.tanh(
+            self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
+        )
+        eef_shaped_reward = (
+            reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
+        ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
+
+        roll_target = torch.deg2rad(
+            torch.tensor(
+                self.EEF_ROLL_TARGET_DEG,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+        roll_error = torch.atan2(
+            torch.sin(info["eef_x_roll_world"] - roll_target),
+            torch.cos(info["eef_x_roll_world"] - roll_target),
+        ).abs()
+        roll_reward = 1 - torch.tanh(self.EEF_ROLL_REWARD_SCALE * roll_error)
+        roll_shaped_reward = (
+            eef_shaped_reward + self.EEF_ROLL_REWARD_WEIGHT * roll_reward
+        ) / (1 + self.EEF_ROLL_REWARD_WEIGHT)
+
+        near_slot = first_distance < self.EEF_X_WORLD_GATE_DISTANCE
+        reward = torch.where(near_slot, roll_shaped_reward, reward)
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmFullCoarseBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmFullCoarseBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmPoseTargetBoxStrictEnv
+):
+    FINAL_X_DISTANCE_SCALE = 80.0
+    FINAL_Z_COARSE_DISTANCE_SCALE = 25.0
+    FINAL_Z_DISTANCE_SCALE = 160.0
+    GRIPPER_TARGET_REWARD_WEIGHT = 0.60
+    EEF_X_WORLD_REWARD_WEIGHT = 0.20
+    EEF_ROLL_REWARD_WEIGHT = 0.05
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        first_target, final_target = self._stage_targets_world()
+
+        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
+        first_coarse_reward = 1 - torch.tanh(
+            self.FIRST_COARSE_DISTANCE_SCALE * first_distance
+        )
+        first_fine_reward = 1 - torch.tanh(
+            self.FIRST_FINE_DISTANCE_SCALE * first_distance
+        )
+        first_reward = 0.7 * first_coarse_reward + 0.3 * first_fine_reward
+
+        final_delta = final_target - marker_pos
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+        x_distance = torch.abs(final_delta[:, 0])
+        y_distance = torch.abs(final_delta[:, 1])
+        z_distance = torch.abs(final_delta[:, 2])
+        final_coarse_reward = 1 - torch.tanh(
+            self.FINAL_COARSE_DISTANCE_SCALE * final_distance
+        )
+        final_fine_reward = 1 - torch.tanh(
+            self.FINAL_FINE_DISTANCE_SCALE * final_distance
+        )
+        x_reward = 1 - torch.tanh(self.FINAL_X_DISTANCE_SCALE * x_distance)
+        y_coarse_reward = 1 - torch.tanh(
+            self.FINAL_Y_COARSE_DISTANCE_SCALE * y_distance
+        )
+        y_fine_reward = 1 - torch.tanh(self.FINAL_Y_DISTANCE_SCALE * y_distance)
+        z_coarse_reward = 1 - torch.tanh(
+            self.FINAL_Z_COARSE_DISTANCE_SCALE * z_distance
+        )
+        z_fine_reward = 1 - torch.tanh(self.FINAL_Z_DISTANCE_SCALE * z_distance)
+        final_reward = (
+            0.10 * final_coarse_reward
+            + 0.10 * final_fine_reward
+            + 0.10 * x_reward
+            + 0.20 * y_coarse_reward
+            + 0.10 * y_fine_reward
+            + 0.30 * z_coarse_reward
+            + 0.10 * z_fine_reward
+        )
+
+        reward = 0.5 * first_reward
+        passed_first = first_distance < self.FIRST_GATE_DISTANCE
+        reward = torch.where(passed_first, 0.5 + 0.5 * final_reward, reward)
+
+        gripper_error = torch.abs(
+            info["gripper_drive_qpos"] - self.GRIPPER_TARGET_QPOS
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_TARGET_REWARD_SCALE * gripper_error
+        )
+        reward = (
+            reward + self.GRIPPER_TARGET_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_TARGET_REWARD_WEIGHT)
+
+        eef_x_dot = info["eef_x_axis_world"][:, 0]
+        eef_angle_error = torch.acos(torch.clamp(eef_x_dot, min=-1.0, max=1.0))
+        eef_reward = 1 - torch.tanh(
+            self.EEF_X_WORLD_REWARD_SCALE * eef_angle_error
+        )
+        eef_shaped_reward = (
+            reward + self.EEF_X_WORLD_REWARD_WEIGHT * eef_reward
+        ) / (1 + self.EEF_X_WORLD_REWARD_WEIGHT)
+
+        roll_target = torch.deg2rad(
+            torch.tensor(
+                self.EEF_ROLL_TARGET_DEG,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+        roll_error = torch.atan2(
+            torch.sin(info["eef_x_roll_world"] - roll_target),
+            torch.cos(info["eef_x_roll_world"] - roll_target),
+        ).abs()
+        roll_reward = 1 - torch.tanh(self.EEF_ROLL_REWARD_SCALE * roll_error)
+        roll_shaped_reward = (
+            eef_shaped_reward + self.EEF_ROLL_REWARD_WEIGHT * roll_reward
+        ) / (1 + self.EEF_ROLL_REWARD_WEIGHT)
+
+        near_slot = first_distance < self.EEF_X_WORLD_GATE_DISTANCE
+        reward = torch.where(near_slot, roll_shaped_reward, reward)
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYPolishBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYPolishBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020BoxStrictEnv
+):
+    INSERT_SUCCESS_DISTANCE = 0.003
+    STAGE_REWARD_DISTANCE_SCALE = 120.0
+    INSERT_Y_DISTANCE_SCALE = 320.0
+    INSERT_XZ_DISTANCE_SCALE = 180.0
+    INSERT_Y_REWARD_WEIGHT = 5.0
+    GRIPPER_TARGET_QPOS = 0.52
+    GRIPPER_TARGET_REWARD_WEIGHT = 0.20
+    GRIPPER_TARGET_REWARD_SCALE = 8.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        first_target, final_target = self._stage_targets_world()
+
+        first_distance = torch.linalg.norm(first_target - marker_pos, dim=-1)
+        first_reward = 1 - torch.tanh(
+            self.STAGE_REWARD_DISTANCE_SCALE * first_distance
+        )
+
+        final_delta = final_target - marker_pos
+        y_distance = torch.abs(final_delta[:, 1])
+        xz_distance = torch.linalg.norm(final_delta[:, [0, 2]], dim=-1)
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+
+        y_reward = 1 - torch.tanh(self.INSERT_Y_DISTANCE_SCALE * y_distance)
+        xz_reward = 1 - torch.tanh(self.INSERT_XZ_DISTANCE_SCALE * xz_distance)
+        point_reward = 1 - torch.tanh(
+            self.STAGE_REWARD_DISTANCE_SCALE * final_distance
+        )
+        final_reward = (
+            self.INSERT_Y_REWARD_WEIGHT * y_reward
+            + xz_reward
+            + point_reward
+        ) / (self.INSERT_Y_REWARD_WEIGHT + 2)
+
+        reward = first_reward / 2
+        passed_first = first_distance < self.STAGE_GATE_DISTANCE
+        reward = torch.where(passed_first, (1 + final_reward) / 2, reward)
+
+        gripper_error = torch.abs(
+            info["gripper_drive_qpos"] - self.GRIPPER_TARGET_QPOS
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_TARGET_REWARD_SCALE * gripper_error
+        )
+        reward = (
+            reward + self.GRIPPER_TARGET_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_TARGET_REWARD_WEIGHT)
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYOnlyPolishBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYOnlyPolishBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGripAction020BoxStrictEnv
+):
+    INSERT_SUCCESS_DISTANCE = 0.003
+    FINAL_X_DISTANCE_SCALE = 220.0
+    FINAL_Y_DISTANCE_SCALE = 420.0
+    FINAL_Z_DISTANCE_SCALE = 260.0
+    FINAL_DISTANCE_SCALE = 180.0
+    GRIPPER_TARGET_QPOS = 0.52
+    GRIPPER_TARGET_REWARD_WEIGHT = 0.10
+    GRIPPER_TARGET_REWARD_SCALE = 6.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        marker_pos = self._finger_insert_marker_world()
+        final_target = self._stage_targets_world()[-1]
+        final_delta = final_target - marker_pos
+        final_distance = torch.linalg.norm(final_delta, dim=-1)
+        x_distance = torch.abs(final_delta[:, 0])
+        y_distance = torch.abs(final_delta[:, 1])
+        z_distance = torch.abs(final_delta[:, 2])
+
+        x_reward = 1 - torch.tanh(self.FINAL_X_DISTANCE_SCALE * x_distance)
+        y_reward = 1 - torch.tanh(self.FINAL_Y_DISTANCE_SCALE * y_distance)
+        z_reward = 1 - torch.tanh(self.FINAL_Z_DISTANCE_SCALE * z_distance)
+        point_reward = 1 - torch.tanh(self.FINAL_DISTANCE_SCALE * final_distance)
+        reward = (
+            0.20 * x_reward
+            + 0.45 * y_reward
+            + 0.20 * z_reward
+            + 0.15 * point_reward
+        )
+
+        gripper_error = torch.abs(
+            info["gripper_drive_qpos"] - self.GRIPPER_TARGET_QPOS
+        )
+        gripper_reward = 1 - torch.tanh(
+            self.GRIPPER_TARGET_REWARD_SCALE * gripper_error
+        )
+        reward = (
+            reward + self.GRIPPER_TARGET_REWARD_WEIGHT * gripper_reward
+        ) / (1 + self.GRIPPER_TARGET_REWARD_WEIGHT)
+
+        reward[final_distance < self.INSERT_SUCCESS_DISTANCE] = 1.0
+        return reward * (1 - self._inner_box_position_penalty())
+
+
+@register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmAction2PolishBoxStrict-v0", max_episode_steps=200)
+class MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmAction2PolishBoxStrictEnv(
+    MyDualCardboardCabinetLowerFixedTwoPointFinalDensity6000LowFrictionYGrip3mmYOnlyPolishBoxStrictEnv
+):
+    ACTION2_TARGET = -0.025
+    ACTION2_REWARD_WEIGHT = 0.15
+    ACTION2_REWARD_SCALE = 20.0
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        reward = super().compute_normalized_dense_reward(obs, action, info)
+        left_action = action["my_xarm7-0"]
+        action2_error = torch.abs(left_action[:, 2] - self.ACTION2_TARGET)
+        action2_reward = 1 - torch.tanh(self.ACTION2_REWARD_SCALE * action2_error)
+        return (
+            reward + self.ACTION2_REWARD_WEIGHT * action2_reward
+        ) / (1 + self.ACTION2_REWARD_WEIGHT)
 
 
 @register_env("MyDualCardboardCabinetLowerFixedTwoPointFinalDensity7000LowFrictionBoxStrict-v0", max_episode_steps=200)

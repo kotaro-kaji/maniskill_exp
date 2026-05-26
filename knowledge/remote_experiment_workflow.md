@@ -34,6 +34,12 @@ scp runpod-gpu:/root/work/maniskill_exp/runs/<run-name>/test_videos/0.mp4 \
     runs/<run-name>/test_videos/0.mp4
 ```
 
+When a video is intended to be shown to the user, or the user asks to see a
+video, copy or rename it to a Japanese filename by default, such as
+`現在のベスト結果_近接視点.mp4` or `こちらをご参照ください.mp4`. This keeps
+shared artifacts recognizable in chat and file browsers. Internal batch outputs
+can still use ASCII names when scripts benefit from that.
+
 ## TensorBoard Scalar Extraction
 
 For quick comparison without opening TensorBoard:
@@ -65,4 +71,3 @@ PY
 - Put reusable operational lessons under `knowledge/`.
 - Do not commit remote-only files such as `server_env.sh` unless explicitly
   requested; each server may need a different runtime path.
-
