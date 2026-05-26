@@ -50,8 +50,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     INSERT_TARGET_RADIUS = 0.008
     INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
     INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.01525)
-    EEF_FRAME_AXIS_LENGTH = 0.035
-    EEF_FRAME_MARKER_RADIUS = 0.003
     TCP_TO_TARGET_REWARD_SCALE = 5.0
     GRIPPER_OPENING_TARGET_QPOS = 0.44
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
@@ -112,44 +110,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             add_collision=False,
             initial_pose=sapien.Pose(),
         )
-        self.eef_frame_sites = {
-            "origin": actors.build_sphere(
-                self.scene,
-                radius=self.EEF_FRAME_MARKER_RADIUS,
-                color=(1.0, 1.0, 1.0, 1.0),
-                name="eef_frame_origin_site",
-                body_type="kinematic",
-                add_collision=False,
-                initial_pose=sapien.Pose(),
-            ),
-            "x": actors.build_sphere(
-                self.scene,
-                radius=self.EEF_FRAME_MARKER_RADIUS,
-                color=(1.0, 0.0, 0.0, 1.0),
-                name="eef_frame_x_site",
-                body_type="kinematic",
-                add_collision=False,
-                initial_pose=sapien.Pose(),
-            ),
-            "y": actors.build_sphere(
-                self.scene,
-                radius=self.EEF_FRAME_MARKER_RADIUS,
-                color=(0.0, 1.0, 0.0, 1.0),
-                name="eef_frame_y_site",
-                body_type="kinematic",
-                add_collision=False,
-                initial_pose=sapien.Pose(),
-            ),
-            "z": actors.build_sphere(
-                self.scene,
-                radius=self.EEF_FRAME_MARKER_RADIUS,
-                color=(0.0, 0.25, 1.0, 1.0),
-                name="eef_frame_z_site",
-                body_type="kinematic",
-                add_collision=False,
-                initial_pose=sapien.Pose(),
-            ),
-        }
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -261,21 +221,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _current_insert_target_world(self) -> torch.Tensor:
         return self._box_local_point_world(self._box_insert_target_local())
 
-    def _eef_frame_points_world(self) -> Dict[str, torch.Tensor]:
-        pose = self.agent.agents[0].tcp.pose
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        position = pose.p
-        if position.ndim == 1:
-            position = position.unsqueeze(0)
-            matrix = matrix.unsqueeze(0)
-        axis_length = self.EEF_FRAME_AXIS_LENGTH
-        return {
-            "origin": position,
-            "x": position + axis_length * matrix[..., :, 0],
-            "y": position + axis_length * matrix[..., :, 1],
-            "z": position + axis_length * matrix[..., :, 2],
-        }
-
     def _tcp_position(self) -> torch.Tensor:
         position = self.agent.agents[0].tcp.pose.p
         if position.ndim == 1:
@@ -312,12 +257,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         if env_idx is not None:
             target_pos = target_pos[env_idx]
         self.insert_target_site.set_pose(Pose.create_from_pq(p=target_pos))
-        eef_frame_points = self._eef_frame_points_world()
-        for axis_name, site in self.eef_frame_sites.items():
-            position = eef_frame_points[axis_name]
-            if env_idx is not None:
-                position = position[env_idx]
-            site.set_pose(Pose.create_from_pq(p=position))
 
     def evaluate(self):
         self._sync_target_sites()
