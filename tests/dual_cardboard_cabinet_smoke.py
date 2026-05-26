@@ -13,7 +13,7 @@ from tasks.dual.task_dual_cardboard_cabinet import (  # noqa: F401
 
 def main():
     env = gym.make(
-        "MyDualCardboardCabinet-v0",
+        "MyDualCardboardCabinet-v1",
         num_envs=1,
         obs_mode="state",
         control_mode="pd_joint_delta_pos",

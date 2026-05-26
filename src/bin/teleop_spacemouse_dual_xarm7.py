@@ -25,7 +25,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="SpaceMouse teleop for dual xArm7 ManiSkill tasks"
     )
-    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v0")
+    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v1")
     parser.add_argument("--left-device-path", default="")
     parser.add_argument("--right-device-path", default="")
     parser.add_argument("--left-device-index", type=int, default=0)

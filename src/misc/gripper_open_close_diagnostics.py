@@ -27,7 +27,7 @@ GRIPPER_JOINT_NAMES = [
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v0")
+    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v1")
     parser.add_argument("--control-mode", default="pd_joint_delta_pos")
     parser.add_argument("--steps", type=int, default=480)
     parser.add_argument("--phase-steps", type=int, default=60)

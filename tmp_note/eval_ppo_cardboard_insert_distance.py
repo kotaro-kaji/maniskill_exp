@@ -17,7 +17,7 @@ from ppo_dual_xarm7 import Agent
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v0")
+    parser.add_argument("--env-id", default="MyDualCardboardCabinet-v1")
     parser.add_argument("--num-envs", type=int, default=128)
     parser.add_argument("--num-steps", type=int, default=200)
     parser.add_argument("--control-mode", default="pd_joint_delta_pos")

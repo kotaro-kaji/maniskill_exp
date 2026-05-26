@@ -1,12 +1,23 @@
 # Cardboard insertion progress
 
+## Current environment cleanup
+
+The cardboard insertion task has been consolidated into one registered env:
+
+- `MyDualCardboardCabinet-v1`
+
+Older experimental `MyDualCardboardCabinet...` variants were removed from
+`tasks/dual/task_dual_cardboard_cabinet.py`. The v1 env now carries the current
+cardboard geometry, 6000-density low-friction inner box, first-waypoint staged
+reward, gripper opening target, and EEF x-axis shaping directly.
+
 This note keeps only the current plain policy evaluation state. Earlier
 evaluation-time action-offset experiments were discarded because they changed
 the policy output and made the result hard to interpret.
 
 ## Current setup
 
-- Environment family: `MyDualCardboardCabinet-v0`
+- Environment family: `MyDualCardboardCabinet-v1`
 - Controller: `pd_joint_delta_pos`
 - Robot initial pose noise for evaluation: `robot_init_noise_scale=0.0`
 - Inner box wall thickness: `2 mm`
