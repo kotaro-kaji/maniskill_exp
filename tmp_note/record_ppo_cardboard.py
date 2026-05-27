@@ -12,7 +12,7 @@ from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
-import tasks.dual.task_dual_cardboard_cabinet  # noqa: F401
+import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 from ppo_dual_xarm7 import Agent
 
 

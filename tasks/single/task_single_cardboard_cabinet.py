@@ -1,4 +1,5 @@
 from dataclasses import replace
+import math
 from typing import Any, Dict, Optional
 
 import sapien
@@ -29,17 +30,21 @@ from scenebuilders.xarm7_table_scene_builder import (
 )
 
 
-@register_env("MyDualCardboardCabinet-v1", max_episode_steps=200)
+@register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
 class MyDualCardboardCabinetEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7"]
     agent: Xarm7
 
     OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
-    CABINET_SPEC = replace(OUTER_CARDBOARD_BASE_SPEC, color_hex="#4C78A8")
+    CABINET_SPEC = replace(
+        OUTER_CARDBOARD_BASE_SPEC,
+        color_hex="#4C78A8",
+        density=2500.0,
+    )
     INNER_BOX_SPEC = replace(
         make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC),
         wall_thickness=0.002,
-        density=6000.0,
+        density=OUTER_CARDBOARD_BASE_SPEC.density,
         static_friction=0.2,
         dynamic_friction=0.1,
     )
@@ -47,11 +52,39 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     BOX_X_OFFSET_FROM_BASE = 0.30
     INSERT_TARGET_RADIUS = 0.008
     INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
-    INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.00925)
+    INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.00525)
     TCP_TO_TARGET_REWARD_SCALE = 5.0
+    FINE_TCP_TO_TARGET_REWARD_SCALE = 30.0
+    OPEN_STARTED_DISTANCE = 0.005
+    INNER_BOX_OPEN_GOAL_DISTANCE = 0.12
+    OUTER_BOX_STABLE_DISTANCE = 0.02
+    OUTER_BOX_SHIFT_PENALTY_SCALE = 0.05 / math.atanh(0.95)
     GRIPPER_OPENING_TARGET_QPOS = 0.44
+    GRIPPER_CLOSING_TARGET_QPOS = 0.62
+    GRIPPER_CLOSE_DISTANCE = 0.04
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
     GRIPPER_OPENING_REWARD_SCALE = 8.0
+    RETURN_TARGET_QPOS_SUCCESS_SCORE = 0.80
+    RETURN_ARM_REWARD_WEIGHT = 0.75
+    RETURN_GRIPPER_REWARD_WEIGHT = 0.25
+    RETURN_TARGET_QPOS = torch.tensor(
+        [
+            -0.00001,
+            -0.5236051678657532,
+            0.00,
+            0.7853981852531433,
+            -0.00001,
+            1.30899178981781,
+            -0.000001,
+            0.7310,
+            0.7310,
+            0.7310,
+            0.7310,
+            0.7310,
+            0.7310,
+        ],
+        dtype=torch.float32,
+    )
 
     def __init__(
         self,
@@ -120,6 +153,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self.table_scene.initialize(env_idx)
             if len(env_idx) == 0:
                 return
+            if not hasattr(self, "drawer_open_success_reached"):
+                self.drawer_open_success_reached = torch.zeros(
+                    self.num_envs,
+                    dtype=torch.bool,
+                    device=self.device,
+                )
+            self.drawer_open_success_reached[env_idx] = False
 
             positions = self._initial_box_world_position().unsqueeze(0).repeat(
                 len(env_idx), 1
@@ -224,9 +264,49 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )
 
     def _tcp_to_target_reward(self) -> torch.Tensor:
-        return 1 - torch.tanh(
+        coarse_reward = 1 - torch.tanh(
             self.TCP_TO_TARGET_REWARD_SCALE * self._tcp_to_target_distance()
-        )  # min = 0.0, max = 1.0
+        )
+        fine_reward = 1 - torch.tanh(
+            self.FINE_TCP_TO_TARGET_REWARD_SCALE * self._tcp_to_target_distance()
+        )
+        return 0.5 * (coarse_reward + fine_reward)  # min = 0.0, max = 1.0
+
+    def _inner_box_center_distance(self) -> torch.Tensor:
+        return torch.linalg.norm(
+            self.cardboard_inner_box.pose.p - self.cardboard_cabinet.pose.p,
+            dim=-1,
+        )
+
+    def _inner_box_open_amount(self) -> torch.Tensor:
+        closed_distance = abs(float(self.INNER_BOX_WORLD_Y_OFFSET))
+        return torch.clamp(
+            self._inner_box_center_distance() - closed_distance,
+            min=0.0,
+        )
+
+    def _inner_box_open_fraction(self) -> torch.Tensor:
+        return torch.clamp(
+            self._inner_box_open_amount() / self.INNER_BOX_OPEN_GOAL_DISTANCE,
+            min=0.0,
+            max=1.0,
+        )
+
+    def _inner_box_open_enough(self) -> torch.Tensor:
+        return self._inner_box_open_amount() >= self.INNER_BOX_OPEN_GOAL_DISTANCE
+
+    def _outer_box_shift(self) -> torch.Tensor:
+        current_pos = self.cardboard_cabinet.pose.p
+        if current_pos.ndim == 1:
+            current_pos = current_pos.unsqueeze(0)
+        initial_pos = self._initial_box_world_position().reshape(1, 3)
+        return torch.linalg.norm(current_pos - initial_pos, dim=-1)
+
+    def _outer_box_shift_penalty(self) -> torch.Tensor:
+        return torch.tanh(self._outer_box_shift() / self.OUTER_BOX_SHIFT_PENALTY_SCALE)
+
+    def _outer_box_stable_enough(self) -> torch.Tensor:
+        return self._outer_box_shift() <= self.OUTER_BOX_STABLE_DISTANCE
 
     def _gripper_drive_qpos(self) -> torch.Tensor:
         qpos = self.agent.robot.get_qpos()
@@ -234,13 +314,39 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             qpos = qpos.unsqueeze(0)
         return qpos[:, 7]
 
+    def _gripper_target_qpos(self) -> torch.Tensor:
+        close_gripper = (self._tcp_to_target_distance() <= self.GRIPPER_CLOSE_DISTANCE) | (
+            self._inner_box_open_amount() >= self.OPEN_STARTED_DISTANCE
+        )
+        return torch.where(
+            close_gripper,
+            torch.full_like(self._gripper_drive_qpos(), self.GRIPPER_CLOSING_TARGET_QPOS),
+            torch.full_like(self._gripper_drive_qpos(), self.GRIPPER_OPENING_TARGET_QPOS),
+        )
+
     def _gripper_opening_reward(self) -> torch.Tensor:
         gripper_error = torch.abs(
-            self._gripper_drive_qpos() - self.GRIPPER_OPENING_TARGET_QPOS
+            self._gripper_drive_qpos() - self._gripper_target_qpos()
         )
         return 1 - torch.tanh(
             self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
         )  # min = 0.0, max = 1.0
+
+    def _return_to_target_qpos_reward(self) -> torch.Tensor:
+        arm_score, gripper_score = self._return_to_target_qpos_component_rewards()
+        return (
+            self.RETURN_ARM_REWARD_WEIGHT * arm_score
+            + self.RETURN_GRIPPER_REWARD_WEIGHT * gripper_score
+        )
+
+    def _return_to_target_qpos_component_rewards(self):
+        qpos = self.agent.robot.get_qpos()
+        if qpos.ndim == 1:
+            qpos = qpos.unsqueeze(0)
+        target = self.RETURN_TARGET_QPOS.to(device=self.device, dtype=torch.float32)
+        assert qpos.shape[-1] == target.numel(), (qpos.shape[-1], target.numel())
+        joint_scores = 1.0 - torch.tanh(torch.abs(qpos - target))
+        return joint_scores[:, :7].mean(dim=-1), joint_scores[:, 7:].mean(dim=-1)
 
     def _sync_target_sites(self, env_idx: Optional[torch.Tensor] = None):
         target_pos = self._current_insert_target_world()
@@ -250,8 +356,46 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
     def evaluate(self):
         self._sync_target_sites()
+        open_enough = self._inner_box_open_enough()
+        outer_box_stable_enough = self._outer_box_stable_enough()
+        return_arm_reward, return_gripper_reward = (
+            self._return_to_target_qpos_component_rewards()
+        )
+        return_to_target_qpos_reward = self._return_to_target_qpos_reward()
+        return_pose_enough = (
+            return_to_target_qpos_reward >= self.RETURN_TARGET_QPOS_SUCCESS_SCORE
+        )
+        drawer_open_success = open_enough & outer_box_stable_enough
+        if not hasattr(self, "drawer_open_success_reached"):
+            self.drawer_open_success_reached = torch.zeros(
+                self.num_envs,
+                dtype=torch.bool,
+                device=self.device,
+            )
+        self.drawer_open_success_reached = (
+            self.drawer_open_success_reached | drawer_open_success
+        )
         return {
             "tcp_to_target_distance": self._tcp_to_target_distance(),
+            "inner_box_open_amount": self._inner_box_open_amount(),
+            "inner_box_open_fraction": self._inner_box_open_fraction(),
+            "open_enough": open_enough,
+            "outer_box_shift": self._outer_box_shift(),
+            "outer_box_shift_penalty": self._outer_box_shift_penalty(),
+            "outer_box_stable_enough": outer_box_stable_enough,
+            "gripper_drive_qpos": self._gripper_drive_qpos(),
+            "gripper_target_qpos": self._gripper_target_qpos(),
+            "return_to_target_qpos_reward": return_to_target_qpos_reward,
+            "return_arm_qpos_reward": return_arm_reward,
+            "return_gripper_qpos_reward": return_gripper_reward,
+            "return_pose_enough": return_pose_enough,
+            "drawer_open_success": drawer_open_success,
+            "drawer_open_success_reached": self.drawer_open_success_reached,
+            "success": (
+                self.drawer_open_success_reached
+                & outer_box_stable_enough
+                & return_pose_enough
+            ),
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
@@ -262,14 +406,52 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             position = position.unsqueeze(0)
             matrix = matrix.unsqueeze(0)
         rotation_6d = matrix[..., :, :2].reshape(position.shape[0], 6)
+        qpos = self.agent.robot.get_qpos()
+        if qpos.ndim == 1:
+            qpos = qpos.unsqueeze(0)
+        target_qpos = self.RETURN_TARGET_QPOS.to(
+            device=self.device,
+            dtype=torch.float32,
+        ).reshape(1, -1)
+        if not hasattr(self, "drawer_open_success_reached"):
+            self.drawer_open_success_reached = torch.zeros(
+                self.num_envs,
+                dtype=torch.bool,
+                device=self.device,
+            )
+        drawer_open_reached = self.drawer_open_success_reached.float().unsqueeze(-1)
         return {
             "inner_box_position": position,
             "inner_box_rotation_6d": rotation_6d,
+            "drawer_open_success_reached": drawer_open_reached,
+            "return_target_qpos_delta": drawer_open_reached * (target_qpos - qpos),
         }
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        reward = (
-            self._tcp_to_target_reward()
-            + self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
+        reaching_reward = self._tcp_to_target_reward()
+        open_amount = self._inner_box_open_amount()
+        outer_box_stability = 1.0 - self._outer_box_shift_penalty()
+        stable_open_fraction = self._inner_box_open_fraction() * outer_box_stability
+        open_reward = 2.0 * stable_open_fraction
+
+        open_started = open_amount >= self.OPEN_STARTED_DISTANCE
+        reaching_reward = torch.where(
+            open_started,
+            torch.full_like(reaching_reward, 2.0),
+            reaching_reward,
+        )  # min = 0.0, max = 2.0
+        open_reward = torch.where(
+            info["open_enough"],
+            torch.full_like(open_reward, 3.0),
+            open_reward,
+        )  # min = 0.0, max = 3.0
+
+        gripper_reward = (
+            self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
         )
-        return reward / (1 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+        reward = reaching_reward + open_reward + gripper_reward
+        stage_return_mask = info["drawer_open_success_reached"]
+        stage_return_reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
+        reward = torch.where(stage_return_mask, stage_return_reward, reward)
+        reward = outer_box_stability * reward
+        return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)

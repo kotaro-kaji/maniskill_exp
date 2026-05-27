@@ -23,7 +23,7 @@ from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
 from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwitchEnv
 from tasks.dual.task_dual_box_rotation_regrasp import MyDualBoxRotationRegraspEnv
 from tasks.dual.task_dual_simple import MyDualSimpleEnv
-import tasks.dual.task_dual_cardboard_cabinet  # registers cardboard cabinet envs
+import tasks.single.task_single_cardboard_cabinet  # registers cardboard cabinet envs
 import tasks.single_arm.pick_cube  # registers MyXarm7PickCube-v1
 import tasks.single_arm.push_cube  # registers MyXarm7PushCube-v1
 from robotagents.xarm_ball_ee import Xarm7BallEE

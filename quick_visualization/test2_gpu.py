@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import task_pushcube_beatiful  # noqa: F401
 import tasks.dual.task_dual_box_rotation  # noqa: F401
-import tasks.dual.task_dual_cardboard_cabinet  # noqa: F401
+import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 import tasks.dual.task_dual_simple  # noqa: F401
 import tasks.single_arm.pick_cube  # noqa: F401
 import tasks.single_arm.push_cube  # noqa: F401

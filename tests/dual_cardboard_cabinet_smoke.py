@@ -6,7 +6,7 @@ import mani_skill.envs  # noqa: F401
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tasks.dual.task_dual_cardboard_cabinet import (  # noqa: F401
+from tasks.single.task_single_cardboard_cabinet import (  # noqa: F401
     MyDualCardboardCabinetEnv,
 )
 

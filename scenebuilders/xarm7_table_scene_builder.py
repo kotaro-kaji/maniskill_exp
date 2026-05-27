@@ -82,8 +82,8 @@ class Xarm7TableSceneBuilder(TableSceneBuilder):
         builder = self.scene.create_actor_builder()
         table_half_size = (TABLE_LENGTH_X / 2.0, TABLE_WIDTH_Y / 2.0, TABLE_HEIGHT / 2.0)
         table_physical_material = sapien.physx.PhysxMaterial(
-            static_friction=0.85,
-            dynamic_friction=0.75,
+            static_friction=1.2,
+            dynamic_friction=1.0,
             restitution=0.1,
         )
         builder.add_box_collision(

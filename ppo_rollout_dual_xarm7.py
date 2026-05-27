@@ -22,7 +22,7 @@ from tasks.dual.task_dual_box_rotation import (  # noqa: F401
     MyDualBoxRotationEnv,
     MyDualBoxRotationAblatedEnv,
 )
-from tasks.dual.task_dual_cardboard_cabinet import (  # noqa: F401
+from tasks.single.task_single_cardboard_cabinet import (  # noqa: F401
     MyDualCardboardCabinetEnv,
 )
 from tasks.dual.task_dual_simple import MyDualSimpleEnv  # noqa: F401

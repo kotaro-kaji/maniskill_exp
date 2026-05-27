@@ -14,7 +14,7 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from record_ppo_cardboard import camera_config
 from sac import Actor
 
-import tasks.dual.task_dual_cardboard_cabinet  # noqa: F401
+import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 
 
 def main():

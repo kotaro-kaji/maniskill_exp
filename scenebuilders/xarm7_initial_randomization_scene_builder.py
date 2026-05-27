@@ -12,6 +12,23 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
     The remaining mimic joints stay aligned with the drive joint.
     """
 
+    #これがRMBでの初期姿勢です。以下のコードでは、初期姿勢は強化学習しやすい初期姿勢になっています。このコメントアウトされた姿勢は参考のために残し続けてください。
+#       [
+#       -0.00001,
+#       -0.5236051678657532,
+#       0.00,
+#       0.7853981852531433,
+#       -0.00001,
+#       1.30899178981781,
+#       -0.000001,
+#       0.7310,
+#       0.7310,
+#       0.7310,
+#       0.7310,
+#       0.7310,
+#       0.7310,
+#   ]
+
     # Desired joint configuration (arm joints 1-7, gripper drive + mimics)
     _RESET_STATE_OF_ROBOMANIPBASELINES = torch.tensor(
         [

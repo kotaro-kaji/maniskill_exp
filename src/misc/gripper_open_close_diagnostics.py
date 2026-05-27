@@ -175,7 +175,7 @@ def main():
 
     import gymnasium as gym
     import mani_skill.envs  # noqa: F401
-    import tasks.dual.task_dual_cardboard_cabinet  # noqa: F401
+    import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 
     run_name = args.name or time.strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.out_dir) / run_name
