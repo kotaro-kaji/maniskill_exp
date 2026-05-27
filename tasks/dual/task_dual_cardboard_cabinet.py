@@ -1,10 +1,9 @@
 from dataclasses import replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import sapien
 import torch
 
-from mani_skill.agents.multi_agent import MultiAgent
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -23,7 +22,6 @@ from scenebuilders.cardboard_cabinet_builder import (
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
     LEFT_ARM_Y_OFFSET,
-    RIGHT_ARM_Y_OFFSET,
 )
 from scenebuilders.xarm7_table_scene_builder import (
     PEDESTAL_HEIGHT,
@@ -33,8 +31,8 @@ from scenebuilders.xarm7_table_scene_builder import (
 
 @register_env("MyDualCardboardCabinet-v1", max_episode_steps=200)
 class MyDualCardboardCabinetEnv(BaseEnv):
-    SUPPORTED_ROBOTS = [("my_xarm7", "my_xarm7")]
-    agent: MultiAgent[Tuple[Xarm7, Xarm7]]
+    SUPPORTED_ROBOTS = ["my_xarm7"]
+    agent: Xarm7
 
     OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
     CABINET_SPEC = replace(OUTER_CARDBOARD_BASE_SPEC, color_hex="#4C78A8")
@@ -58,11 +56,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def __init__(
         self,
         *args,
-        robot_uids=("my_xarm7", "my_xarm7"),
+        robot_uids="my_xarm7",
         robot_init_qpos_noise=0.02,
         robot_init_noise_scale: float = 1.0,
         **kwargs,
     ):
+        assert robot_uids == "my_xarm7"
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
@@ -70,7 +69,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _load_agent(self, options: Dict[str, Any]):
         super()._load_agent(
             options,
-            [sapien.Pose(p=[0, -1, 0]), sapien.Pose(p=[0, 1, 0])],
+            sapien.Pose(p=[ROBOT_BASE_X_OFFSET, LEFT_ARM_Y_OFFSET, PEDESTAL_HEIGHT]),
         )
 
     @property
@@ -89,7 +88,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _load_scene(self, options: Dict[str, Any]):
         self.table_scene = DualXarm7TableSceneBuilder(env=self)
         self.table_scene.build()
-        self.bimanual_center_pose = self._compute_bimanual_center_pose()
+        self.workspace_center_pose = self._compute_workspace_center_pose()
 
         self.cardboard_cabinet = build_cardboard_cabinet_actor(
             self.scene,
@@ -140,17 +139,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             )
             self._sync_target_sites(env_idx)
 
-    def _compute_bimanual_center_pose(self) -> sapien.Pose:
-        base_left = torch.tensor(
-            [ROBOT_BASE_X_OFFSET, LEFT_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
-            dtype=torch.float32,
-        )
-        base_right = torch.tensor(
-            [ROBOT_BASE_X_OFFSET, RIGHT_ARM_Y_OFFSET, PEDESTAL_HEIGHT],
-            dtype=torch.float32,
-        )
-        center = 0.5 * (base_right + base_left)
-        return sapien.Pose(p=center.tolist())
+    def _compute_workspace_center_pose(self) -> sapien.Pose:
+        return sapien.Pose(p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT])
 
     def _initial_box_world_position(self) -> torch.Tensor:
         local = torch.tensor(
@@ -163,7 +153,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             device=self.device,
         )
         center = torch.tensor(
-            self.bimanual_center_pose.p, dtype=torch.float32, device=self.device
+            self.workspace_center_pose.p, dtype=torch.float32, device=self.device
         )
         return local + center
 
@@ -222,7 +212,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return self._box_local_point_world(self._box_insert_target_local())
 
     def _tcp_position(self) -> torch.Tensor:
-        position = self.agent.agents[0].tcp.pose.p
+        position = self.agent.tcp.pose.p
         if position.ndim == 1:
             position = position.unsqueeze(0)
         return position
@@ -239,7 +229,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )  # min = 0.0, max = 1.0
 
     def _gripper_drive_qpos(self) -> torch.Tensor:
-        qpos = self.agent.agents[0].robot.get_qpos()
+        qpos = self.agent.robot.get_qpos()
         if qpos.ndim == 1:
             qpos = qpos.unsqueeze(0)
         return qpos[:, 7]
