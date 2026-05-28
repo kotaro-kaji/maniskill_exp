@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 import sapien
 import torch
 
+from mani_skill.agents.utils import get_active_joint_indices
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -104,6 +105,19 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             options,
             sapien.Pose(p=[ROBOT_BASE_X_OFFSET, LEFT_ARM_Y_OFFSET, PEDESTAL_HEIGHT]),
         )
+        self._configure_observed_joint_indices()
+
+    def _configure_observed_joint_indices(self):
+        arm_joint_names = list(self.agent.arm_joint_names)
+        gripper_drive_joint = self.agent.gripper_joint_names[0]
+        self._obs_qpos_joint_indices = get_active_joint_indices(
+            self.agent.robot,
+            arm_joint_names + [gripper_drive_joint],
+        ).long()
+        self._obs_qvel_joint_indices = get_active_joint_indices(
+            self.agent.robot,
+            arm_joint_names,
+        ).long()
 
     @property
     def _default_human_render_camera_configs(self):
@@ -406,13 +420,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             position = position.unsqueeze(0)
             matrix = matrix.unsqueeze(0)
         rotation_6d = matrix[..., :, :2].reshape(position.shape[0], 6)
-        qpos = self.agent.robot.get_qpos()
-        if qpos.ndim == 1:
-            qpos = qpos.unsqueeze(0)
-        target_qpos = self.RETURN_TARGET_QPOS.to(
-            device=self.device,
-            dtype=torch.float32,
-        ).reshape(1, -1)
         if not hasattr(self, "drawer_open_success_reached"):
             self.drawer_open_success_reached = torch.zeros(
                 self.num_envs,
@@ -424,8 +431,22 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "inner_box_position": position,
             "inner_box_rotation_6d": rotation_6d,
             "drawer_open_success_reached": drawer_open_reached,
-            "return_target_qpos_delta": drawer_open_reached * (target_qpos - qpos),
         }
+
+    def _get_obs_agent(self):
+        obs = super()._get_obs_agent()
+        qpos_indices = self._obs_qpos_joint_indices.to(
+            device=obs["qpos"].device,
+            dtype=torch.long,
+        )
+        qvel_indices = self._obs_qvel_joint_indices.to(
+            device=obs["qvel"].device,
+            dtype=torch.long,
+        )
+        dim = obs["qpos"].dim() - 1
+        obs["qpos"] = obs["qpos"].index_select(dim, qpos_indices)
+        obs["qvel"] = obs["qvel"].index_select(dim, qvel_indices)
+        return obs
 
     def compute_normalized_dense_reward(self, obs, action, info):
         reaching_reward = self._tcp_to_target_reward()
