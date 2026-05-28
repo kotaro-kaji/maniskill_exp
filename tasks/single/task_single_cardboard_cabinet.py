@@ -18,7 +18,9 @@ from scenebuilders.cardboard_cabinet_builder import (
     DEFAULT_CARDBOARD_CABINET_SPEC,
     build_cardboard_cabinet_actor,
     build_cardboard_inner_box_actor,
+    cardboard_cabinet_panel_specs,
     cardboard_cabinet_quaternion,
+    cardboard_inner_box_panel_specs,
     make_cardboard_inner_box_spec,
 )
 from scenebuilders.dual_xarm7_table_scene_builder import (
@@ -250,8 +252,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _box_insert_target_local(self) -> torch.Tensor:
         return self._insert_side_origin_box_local() + self._insert_target_side_local()
 
-    def _box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
-        pose = self.cardboard_inner_box.pose
+    def _actor_local_point_world(self, actor, local_point: torch.Tensor) -> torch.Tensor:
+        pose = actor.pose
         matrix = pose.to_transformation_matrix()[..., :3, :3]
         position = pose.p
         if position.ndim == 1:
@@ -261,6 +263,23 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return torch.matmul(local_point.unsqueeze(1), matrix.transpose(-1, -2)).squeeze(
             1
         ) + position
+
+    def _actor_rotation_6d(self, actor) -> torch.Tensor:
+        matrix = actor.pose.to_transformation_matrix()[..., :3, :3]
+        if matrix.ndim == 2:
+            matrix = matrix.unsqueeze(0)
+        return matrix[..., :, :2].reshape(matrix.shape[0], 6)
+
+    def _box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
+        return self._actor_local_point_world(self.cardboard_inner_box, local_point)
+
+    def _inner_marker_panel_local_position(self) -> torch.Tensor:
+        panel_pose, _ = cardboard_inner_box_panel_specs(self.INNER_BOX_SPEC)[6]
+        return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
+
+    def _outer_marker_panel_local_position(self) -> torch.Tensor:
+        panel_pose, _ = cardboard_cabinet_panel_specs(self.CABINET_SPEC)[1]
+        return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
 
     def _current_insert_target_world(self) -> torch.Tensor:
         return self._box_local_point_world(self._box_insert_target_local())
@@ -413,24 +432,23 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
-        pose = self.cardboard_inner_box.pose
-        matrix = pose.to_transformation_matrix()[..., :3, :3]
-        position = pose.p
-        if position.ndim == 1:
-            position = position.unsqueeze(0)
-            matrix = matrix.unsqueeze(0)
-        rotation_6d = matrix[..., :, :2].reshape(position.shape[0], 6)
-        if not hasattr(self, "drawer_open_success_reached"):
-            self.drawer_open_success_reached = torch.zeros(
-                self.num_envs,
-                dtype=torch.bool,
-                device=self.device,
-            )
-        drawer_open_reached = self.drawer_open_success_reached.float().unsqueeze(-1)
+        inner_marker_panel_position = self._actor_local_point_world(
+            self.cardboard_inner_box,
+            self._inner_marker_panel_local_position(),
+        )
+        outer_marker_panel_position = self._actor_local_point_world(
+            self.cardboard_cabinet,
+            self._outer_marker_panel_local_position(),
+        )
         return {
-            "inner_box_position": position,
-            "inner_box_rotation_6d": rotation_6d,
-            "drawer_open_success_reached": drawer_open_reached,
+            "inner_marker_panel_position": inner_marker_panel_position,
+            "inner_marker_panel_rotation_6d": self._actor_rotation_6d(
+                self.cardboard_inner_box
+            ),
+            "outer_marker_panel_position": outer_marker_panel_position,
+            "outer_marker_panel_rotation_6d": self._actor_rotation_6d(
+                self.cardboard_cabinet
+            ),
         }
 
     def _get_obs_agent(self):
