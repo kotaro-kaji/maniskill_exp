@@ -21,7 +21,9 @@ from scenebuilders.cardboard_cabinet_builder import (
     cardboard_cabinet_panel_specs,
     cardboard_cabinet_quaternion,
     cardboard_inner_box_panel_specs,
+    INNER_MARKER_PANEL_INDEX,
     make_cardboard_inner_box_spec,
+    OUTER_MARKER_PANEL_INDEX,
 )
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
@@ -158,6 +160,30 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             add_collision=False,
             initial_pose=sapien.Pose(),
         )
+        self.inner_marker_panel_frame_site = self._build_marker_frame_site(
+            "inner_marker_panel_frame_site"
+        )
+        self.outer_marker_panel_frame_site = self._build_marker_frame_site(
+            "outer_marker_panel_frame_site"
+        )
+
+    def _build_marker_frame_site(self, name: str):
+        builder = self.scene.create_actor_builder()
+        axis_length = 0.035
+        axis_half_width = 0.0015
+        axis_specs = [
+            ([axis_length / 2, 0.0, 0.0], [axis_length / 2, axis_half_width, axis_half_width], (1.0, 0.0, 0.0, 1.0)),
+            ([0.0, axis_length / 2, 0.0], [axis_half_width, axis_length / 2, axis_half_width], (0.0, 1.0, 0.0, 1.0)),
+            ([0.0, 0.0, axis_length / 2], [axis_half_width, axis_half_width, axis_length / 2], (0.0, 0.2, 1.0, 1.0)),
+        ]
+        for local_position, half_size, color in axis_specs:
+            builder.add_box_visual(
+                pose=sapien.Pose(p=local_position),
+                half_size=half_size,
+                material=sapien.render.RenderMaterial(base_color=color),
+            )
+        builder.initial_pose = sapien.Pose()
+        return builder.build_kinematic(name=name)
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -194,6 +220,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 )
             )
             self._sync_target_sites(env_idx)
+            self._sync_marker_frame_sites(env_idx)
 
     def _compute_workspace_center_pose(self) -> sapien.Pose:
         return sapien.Pose(p=[ROBOT_BASE_X_OFFSET, 0.0, PEDESTAL_HEIGHT])
@@ -274,12 +301,23 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return self._actor_local_point_world(self.cardboard_inner_box, local_point)
 
     def _inner_marker_panel_local_position(self) -> torch.Tensor:
-        panel_pose, _ = cardboard_inner_box_panel_specs(self.INNER_BOX_SPEC)[6]
+        panel_pose, _ = cardboard_inner_box_panel_specs(self.INNER_BOX_SPEC)[
+            INNER_MARKER_PANEL_INDEX
+        ]
         return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
 
     def _outer_marker_panel_local_position(self) -> torch.Tensor:
-        panel_pose, _ = cardboard_cabinet_panel_specs(self.CABINET_SPEC)[1]
+        panel_pose, _ = cardboard_cabinet_panel_specs(self.CABINET_SPEC)[
+            OUTER_MARKER_PANEL_INDEX
+        ]
         return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
+
+    def _marker_panel_world_pose(self, actor, local_position: torch.Tensor):
+        position = self._actor_local_point_world(actor, local_position)
+        quat = actor.pose.q
+        if quat.ndim == 1:
+            quat = quat.unsqueeze(0)
+        return Pose.create_from_pq(p=position, q=quat)
 
     def _current_insert_target_world(self) -> torch.Tensor:
         return self._box_local_point_world(self._box_insert_target_local())
@@ -387,8 +425,30 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             target_pos = target_pos[env_idx]
         self.insert_target_site.set_pose(Pose.create_from_pq(p=target_pos))
 
+    def _sync_marker_frame_sites(self, env_idx: Optional[torch.Tensor] = None):
+        inner_pose = self._marker_panel_world_pose(
+            self.cardboard_inner_box,
+            self._inner_marker_panel_local_position(),
+        )
+        outer_pose = self._marker_panel_world_pose(
+            self.cardboard_cabinet,
+            self._outer_marker_panel_local_position(),
+        )
+        if env_idx is not None:
+            inner_pose = Pose.create_from_pq(
+                p=inner_pose.p[env_idx],
+                q=inner_pose.q[env_idx],
+            )
+            outer_pose = Pose.create_from_pq(
+                p=outer_pose.p[env_idx],
+                q=outer_pose.q[env_idx],
+            )
+        self.inner_marker_panel_frame_site.set_pose(inner_pose)
+        self.outer_marker_panel_frame_site.set_pose(outer_pose)
+
     def evaluate(self):
         self._sync_target_sites()
+        self._sync_marker_frame_sites()
         open_enough = self._inner_box_open_enough()
         outer_box_stable_enough = self._outer_box_stable_enough()
         return_arm_reward, return_gripper_reward = (
