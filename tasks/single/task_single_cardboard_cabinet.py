@@ -455,3 +455,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         reward = torch.where(stage_return_mask, stage_return_reward, reward)
         reward = outer_box_stability * reward
         return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+
+
+@register_env("MyDualCardboardCabinetNoGripperReward-v1", max_episode_steps=100)
+class MyDualCardboardCabinetNoGripperRewardEnv(MyDualCardboardCabinetEnv):
+    GRIPPER_OPENING_REWARD_WEIGHT = 0.0
