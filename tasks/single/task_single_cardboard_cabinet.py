@@ -286,7 +286,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         matrix = actor.pose.to_transformation_matrix()[..., :3, :3]
         if matrix.ndim == 2:
             matrix = matrix.unsqueeze(0)
-        return matrix[..., :, :2].reshape(matrix.shape[0], 6)
+        return torch.cat([matrix[..., :, 0], matrix[..., :, 1]], dim=-1)
 
     def _box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
         return self._actor_local_point_world(self.cardboard_inner_box, local_point)
