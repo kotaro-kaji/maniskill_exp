@@ -526,7 +526,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )
         reward = reaching_reward + open_reward + gripper_reward
         stage_return_mask = info["drawer_open_success_reached"]
-        stage_return_reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
+        stage_return_reward = 4.0 + 0.2 * self._return_to_target_qpos_reward()
         reward = torch.where(stage_return_mask, stage_return_reward, reward)
         reward = outer_box_stability * reward
         return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)

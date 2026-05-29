@@ -39,6 +39,14 @@ uv run python -c 'import runpy, sys; import tasks.single.task_single_cardboard_c
     --update-epochs 8 --num-minibatches 32 \
     --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
 
+# checkpoint policy rollout: state と action の時系列を rollout_dual_log.csv に保存
+uv run python ppo_rollout_dual_xarm7.py \
+    --checkpoint runs/cardboard_drawer_soft_pd_small_return_jump_ppo_seed1/ckpt_241.pt \
+    --env-id MyDualCardboardCabinet-v1 \
+    --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \
+    --num-eval-envs 1 --num-eval-steps 100 \
+    --no-capture-video --sim-backend cpu
+
 # cardboard cabinet drawer SAC: joint delta controller での比較
 uv run python sac.py \
     --env-id MyDualCardboardCabinet-v1 \
