@@ -18,6 +18,7 @@ python quick_visualization/test2_gpu.py --env-id "MyXarm7PickCube-v1"
 
 # cabinet を SpaceMouse で teleop
 uv run python src/bin/teleop_spacemouse_dual_xarm7.py --env-id MyDualCardboardCabinet-v1
+uv run python src/bin/teleop_keyboard_dual_xarm7.py --env-id MyDualCardboardCabinet-v1
 
 # cardboard cabinet drawer PPO: スクラッチから箱を12cm開けて戻る現行本命
 uv run python ppo_dual_xarm7.py \
