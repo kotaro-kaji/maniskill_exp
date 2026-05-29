@@ -29,6 +29,16 @@ uv run python ppo_dual_xarm7.py \
     --update-epochs 8 --num-minibatches 32 \
     --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
 
+# cardboard cabinet just-return PPO: tasks/single/task_single_cardboard_cabinet_just_return.py を明示的に先に登録して学習
+uv run python -c 'import runpy, sys; import tasks.single.task_single_cardboard_cabinet_just_return; sys.argv = ["ppo_dual_xarm7.py"] + sys.argv[1:]; runpy.run_path("ppo_dual_xarm7.py", run_name="__main__")' \
+    --exp-name cardboard_just_return_armonly_nodelta_ppo_seed1 \
+    --env-id MyDualCardboardCabinet-v1 \
+    --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \
+    --num-envs 1024 --num-steps 100 --num-eval-steps 100 \
+    --num-eval-envs 64 --num-eval-video-envs 4 \
+    --update-epochs 8 --num-minibatches 32 \
+    --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
+
 # cardboard cabinet drawer SAC: joint delta controller での比較
 uv run python sac.py \
     --env-id MyDualCardboardCabinet-v1 \
