@@ -61,7 +61,6 @@ def main():
     max_outer_box_shift_penalty = torch.zeros((args.num_envs,), device=device)
     max_return_to_target_qpos_reward = torch.zeros((args.num_envs,), device=device)
     max_return_arm_qpos_reward = torch.zeros((args.num_envs,), device=device)
-    max_return_gripper_qpos_reward = torch.zeros((args.num_envs,), device=device)
     drawer_open_once = torch.zeros((args.num_envs,), dtype=torch.bool, device=device)
     drawer_open_reached_once = torch.zeros((args.num_envs,), dtype=torch.bool, device=device)
     return_pose_once = torch.zeros((args.num_envs,), dtype=torch.bool, device=device)
@@ -93,10 +92,6 @@ def main():
             max_return_arm_qpos_reward,
             info["return_arm_qpos_reward"],
         )
-        max_return_gripper_qpos_reward = torch.maximum(
-            max_return_gripper_qpos_reward,
-            info["return_gripper_qpos_reward"],
-        )
         drawer_open_once = drawer_open_once | info["drawer_open_success"].bool()
         drawer_open_reached_once = (
             drawer_open_reached_once | info["drawer_open_success_reached"].bool()
@@ -111,7 +106,6 @@ def main():
     max_outer_box_shift_penalty_cpu = max_outer_box_shift_penalty.detach().cpu()
     max_return_to_target_qpos_reward_cpu = max_return_to_target_qpos_reward.detach().cpu()
     max_return_arm_qpos_reward_cpu = max_return_arm_qpos_reward.detach().cpu()
-    max_return_gripper_qpos_reward_cpu = max_return_gripper_qpos_reward.detach().cpu()
     drawer_open_once_cpu = drawer_open_once.detach().cpu()
     drawer_open_reached_once_cpu = drawer_open_reached_once.detach().cpu()
     return_pose_once_cpu = return_pose_once.detach().cpu()
@@ -159,10 +153,6 @@ def main():
         "mean_max_return_arm_qpos_reward "
         f"{max_return_arm_qpos_reward_cpu.mean().item():.6f}"
     )
-    print(
-        "mean_max_return_gripper_qpos_reward "
-        f"{max_return_gripper_qpos_reward_cpu.mean().item():.6f}"
-    )
     print(f"drawer_open_once_rate {drawer_open_once_cpu.float().mean().item():.6f}")
     print(
         "drawer_open_reached_once_rate "
@@ -189,7 +179,6 @@ def main():
                     "max_outer_box_shift_penalty",
                     "max_return_to_target_qpos_reward",
                     "max_return_arm_qpos_reward",
-                    "max_return_gripper_qpos_reward",
                     "drawer_open_once",
                     "drawer_open_reached_once",
                     "return_pose_once",
@@ -207,7 +196,6 @@ def main():
                         max_outer_box_shift_penalty_cpu[env_id].item(),
                         max_return_to_target_qpos_reward_cpu[env_id].item(),
                         max_return_arm_qpos_reward_cpu[env_id].item(),
-                        max_return_gripper_qpos_reward_cpu[env_id].item(),
                         bool(drawer_open_once_cpu[env_id]),
                         bool(drawer_open_reached_once_cpu[env_id]),
                         bool(return_pose_once_cpu[env_id]),

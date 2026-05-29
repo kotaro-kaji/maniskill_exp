@@ -504,32 +504,31 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
     def compute_normalized_dense_reward(self, obs, action, info):
         reaching_reward = self._tcp_to_target_reward()
-        open_amount = self._inner_box_open_amount()
-        outer_box_stability = 1.0 - self._outer_box_shift_penalty()
-        stable_open_fraction = self._inner_box_open_fraction() * outer_box_stability
-        open_reward = 2.0 * stable_open_fraction
+        # open_amount = self._inner_box_open_amount()
+        # outer_box_stability = 1.0 - self._outer_box_shift_penalty()
+        # stable_open_fraction = self._inner_box_open_fraction() * outer_box_stability
+        # open_reward = 2.0 * stable_open_fraction
 
-        open_started = open_amount >= self.OPEN_STARTED_DISTANCE
-        reaching_reward = torch.where(
-            open_started,
-            torch.full_like(reaching_reward, 2.0),
-            reaching_reward,
-        )  # min = 0.0, max = 2.0
-        open_reward = torch.where(
-            info["open_enough"],
-            torch.full_like(open_reward, 3.0),
-            open_reward,
-        )  # min = 0.0, max = 3.0
+        # open_started = open_amount >= self.OPEN_STARTED_DISTANCE
+        # reaching_reward = torch.where(
+        #     open_started,
+        #     torch.full_like(reaching_reward, 2.0),
+        #     reaching_reward,
+        # )  # min = 0.0, max = 2.0
+        # open_reward = torch.where(
+        #     info["open_enough"],
+        #     torch.full_like(open_reward, 3.0),
+        #     open_reward,
+        # )  # min = 0.0, max = 3.0
 
-        gripper_reward = (
-            self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
-        )
-        reward = reaching_reward + open_reward + gripper_reward
-        stage_return_mask = info["drawer_open_success_reached"]
-        stage_return_reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
-        reward = torch.where(stage_return_mask, stage_return_reward, reward)
-        reward = outer_box_stability * reward
-        return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+        # gripper_reward = (
+        #     self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
+        # )
+        # reward = reaching_reward + open_reward + gripper_reward
+        # stage_return_mask = info["drawer_open_success_reached"]
+        
+        reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
+        return reward 
 
 
 @register_env("MyDualCardboardCabinetNoGripperReward-v1", max_episode_steps=100)
