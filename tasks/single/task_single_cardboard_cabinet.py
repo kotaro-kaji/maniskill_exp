@@ -476,12 +476,17 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self.cardboard_cabinet,
             self._outer_marker_panel_local_position(),
         )
+        center = torch.tensor(
+            self.workspace_center_pose.p,
+            dtype=inner_marker_panel_position.dtype,
+            device=inner_marker_panel_position.device,
+        )
         return {
-            "inner_marker_panel_position": inner_marker_panel_position,
+            "inner_marker_panel_position": inner_marker_panel_position - center,
             "inner_marker_panel_rotation_6d": self._actor_rotation_6d(
                 self.cardboard_inner_box
             ),
-            "outer_marker_panel_position": outer_marker_panel_position,
+            "outer_marker_panel_position": outer_marker_panel_position - center,
             "outer_marker_panel_rotation_6d": self._actor_rotation_6d(
                 self.cardboard_cabinet
             ),

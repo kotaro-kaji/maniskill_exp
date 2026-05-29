@@ -165,6 +165,7 @@ def run_rollout(args: RolloutArgs) -> None:
         fieldnames=[
             "step",
             "env_index",
+            "time",
             "observation",
             "action",
             "clipped_action",
@@ -186,6 +187,7 @@ def run_rollout(args: RolloutArgs) -> None:
     normalized_low = torch.from_numpy(eval_envs.single_action_space.low).to(device)
     normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
     action_dim = eval_envs.single_action_space.shape[0]
+    control_timestep = float(eval_envs.base_env.control_timestep)
 
     # parse gripper indices if provided
     gripper_indices: List[int] = []
@@ -224,11 +226,13 @@ def run_rollout(args: RolloutArgs) -> None:
 
         action_cpu = action.detach().cpu()
         clipped_cpu = clipped_action.detach().cpu()
+        time_sec = step * control_timestep
         for env_index in range(args.num_eval_envs):
             csv_writer.writerow(
                 {
                     "step": step,
                     "env_index": env_index,
+                    "time": time_sec,
                     "observation": json.dumps(obs_cpu[env_index].tolist()),
                     "action": json.dumps(action_cpu[env_index].tolist()),
                     "clipped_action": json.dumps(clipped_cpu[env_index].tolist()),
