@@ -69,7 +69,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     GRIPPER_CLOSE_DISTANCE = 0.04
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
     GRIPPER_OPENING_REWARD_SCALE = 8.0
-    RETURN_TARGET_QPOS_SUCCESS_SCORE = 0.80
     RETURN_ARM_REWARD_WEIGHT = 0.75
     RETURN_GRIPPER_REWARD_WEIGHT = 0.25
     RETURN_TARGET_QPOS = torch.tensor(
@@ -455,9 +454,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self._return_to_target_qpos_component_rewards()
         )
         return_to_target_qpos_reward = self._return_to_target_qpos_reward()
-        return_pose_enough = (
-            return_to_target_qpos_reward >= self.RETURN_TARGET_QPOS_SUCCESS_SCORE
-        )
         drawer_open_success = open_enough & outer_box_stable_enough
         if not hasattr(self, "drawer_open_success_reached"):
             self.drawer_open_success_reached = torch.zeros(
@@ -481,14 +477,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "return_to_target_qpos_reward": return_to_target_qpos_reward,
             "return_arm_qpos_reward": return_arm_reward,
             "return_gripper_qpos_reward": return_gripper_reward,
-            "return_pose_enough": return_pose_enough,
             "drawer_open_success": drawer_open_success,
             "drawer_open_success_reached": self.drawer_open_success_reached,
-            "success": (
-                self.drawer_open_success_reached
-                & outer_box_stable_enough
-                & return_pose_enough
-            ),
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
