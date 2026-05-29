@@ -30,7 +30,7 @@ uv run python ppo_dual_xarm7.py \
     --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
 
 # cardboard cabinet just-return PPO
-uv run python -c 'import runpy, sys; import tasks.single.task_single_cardboard_cabinet_just_return; sys.argv = ["ppo_dual_xarm7.py"] + sys.argv[1:]; runpy.run_path("ppo_dual_xarm7.py", run_name="__main__")' \
+uv run python ppo_dual_xarm7.py \
     --exp-name cardboard_just_return_unique_ppo_seed1 \
     --env-id MySingleCardboardCabinetJustReturn-v1 \
     --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \

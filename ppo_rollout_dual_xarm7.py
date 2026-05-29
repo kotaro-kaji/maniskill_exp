@@ -25,6 +25,9 @@ from tasks.dual.task_dual_box_rotation import (  # noqa: F401
 from tasks.single.task_single_cardboard_cabinet import (  # noqa: F401
     MyDualCardboardCabinetEnv,
 )
+from tasks.single.task_single_cardboard_cabinet_just_return import (  # noqa: F401
+    MyDualCardboardCabinetEnv as MySingleCardboardCabinetJustReturnEnv,
+)
 from tasks.dual.task_dual_simple import MyDualSimpleEnv  # noqa: F401
 
 from ppo_dual_xarm7 import Agent, InfoDirectoryLogger
