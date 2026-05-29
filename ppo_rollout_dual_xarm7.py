@@ -158,21 +158,6 @@ def run_rollout(args: RolloutArgs) -> None:
 
     eval_envs, info_output_root = _build_env(args)
 
-    csv_path = os.path.abspath(CSV_LOG_FILENAME)
-    csv_file = open(csv_path, "w", newline="")
-    csv_writer = csv.DictWriter(
-        csv_file,
-        fieldnames=[
-            "step",
-            "env_index",
-            "time",
-            "observation",
-            "action",
-            "clipped_action",
-        ],
-    )
-    csv_writer.writeheader()
-
     info_path = os.path.abspath(INFO_LOG_FILENAME)
     info_file = open(info_path, "w")
 
@@ -188,6 +173,20 @@ def run_rollout(args: RolloutArgs) -> None:
     normalized_high = torch.from_numpy(eval_envs.single_action_space.high).to(device)
     action_dim = eval_envs.single_action_space.shape[0]
     control_timestep = float(eval_envs.base_env.control_timestep)
+    obs_dim = int(obs.shape[-1])
+
+    csv_path = os.path.abspath(CSV_LOG_FILENAME)
+    csv_file = open(csv_path, "w", newline="")
+    csv_writer = csv.DictWriter(
+        csv_file,
+        fieldnames=(
+            ["step", "env_index", "time"]
+            + [f"observation_{idx:03d}" for idx in range(obs_dim)]
+            + [f"action_{idx:03d}" for idx in range(action_dim)]
+            + [f"clipped_action_{idx:03d}" for idx in range(action_dim)]
+        ),
+    )
+    csv_writer.writeheader()
 
     # parse gripper indices if provided
     gripper_indices: List[int] = []
@@ -228,15 +227,31 @@ def run_rollout(args: RolloutArgs) -> None:
         clipped_cpu = clipped_action.detach().cpu()
         time_sec = step * control_timestep
         for env_index in range(args.num_eval_envs):
-            csv_writer.writerow(
+            row = {
+                "step": step,
+                "env_index": env_index,
+                "time": time_sec,
+            }
+            row.update(
                 {
-                    "step": step,
-                    "env_index": env_index,
-                    "time": time_sec,
-                    "observation": json.dumps(obs_cpu[env_index].tolist()),
-                    "action": json.dumps(action_cpu[env_index].tolist()),
-                    "clipped_action": json.dumps(clipped_cpu[env_index].tolist()),
+                    f"observation_{idx:03d}": value
+                    for idx, value in enumerate(obs_cpu[env_index].tolist())
                 }
+            )
+            row.update(
+                {
+                    f"action_{idx:03d}": value
+                    for idx, value in enumerate(action_cpu[env_index].tolist())
+                }
+            )
+            row.update(
+                {
+                    f"clipped_action_{idx:03d}": value
+                    for idx, value in enumerate(clipped_cpu[env_index].tolist())
+                }
+            )
+            csv_writer.writerow(
+                row
             )
         obs, reward, terminations, truncations, info = eval_envs.step(clipped_action)
         obs = obs.to(device)
