@@ -35,7 +35,7 @@ from scenebuilders.xarm7_table_scene_builder import (
 )
 
 
-@register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
+@register_env("MySingleCardboardCabinetJustReturn-v1", max_episode_steps=100)
 class MyDualCardboardCabinetEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7"]
     agent: Xarm7
@@ -286,7 +286,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         matrix = actor.pose.to_transformation_matrix()[..., :3, :3]
         if matrix.ndim == 2:
             matrix = matrix.unsqueeze(0)
-        return matrix[..., :, :2].reshape(matrix.shape[0], 6)
+        return torch.cat([matrix[..., :, 0], matrix[..., :, 1]], dim=-1)
 
     def _box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
         return self._actor_local_point_world(self.cardboard_inner_box, local_point)
@@ -536,6 +536,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return reward 
 
 
-@register_env("MyDualCardboardCabinetNoGripperReward-v1", max_episode_steps=100)
+@register_env("MySingleCardboardCabinetJustReturnNoGripperReward-v1", max_episode_steps=100)
 class MyDualCardboardCabinetNoGripperRewardEnv(MyDualCardboardCabinetEnv):
     GRIPPER_OPENING_REWARD_WEIGHT = 0.0
