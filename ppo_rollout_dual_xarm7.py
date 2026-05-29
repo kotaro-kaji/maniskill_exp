@@ -193,7 +193,14 @@ def run_rollout(args: RolloutArgs) -> None:
         for token in args.gripper_joint_indices.split(","):
             token = token.strip()
             if token:
-                gripper_indices.append(int(token))
+                gripper_index = int(token)
+                if gripper_index < action_dim:
+                    gripper_indices.append(gripper_index)
+                else:
+                    print(
+                        f"Skip gripper joint index {gripper_index}: "
+                        f"action_dim is {action_dim}"
+                    )
     gripper_idx_tensor = (
         torch.tensor(gripper_indices, dtype=torch.long, device=device) if gripper_indices else None
     )

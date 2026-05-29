@@ -45,6 +45,7 @@ uv run python ppo_rollout_dual_xarm7.py \
     --env-id MyDualCardboardCabinet-v1 \
     --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \
     --num-eval-envs 1 --num-eval-steps 100 \
+    --gripper-joint-indices 7 \
     --no-capture-video --sim-backend cpu
 
 # cardboard cabinet drawer SAC: joint delta controller での比較
