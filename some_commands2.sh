@@ -39,6 +39,20 @@ uv run python -c 'import runpy, sys; import tasks.single.task_single_cardboard_c
     --update-epochs 8 --num-minibatches 32 \
     --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
 
+# cardboard cabinet just-return PPO rollout CSV:
+# ckpt_41 が出たら学習を止めて、このコマンドで state/action CSV を列展開形式で保存する。
+# RunPod では `uv run python` の代わりに `.venv/bin/python` を使う。
+mkdir -p tmp_note/rollout_csv
+rm -f rollout_dual_log.csv rollout_dual_info.jsonl
+uv run python -c 'import runpy, sys; import tasks.single.task_single_cardboard_cabinet_just_return; sys.argv = ["ppo_rollout_single_xarm7.py"] + sys.argv[1:]; runpy.run_path("ppo_rollout_single_xarm7.py", run_name="__main__")' \
+    --checkpoint runs/cardboard_just_return_armonly_nodelta_ppo_seed1/ckpt_41.pt \
+    --env-id MyDualCardboardCabinet-v1 \
+    --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0 \
+    --num-eval-envs 1 --num-eval-steps 100 \
+    --no-capture-video
+mv rollout_dual_log.csv tmp_note/rollout_csv/cardboard_just_return_armonly_nodelta_ckpt41_state_action.csv
+mv rollout_dual_info.jsonl tmp_note/rollout_csv/cardboard_just_return_armonly_nodelta_ckpt41_info.jsonl
+
 # single-arm checkpoint policy rollout: state と action の時系列を rollout_dual_log.csv に保存
 uv run python ppo_rollout_single_xarm7.py \
     --checkpoint runs/cardboard_drawer_soft_pd_small_return_jump_ppo_seed1/ckpt_241.pt \
