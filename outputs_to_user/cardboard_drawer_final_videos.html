@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cardboard Drawer Final Videos</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      color: #1f2933;
+      background: #f7f8fa;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 10px;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 34px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #d7dce2;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #eef1f4;
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    video {
+      width: 100%;
+      max-height: 620px;
+      background: #111827;
+      border: 1px solid #d7dce2;
+    }
+    .meta {
+      background: white;
+      border: 1px solid #d7dce2;
+      padding: 10px 12px;
+      margin: 8px 0 12px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Cardboard Drawer final checkpoint videos</h1>
+  <p>
+    3条件それぞれの最終学習結果として扱っている checkpoint の評価動画である。
+    ここでは exact final checkpoint から同じ録画スクリプトで作り直した俯瞰4 env分割動画を載せる。
+    commit / run / scalar は <code>cardboard_drawer_three_condition_eval.html</code> にまとめている。
+  </p>
+
+  <h2>current stage_return4x final</h2>
+  <div class="meta">
+    run: <code>current_stage_return4_30m_resume_from_ckpt66_ppo_seed1/final_ckpt.pt</code><br>
+    video: <code>videos/current_stage_return4x_final_4env_overview.mp4</code>
+  </div>
+  <video controls preload="metadata" src="videos/current_stage_return4x_final_4env_overview.mp4"></video>
+
+  <h2>66de62b stable baseline final</h2>
+  <div class="meta">
+    commit: <code>66de62b1cd952bd28c86d62cc55ffb65b30b7dcc</code> 相当の復元環境<br>
+    run: <code>restored_66de62b_env_15m_ppo_seed1/final_ckpt.pt</code><br>
+    video: <code>videos/66de62b_stable_baseline_final_4env_overview.mp4</code>
+  </div>
+  <video controls preload="metadata" src="videos/66de62b_stable_baseline_final_4env_overview.mp4"></video>
+
+  <h2>10853ba initial 12cm final</h2>
+  <div class="meta">
+    commit: <code>10853ba8a8a126a0326efdc20df4af1b7f0d9cc6</code><br>
+    run: <code>initial_10853ba_15m_ppo_seed1/final_ckpt.pt</code><br>
+    video: <code>videos/10853ba_initial_12cm_final_4env_overview.mp4</code>
+  </div>
+  <video controls preload="metadata" src="videos/10853ba_initial_12cm_final_4env_overview.mp4"></video>
+</main>
+</body>
+</html>

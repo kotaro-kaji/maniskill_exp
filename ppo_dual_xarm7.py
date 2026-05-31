@@ -233,7 +233,7 @@ class Args:
     finite_horizon_gae: bool = False
     # simulation backend: "cpu" or "physx_cuda"
     sim_backend: str = "physx_cuda"
-    robot_init_noise_scale: float = 1.0
+    robot_init_noise_scale: Optional[float] = 1.0
     """Scale factor for robot initial joint randomization (1.0 = default training noise, 0.0 = fixed)."""
 
 
@@ -343,8 +343,9 @@ if __name__ == "__main__":
             control_freq=CONTROL_FREQUENCY_HZ,
             gpu_memory_config=gpu_mem_cfg,
         ),
-        robot_init_noise_scale=args.robot_init_noise_scale,
     )
+    if args.robot_init_noise_scale is not None:
+        env_kwargs["robot_init_noise_scale"] = args.robot_init_noise_scale
 
     if args.control_mode is not None:
         control_mode = args.control_mode

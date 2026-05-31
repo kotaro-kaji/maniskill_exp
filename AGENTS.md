@@ -3,7 +3,11 @@
 ## Project Structure & Module Organization
 This repository is a ManiSkill-based robotics experimentation workspace centered on xArm7 manipulation tasks. Core environment code lives in `tasks/` and `tasks/dual/`, robot definitions and controller variants live in `robotagents/`, and reusable scene setup code lives in `scenebuilders/`. Training and rollout entry points are top-level scripts such as `ppo_dual_xarm7.py`, `sac_dual_xarm7.py`, and `ppo_rollout_virtual_dual_xarm7.py`.
 
-Static assets and robot descriptions are stored in `assets/`, `xarm_description/`, and top-level `*.urdf` / `*.stl` files. Use `tests/` for validation scripts, rollout checks, and plotting utilities. Treat `lecacy/` and `dont_touch_this_folder/` as archival or fragile experiment areas unless a task explicitly requires them.
+Static assets and robot descriptions are stored in `assets/`, `xarm_description/`, and top-level `*.urdf` / `*.stl` files. Use `tests/` for validation scripts, rollout checks, and plotting utilities. Put reusable policy/evaluation utilities in `eval_scripts/`; these are not throwaway notes and should be kept readable and generally useful. Treat `lecacy/` and `dont_touch_this_folder/` as archival or fragile experiment areas unless a task explicitly requires them.
+
+Use `outputs_to_user/` for polished artifacts that the user is expected to read directly, especially HTML summaries, reports, and compact experiment briefs. Files in this directory should be self-contained, readable in a browser, and written with the assumption that the user will use them as durable context. Do not put scratch logs, raw CSV dumps, temporary probe outputs, or bulky run artifacts there; keep those in `tmp_note/`, `runs/`, or an explicit artifact directory instead.
+
+When sharing videos with the user, prefer embedding compact MP4 files directly in an `outputs_to_user/` HTML report with normal `<video controls>` elements. Keep only the videos that are actually referenced by the report in `outputs_to_user/`; store extra or exploratory recordings under `tmp_note/`.
 
 ## Build, Test, and Development Commands
 Use `uv` for environment management because the repo includes `pyproject.toml` and `uv.lock`. When running repository scripts locally, always prefix the command with `uv run` so the locked environment and interpreter are used consistently. Do not invoke repository Python entry points with plain `python ...`; use `uv run python ...` instead.

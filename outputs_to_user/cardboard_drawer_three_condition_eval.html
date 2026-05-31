@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cardboard Drawer Three Condition Eval</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+      margin: 0;
+      color: #1f2933;
+      background: #f7f8fa;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 10px;
+    }
+    h2 {
+      font-size: 21px;
+      margin-top: 34px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #d7dce2;
+    }
+    h3 {
+      font-size: 17px;
+      margin: 22px 0 8px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #eef1f4;
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: white;
+      margin: 14px 0 22px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid #d7dce2;
+      padding: 8px 9px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #edf0f3;
+      white-space: nowrap;
+    }
+    .note {
+      background: #fff8e5;
+      border-left: 4px solid #d39e00;
+      padding: 12px 14px;
+      margin: 18px 0;
+    }
+    .ok {
+      background: #ecfdf3;
+      border-left: 4px solid #239b56;
+      padding: 12px 14px;
+      margin: 18px 0;
+    }
+    .bad {
+      background: #fff1f2;
+      border-left: 4px solid #be123c;
+      padding: 12px 14px;
+      margin: 18px 0;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Cardboard Drawer: 3条件の学習と160 env評価</h1>
+  <p>
+    2026-05-31 に RunPod で確認した3条件の比較である。旧来の
+    <code>stable_open_episodes=16/16</code> は使わず、160 env rollout の終端状態を主に見る。
+  </p>
+
+  <h2>評価条件</h2>
+  <table>
+    <tr><th>評価スクリプト</th><td><code>eval_scripts/eval_cardboard_policy_metrics.py</code></td></tr>
+    <tr><th>num envs</th><td><code>160</code></td></tr>
+    <tr><th>steps</th><td><code>100</code></td></tr>
+    <tr><th>policy action</th><td><code>deterministic=True</code>。評価時の固定 action offset は入れていない。</td></tr>
+    <tr><th>seed</th><td><code>1</code> から env ごとに連番。</td></tr>
+    <tr><th>sim backend</th><td><code>physx_cuda</code></td></tr>
+  </table>
+
+  <h2>3条件の対応関係</h2>
+  <table>
+    <tr>
+      <th>ラベル</th>
+      <th>commit / 条件</th>
+      <th>RunPod run</th>
+      <th>checkpoint</th>
+    </tr>
+    <tr>
+      <td><strong>current stage_return4x</strong></td>
+      <td>
+        current branch <code>ceeaf3c</code> 系列。<br>
+        <code>stage_return_reward = 4.0 + 4.0 * return_to_target_qpos_reward</code>
+        に戻した条件。
+      </td>
+      <td><code>/workspace/maniskill_exp/runs/current_stage_return4_30m_resume_from_ckpt66_ppo_seed1</code></td>
+      <td><code>final_ckpt.pt</code></td>
+    </tr>
+    <tr>
+      <td><strong>66de62b stable baseline</strong></td>
+      <td>
+        <code>66de62b1cd952bd28c86d62cc55ffb65b30b7dcc</code> 相当を、
+        current branch 上の比較用 env <code>MyDualCardboardCabinet66de62b-v1</code>
+        として復元した安定基準。
+      </td>
+      <td><code>/workspace/artifacts/current_restored_env_exp/runs/restored_66de62b_env_15m_ppo_seed1</code></td>
+      <td><code>final_ckpt.pt</code></td>
+    </tr>
+    <tr>
+      <td><strong>10853ba initial 12cm</strong></td>
+      <td>
+        <code>10853ba8a8a126a0326efdc20df4af1b7f0d9cc6</code>。<br>
+        12cm drawer open 成功条件が初めて入ったコミット。
+      </td>
+      <td><code>/workspace/artifacts/initial_10853ba_15m/runs/initial_10853ba_15m_ppo_seed1</code></td>
+      <td><code>final_ckpt.pt</code></td>
+    </tr>
+  </table>
+
+  <h2>160 env評価結果</h2>
+  <table>
+    <tr>
+      <th>条件</th>
+      <th>eval return mean</th>
+      <th>eval return std</th>
+      <th>reached open success</th>
+      <th>final open success</th>
+      <th>final open mean</th>
+      <th>final shift mean</th>
+      <th>final return arm score</th>
+      <th>arm mean abs error</th>
+      <th>arm max abs error</th>
+    </tr>
+    <tr>
+      <td>current stage_return4x</td>
+      <td><strong>81.434448</strong></td>
+      <td>0.616805</td>
+      <td>1.000000</td>
+      <td><strong>1.000000</strong></td>
+      <td>0.179016</td>
+      <td>0.000241</td>
+      <td><strong>0.822523</strong></td>
+      <td>0.191951</td>
+      <td>0.706189</td>
+    </tr>
+    <tr>
+      <td>66de62b stable baseline</td>
+      <td><strong>80.265823</strong></td>
+      <td>0.198196</td>
+      <td>1.000000</td>
+      <td><strong>1.000000</strong></td>
+      <td><strong>0.189249</strong></td>
+      <td><strong>0.000041</strong></td>
+      <td>0.775377</td>
+      <td>0.253155</td>
+      <td>0.875998</td>
+    </tr>
+    <tr>
+      <td>10853ba initial 12cm</td>
+      <td>73.203285</td>
+      <td>2.762076</td>
+      <td>1.000000</td>
+      <td><strong>0.568750</strong></td>
+      <td>0.120545</td>
+      <td>0.002619</td>
+      <td>0.768148</td>
+      <td>0.260765</td>
+      <td>0.816262</td>
+    </tr>
+  </table>
+
+  <div class="ok">
+    <strong>重要な確認:</strong>
+    current stage_return4x と 66de62b stable baseline は、160 env すべてで終端時点の
+    <code>final_open_success</code> が成立した。10853ba は途中では全envが12cmに到達するが、
+    終端時点で12cm以上を維持できる割合は <code>56.875%</code> に落ちる。
+  </div>
+
+  <h2>解釈</h2>
+  <p>
+    current stage_return4x と 66de62b stable baseline は、どちらも
+    <code>eval_return_mean</code> が80台で、終端成功率は160 envすべてで成功だった。
+    66de62b stable baseline は <code>final_open_mean</code> が最も強い。drawer を大きく、安定に開けるという意味では
+    依然として最良の基準点に見える。
+  </p>
+  <p>
+    current stage_return4x は <code>final_return_arm_score</code> が最も高い。
+    つまり、return の arm 関節状態だけを見るとこの条件が最も戻れている。
+    以前の <code>eval_return_mean=48.471237</code> は、RunPod側の評価コード同期前に出した値で、
+    <code>stage_return_reward</code> の係数が古い状態だったため低く出ていた可能性が高い。
+    同期後に同じ checkpoint を再評価した結果が、この表の <code>81.434448</code> である。
+  </p>
+  <p>
+    10853ba initial 12cm は「一度は開く」能力はあるが、終端で開状態を維持する安定性が弱い。
+    このため、安定基準としては66de62bの方が明確に良い。
+  </p>
+
+  <div class="note">
+    <strong>注意:</strong>
+    ここでの66de62bは、現在branch上に復元した
+    <code>MyDualCardboardCabinet66de62b-v1</code> と既存15M checkpointの評価である。
+    旧 worktree の短め sweep checkpoint も残っているが、安定基準として扱っているのはこの復元15M runである。
+  </div>
+
+  <h2>ローカルに回収した評価ファイル</h2>
+  <table>
+    <tr><th>current stage_return4x</th><td><code>tmp_note/eval_outputs/key_commits_160env/current_stage_return4_30m_resume_final_policy_metrics_160env_rerun_after_sync.csv</code></td></tr>
+    <tr><th>66de62b stable baseline</th><td><code>tmp_note/eval_outputs/key_commits_160env/restored_66de62b_env_15m_final_policy_metrics_160env.csv</code></td></tr>
+    <tr><th>10853ba initial 12cm</th><td><code>tmp_note/eval_outputs/key_commits_160env/10853ba_initial15m_final_policy_metrics_160env.csv</code></td></tr>
+  </table>
+</main>
+</body>
+</html>

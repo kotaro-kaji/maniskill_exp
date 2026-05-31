@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cardboard Drawer Key Commits</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+      margin: 0;
+      color: #1f2933;
+      background: #f7f8fa;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 12px;
+    }
+    h2 {
+      font-size: 22px;
+      margin-top: 34px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #d7dce2;
+    }
+    h3 {
+      font-size: 17px;
+      margin-top: 22px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #eef1f4;
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #f9fafb;
+      border-radius: 6px;
+      padding: 14px 16px;
+      line-height: 1.45;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: white;
+      margin: 14px 0 22px;
+    }
+    th, td {
+      border: 1px solid #d7dce2;
+      padding: 9px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #edf0f3;
+      width: 230px;
+    }
+    .note {
+      background: #fff8e5;
+      border-left: 4px solid #d39e00;
+      padding: 12px 14px;
+      margin: 18px 0;
+    }
+    .ok {
+      background: #ecfdf3;
+      border-left: 4px solid #239b56;
+      padding: 12px 14px;
+      margin: 18px 0;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Cardboard Drawer 実験で重要な2つのコミット</h1>
+  <p>
+    ここでは、cardboard drawer の left-finger 安定学習に関して重要な過去コミットを2つに絞って整理する。
+    1つ目は「12cm 引き出し成功条件」が初めて入ったコミット、2つ目は現在もっとも安定な基準点として扱う
+    <code>66de62b</code> である。
+  </p>
+
+  <h2>要約</h2>
+  <table>
+    <tr>
+      <th>初出コミット</th>
+      <td>
+        <code>10853ba8a8a126a0326efdc20df4af1b7f0d9cc6</code><br>
+        <strong>2026-05-28 08:49:23 +0900</strong><br>
+        <code>feat: train single-arm cardboard drawer return task</code>
+      </td>
+    </tr>
+    <tr>
+      <th>安定基準コミット</th>
+      <td>
+        <code>66de62b1cd952bd28c86d62cc55ffb65b30b7dcc</code><br>
+        <strong>2026-05-28 13:12:24 +0900</strong><br>
+        <code>viz: highlight cardboard marker panels</code>
+      </td>
+    </tr>
+  </table>
+
+  <h2>1. 12cm 成功条件の初出: 10853ba</h2>
+  <p>
+    <code>10853ba</code> は、drawer return task が成立した最初の重要コミットである。
+    このコミットで <code>tasks/dual/task_dual_cardboard_cabinet.py</code> が
+    <code>tasks/single/task_single_cardboard_cabinet.py</code> へ rename されつつ、
+    drawer open と return を含む single-arm task に大きく作り替えられた。
+  </p>
+
+  <h3>このコミットで入った成功条件</h3>
+  <pre><code>INNER_BOX_OPEN_GOAL_DISTANCE = 0.12
+OUTER_BOX_STABLE_DISTANCE = 0.02
+
+def _inner_box_open_enough(self):
+    return self._inner_box_open_amount() &gt;= self.INNER_BOX_OPEN_GOAL_DISTANCE
+
+drawer_open_success = open_enough &amp; outer_box_stable_enough</code></pre>
+
+  <p>
+    つまり、drawer open の条件は「inner box が 12cm 以上開く」かつ
+    「outer box shift が 2cm 以下」である。さらにタスク全体の <code>success</code> には
+    return pose 条件も入っていた。
+  </p>
+
+  <h3>10853ba の 15M 学習確認</h3>
+  <p>
+    RunPod で 15M timestep まで同条件で学習させたところ、open 自体は壊れなかった。
+    ただし、後述の <code>66de62b</code> より scalar は弱く、右 finger の小さな接触も混じった。
+  </p>
+  <pre><code>ckpt_91   max_open=0.140825  shift=0.011280  left=252.46  right=3.06   stable=16/16
+ckpt_111  max_open=0.153612  shift=0.010339  left=91.84   right=3.26   stable=16/16
+ckpt_131  max_open=0.164962  shift=0.000027  left=117.94  right=2.02   stable=16/16
+ckpt_151  max_open=0.172009  shift=0.003485  left=102.94  right=10.17  stable=16/16
+final     max_open=0.161821  shift=0.003351  left=107.62  right=4.02   stable=16/16</code></pre>
+
+  <div class="note">
+    ここでの <code>stable=16/16</code> は「途中で一度 12cm 以上開いた」ことを主に見ていた旧評価であり、
+    episode 終端で開いた状態を維持できたか、return できたかを示すものではない。今後は
+    <code>final_open_success</code> と <code>final_return_arm_score</code> を主要指標にする。
+  </div>
+
+  <h2>2. 安定基準コミット: 66de62b</h2>
+  <p>
+    <code>66de62b</code> は、これまでの調査で left-finger drawer opening が最も安定している基準点である。
+    commit message は visualization 寄りだが、task state と観測が marker panel ベースになった系列の中で、
+    15M までの安定性が確認できた。
+  </p>
+
+  <h3>66de62b の観測</h3>
+  <p>
+    <code>obs_mode="state"</code> で、実質 33 次元。
+  </p>
+  <pre><code>robot qpos: 8
+  arm 7 joints + gripper drive joint 1
+
+robot qvel: 7
+  arm 7 joints
+
+object state: 18
+  inner_marker_panel_position: 3
+  inner_marker_panel_rotation_6d: 6
+  outer_marker_panel_position: 3
+  outer_marker_panel_rotation_6d: 6</code></pre>
+
+  <h3>66de62b の報酬</h3>
+  <pre><code>reaching_reward = 0.5 * (
+    1 - tanh(5.0 * tcp_to_target_distance)
+    + 1 - tanh(30.0 * tcp_to_target_distance)
+)
+
+open_reward = 2.0 * inner_box_open_fraction * outer_box_stability
+
+if open_amount &gt;= 0.005:
+    reaching_reward = 2.0
+
+if open_enough:
+    open_reward = 3.0
+
+if drawer_open_success_reached:
+    stage_return_reward = 4.0 + 4.0 * return_to_target_qpos_reward
+
+reward = outer_box_stability * reward
+normalized_reward = reward / (8.0 + 0.05)</code></pre>
+
+  <p>
+    <code>66de62b</code> の return target は arm 7 joints + gripper 6 joints の 13 次元で、
+    return score は arm 0.75 / gripper 0.25 の重みで計算されていた。
+  </p>
+
+  <h3>66de62b の 15M 学習確認</h3>
+  <p>
+    15M まで学習しても、left-finger mode は維持され、right-finger への反転や明確な崩壊は見えなかった。
+  </p>
+  <pre><code>ckpt_91   max_open=0.154764  shift=0.000056  left=19.54  right=0.00  stable=16/16
+ckpt_111  max_open=0.217742  shift=0.006635  left=45.40  right=0.00  stable=16/16
+ckpt_131  max_open=0.182979  shift=0.002005  left=36.86  right=4.46  stable=16/16
+ckpt_151  max_open=0.198174  shift=0.000055  left=12.05  right=0.00  stable=16/16
+final     max_open=0.189379  shift=0.000045  left=16.01  right=0.00  stable=16/16</code></pre>
+
+  <div class="ok">
+    現時点の基準判断は、<code>10853ba</code> は初出として重要、<code>66de62b</code> は安定基準として重要、
+    という整理でよい。ただし旧 probe の <code>stable</code> 指標は不十分なので、今後の比較は
+    160 env 評価で <code>eval_return_mean</code>、<code>final_open_success</code>、
+    <code>final_return_arm_score</code> を確認する。
+  </div>
+
+  <h2>現在の評価方針</h2>
+  <p>
+    旧評価では途中最大 open amount を見ていたため、動画上の失敗や終端で閉じている挙動を過大評価した。
+    今後は <code>eval_scripts/eval_cardboard_policy_metrics.py</code> を使い、160 parallel env で以下を確認する。
+  </p>
+  <ul>
+    <li><code>eval_return_mean</code> / <code>eval_return_std</code></li>
+    <li><code>reached_open_success_mean</code>: 途中で一度 12cm 以上開いた割合</li>
+    <li><code>final_open_success_mean</code>: 終端時点で 12cm 以上開いている割合</li>
+    <li><code>final_return_arm_score_mean</code>: 終端時点の arm return score</li>
+    <li><code>final_return_arm_mean_abs_error_mean</code> と <code>final_return_arm_max_abs_error_mean</code></li>
+  </ul>
+</main>
+</body>
+</html>
