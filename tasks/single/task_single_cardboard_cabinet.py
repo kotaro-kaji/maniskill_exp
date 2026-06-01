@@ -457,22 +457,30 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return qpos[:, 7]
 
     def _gripper_target_qpos(self) -> torch.Tensor:
-        close_gripper = (self._tcp_to_target_distance() <= self.GRIPPER_CLOSE_DISTANCE) | (
-            self._inner_box_open_amount() >= self.OPEN_STARTED_DISTANCE
-        )
-        return torch.where(
-            close_gripper,
-            torch.full_like(self._gripper_drive_qpos(), self.GRIPPER_CLOSING_TARGET_QPOS),
-            torch.full_like(self._gripper_drive_qpos(), self.GRIPPER_OPENING_TARGET_QPOS),
+        return torch.full_like(
+            self._gripper_drive_qpos(),
+            self.GRIPPER_OPENING_TARGET_QPOS,
         )
 
     def _gripper_opening_reward(self) -> torch.Tensor:
         gripper_error = torch.abs(
-            self._gripper_drive_qpos() - self._gripper_target_qpos()
+            self._gripper_drive_qpos()
+            - torch.full_like(
+                self._gripper_drive_qpos(),
+                self.GRIPPER_OPENING_TARGET_QPOS,
+            )
         )
-        return 1 - torch.tanh(
+        open_reward = 1 - torch.tanh(
             self.GRIPPER_OPENING_REWARD_SCALE * gripper_error
         )  # min = 0.0, max = 1.0
+        open_only_saturated = (
+            self._tcp_to_target_distance() <= self.GRIPPER_CLOSE_DISTANCE
+        ) | (self._inner_box_open_amount() >= self.OPEN_STARTED_DISTANCE)
+        return torch.where(
+            open_only_saturated,
+            torch.ones_like(open_reward),
+            open_reward,
+        )
 
     def _return_to_target_qpos_reward(self) -> torch.Tensor:
         return self._return_to_target_arm_qpos_reward()
@@ -671,19 +679,7 @@ class MyDualCardboardCabinetNoGripperRewardEnv(MyDualCardboardCabinetEnv):
 
 @register_env("MyDualCardboardCabinetOpenOnlyGripperReward-v1", max_episode_steps=100)
 class MyDualCardboardCabinetOpenOnlyGripperRewardEnv(MyDualCardboardCabinetEnv):
-    def _gripper_opening_reward(self) -> torch.Tensor:
-        open_error = torch.abs(
-            self._gripper_drive_qpos()
-            - torch.full_like(
-                self._gripper_drive_qpos(),
-                self.GRIPPER_OPENING_TARGET_QPOS,
-            )
-        )
-        open_reward = 1 - torch.tanh(self.GRIPPER_OPENING_REWARD_SCALE * open_error)
-        close_stage = (self._tcp_to_target_distance() <= self.GRIPPER_CLOSE_DISTANCE) | (
-            self._inner_box_open_amount() >= self.OPEN_STARTED_DISTANCE
-        )
-        return torch.where(close_stage, torch.ones_like(open_reward), open_reward)
+    pass
 
 
 @register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
