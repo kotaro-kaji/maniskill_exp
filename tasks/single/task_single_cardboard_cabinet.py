@@ -248,8 +248,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         if self.initial_box_xy is not None:
             assert len(self.initial_box_xy) == 2, self.initial_box_xy
             position = position.clone()
-            position[0] = float(self.initial_box_xy[0])
-            position[1] = float(self.initial_box_xy[1])
+            center = torch.tensor(
+                self.workspace_center_pose.p,
+                dtype=position.dtype,
+                device=position.device,
+            )
+            position[0] = center[0] + float(self.initial_box_xy[0])
+            position[1] = center[1] + float(self.initial_box_xy[1])
         return position.unsqueeze(0).repeat(len(env_idx), 1)
 
     def _sample_initial_box_orientations(self, env_idx: torch.Tensor) -> torch.Tensor:

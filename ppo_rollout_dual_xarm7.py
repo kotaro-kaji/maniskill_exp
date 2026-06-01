@@ -15,7 +15,6 @@ import torch
 import tyro
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
-from mani_skill.utils.structs.pose import Pose
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
 # Ensure dual-arm envs are registered with ManiSkill.
@@ -104,7 +103,7 @@ class RolloutArgs:
     gripper_joint_indices: Optional[str] = "7,15"
     """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 119.0 override)."""
     initial_box_xy: Optional[str] = None
-    """Fixed initial cardboard box world XY as 'x,y'. If omitted, the environment default is used."""
+    """Fixed initial cardboard box XY in the workspace-center frame as 'x,y'. If omitted, the environment default is used."""
 
 
 def _parse_initial_box_xy(value: Optional[str]) -> Optional[tuple[float, float]]:
@@ -113,38 +112,6 @@ def _parse_initial_box_xy(value: Optional[str]) -> Optional[tuple[float, float]]
     tokens = [token.strip() for token in value.split(",")]
     assert len(tokens) == 2, value
     return float(tokens[0]), float(tokens[1])
-
-
-def _set_initial_box_xy(eval_envs: ManiSkillVectorEnv, xy: tuple[float, float]) -> torch.Tensor:
-    raw_env = eval_envs.base_env.unwrapped
-    assert hasattr(raw_env, "cardboard_cabinet"), raw_env
-    assert hasattr(raw_env, "cardboard_inner_box"), raw_env
-
-    positions = raw_env.cardboard_cabinet.pose.p.clone()
-    if positions.ndim == 1:
-        positions = positions.unsqueeze(0)
-    positions[:, 0] = xy[0]
-    positions[:, 1] = xy[1]
-
-    orientations = raw_env.cardboard_cabinet.pose.q
-    if orientations.ndim == 1:
-        orientations = orientations.unsqueeze(0)
-    raw_env.cardboard_cabinet.set_pose(Pose.create_from_pq(positions, orientations))
-    raw_env.cardboard_inner_box.set_pose(
-        Pose.create_from_pq(
-            raw_env._initial_inner_box_world_positions(positions),
-            orientations,
-        )
-    )
-
-    env_idx = torch.arange(positions.shape[0], device=raw_env.device)
-    if hasattr(raw_env, "_set_initial_box_reference_positions"):
-        raw_env._set_initial_box_reference_positions(env_idx, positions)
-    if hasattr(raw_env, "_sync_target_sites"):
-        raw_env._sync_target_sites(env_idx)
-    if hasattr(raw_env, "_sync_marker_frame_sites"):
-        raw_env._sync_marker_frame_sites(env_idx)
-    return raw_env.get_obs()
 
 
 def _build_env(args: RolloutArgs):
@@ -159,6 +126,9 @@ def _build_env(args: RolloutArgs):
     )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
+    initial_box_xy = _parse_initial_box_xy(args.initial_box_xy)
+    if initial_box_xy is not None:
+        env_kwargs["initial_box_xy"] = initial_box_xy
 
     eval_envs = gym.make(
         args.env_id,
@@ -213,9 +183,6 @@ def run_rollout(args: RolloutArgs) -> None:
     agent.eval()
 
     obs, _ = eval_envs.reset(seed=args.seed)
-    initial_box_xy = _parse_initial_box_xy(args.initial_box_xy)
-    if initial_box_xy is not None:
-        obs = _set_initial_box_xy(eval_envs, initial_box_xy)
     obs = obs.to(device)
 
     normalized_low = torch.from_numpy(eval_envs.single_action_space.low).to(device)
