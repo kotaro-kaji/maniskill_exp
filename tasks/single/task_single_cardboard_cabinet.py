@@ -102,11 +102,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         robot_uids="my_xarm7",
         robot_init_qpos_noise=0.02,
         robot_init_noise_scale: float = 1.0,
+        initial_box_xy: Optional[tuple[float, float]] = None,
         **kwargs,
     ):
         assert robot_uids == "my_xarm7"
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
+        self.initial_box_xy = initial_box_xy
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -242,7 +244,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _sample_initial_box_world_positions(
         self, env_idx: torch.Tensor
     ) -> torch.Tensor:
-        return self._initial_box_world_position().unsqueeze(0).repeat(len(env_idx), 1)
+        position = self._initial_box_world_position()
+        if self.initial_box_xy is not None:
+            assert len(self.initial_box_xy) == 2, self.initial_box_xy
+            position = position.clone()
+            position[0] = float(self.initial_box_xy[0])
+            position[1] = float(self.initial_box_xy[1])
+        return position.unsqueeze(0).repeat(len(env_idx), 1)
 
     def _sample_initial_box_orientations(self, env_idx: torch.Tensor) -> torch.Tensor:
         return (
@@ -656,6 +664,23 @@ class MyDualCardboardCabinetNoGripperRewardEnv(MyDualCardboardCabinetEnv):
     GRIPPER_OPENING_REWARD_WEIGHT = 0.0
 
 
+@register_env("MyDualCardboardCabinetOpenOnlyGripperReward-v1", max_episode_steps=100)
+class MyDualCardboardCabinetOpenOnlyGripperRewardEnv(MyDualCardboardCabinetEnv):
+    def _gripper_opening_reward(self) -> torch.Tensor:
+        open_error = torch.abs(
+            self._gripper_drive_qpos()
+            - torch.full_like(
+                self._gripper_drive_qpos(),
+                self.GRIPPER_OPENING_TARGET_QPOS,
+            )
+        )
+        open_reward = 1 - torch.tanh(self.GRIPPER_OPENING_REWARD_SCALE * open_error)
+        close_stage = (self._tcp_to_target_distance() <= self.GRIPPER_CLOSE_DISTANCE) | (
+            self._inner_box_open_amount() >= self.OPEN_STARTED_DISTANCE
+        )
+        return torch.where(close_stage, torch.ones_like(open_reward), open_reward)
+
+
 @register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
 class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
     BOX_POSITION_NOISE_LOW = (-0.03, -0.03, 0.0)
@@ -684,6 +709,8 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         self, env_idx: torch.Tensor
     ) -> torch.Tensor:
         positions = super()._sample_initial_box_world_positions(env_idx)
+        if self.initial_box_xy is not None:
+            return positions
         noise_low = torch.tensor(
             self.BOX_POSITION_NOISE_LOW,
             dtype=torch.float32,

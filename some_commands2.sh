@@ -55,7 +55,8 @@ uv run python ppo_rollout_single_xarm7.py \
     --env-id MySingleCardboardCabinetRandomized-v1 \
     --control-mode pd_joint_delta_pos \
     --num-eval-envs 1 --num-eval-steps 100 \
-    --sim-backend cpu
+    --robot-init-noise-scale 0.0 \
+    --initial-box-xy 0.30,0.00
 
 # cardboard cabinet drawer SAC: joint delta controller での比較
 uv run python sac.py \
