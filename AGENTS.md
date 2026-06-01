@@ -18,6 +18,13 @@ Use `uv` for environment management because the repo includes `pyproject.toml` a
 - `uv run python ppo_rollout_dual_xarm7.py --checkpoint <path>`: evaluate or replay a saved policy.
 - `uv run python tests/ppo.py` or `uv run python tests/rollout_record.py`: run the lightweight validation scripts in `tests/`.
 
+Treat `some_commands2.sh` as the important curated command log for current
+robotics experiments. Before launching or modifying long training runs, check
+`some_commands2.sh` for the intended baseline command and keep new durable
+command examples there when they are meant to be reused. `some_commands.sh` may
+contain older exploratory notes, but `some_commands2.sh` should carry the more
+authoritative recent PPO/SAC command patterns.
+
 ## Remote GPU / RunPod Notes
 The user often provides RunPod-style GPU servers for long ManiSkill experiments.
 Before setting up or debugging a new server, read `knowledge/runpod_maniskill_gpu.md`
@@ -33,6 +40,13 @@ For cardboard insertion experiments, read
 `knowledge/cardboard_insertion_policy.md` before reporting results. Do not use
 fixed evaluation-time action offsets; results should reflect the policy action
 itself, with only normal action clipping.
+
+For cardboard drawer return experiments, read
+`knowledge/cardboard_arm_qpos_return_handoff.md` before changing the reward,
+launching PPO/SAC runs, or reporting results. The current direction is
+arm-only qpos return; TCP return may remain as a diagnostic metric but should
+not be used as the training reward unless the user explicitly changes the
+research direction.
 
 When an experiment finds a strong checkpoint or otherwise produces a good
 behavioral result, always generate an evaluation video and show the video path to

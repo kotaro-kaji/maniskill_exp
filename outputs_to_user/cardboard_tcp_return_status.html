@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Cardboard TCP Return Status</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      margin: 32px;
+      color: #202124;
+      background: #fafafa;
+    }
+    h1, h2 {
+      margin: 0 0 12px;
+    }
+    section {
+      margin: 28px 0;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #d6d6d6;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eeeeee;
+    }
+    video {
+      width: min(720px, 100%);
+      display: block;
+      margin: 10px 0 20px;
+      background: #111;
+    }
+    img {
+      width: min(900px, 100%);
+      display: block;
+      margin: 10px 0 20px;
+      background: white;
+      border: 1px solid #d6d6d6;
+    }
+    code {
+      background: #eeeeee;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Cardboard TCP Return Status</h1>
+  <p>
+    TCP return reward を translation error のみの線形報酬にした実験の中間まとめ。
+    PPO は 15M 相当の 160 env 評価まで完了。SAC は <code>utd=0.05</code> と
+    <code>utd=0.25</code> が序盤で弱く、PPO 完了後に <code>utd=0.5</code> を単独実行予定。
+  </p>
+
+  <section>
+    <h2>160 env 評価</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>run</th>
+          <th>条件</th>
+          <th>eval return</th>
+          <th>open success</th>
+          <th>final open</th>
+          <th>box shift</th>
+          <th>final TCP position error</th>
+          <th>final arm mean abs error</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>旧PPO 15M</td>
+          <td><code>gamma=0.8</code>, <code>robot_init_noise_scale=1.0</code></td>
+          <td>70.972000</td>
+          <td>1.000000</td>
+          <td>0.149722</td>
+          <td>0.000812</td>
+          <td>0.151295</td>
+          <td>1.148516 rad</td>
+        </tr>
+        <tr>
+          <td>新PPO 15M相当</td>
+          <td><code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code>, checkpoint <code>ckpt_146.pt</code></td>
+          <td>65.634911</td>
+          <td>1.000000</td>
+          <td>0.148244</td>
+          <td>0.001366</td>
+          <td>0.254236</td>
+          <td>0.708558 rad</td>
+        </tr>
+        <tr>
+          <td>新PPO ckpt_196</td>
+          <td><code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code>, 約20M</td>
+          <td>71.529259</td>
+          <td>1.000000</td>
+          <td>0.145115</td>
+          <td>0.001188</td>
+          <td>0.190292</td>
+          <td>0.638155 rad</td>
+        </tr>
+        <tr>
+          <td>新PPO ckpt_221</td>
+          <td><code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code>, 約22.6M</td>
+          <td>79.419594</td>
+          <td>1.000000</td>
+          <td>0.129553</td>
+          <td>0.000003</td>
+          <td>0.135180</td>
+          <td>0.692767 rad</td>
+        </tr>
+        <tr>
+          <td>新PPO 25M final</td>
+          <td><code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code>, <code>final_ckpt.pt</code></td>
+          <td>7.433212</td>
+          <td>0.037500 reached / 0.050000 final</td>
+          <td>0.765711</td>
+          <td>0.946338</td>
+          <td>0.318852</td>
+          <td>0.822133 rad</td>
+        </tr>
+        <tr>
+          <td>SAC <code>utd=0.05</code></td>
+          <td><code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code>, stopped after weak early learning</td>
+          <td>0.004-0.012 range through 6M train eval</td>
+          <td>未到達</td>
+          <td>未評価</td>
+          <td>未評価</td>
+          <td>未評価</td>
+          <td>未評価</td>
+        </tr>
+        <tr>
+          <td>SAC <code>utd=0.25</code></td>
+          <td><code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code>, stopped after 500k train eval</td>
+          <td>0.005711 at 500k</td>
+          <td>未到達</td>
+          <td>未評価</td>
+          <td>未評価</td>
+          <td>未評価</td>
+          <td>未評価</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Learning curve</h2>
+    <p>
+      新PPOは 9M 以降に立ち上がり、20M 前後までは比較的高い return を維持したが、
+      23.5M 以降で急落した。25M final は箱ずれが大きく、open success も崩壊している。
+    </p>
+    <img src="plots/ppo_tcp_return_linearpos_open125_25m_gamma099_fixedinit_returns.png" alt="PPO learning curve">
+  </section>
+
+  <section>
+    <h2>Videos</h2>
+    <p>旧PPO 15M: <code>gamma=0.8</code>, <code>robot_init_noise_scale=1.0</code></p>
+    <video controls src="videos/ppo_tcp_return_linearpos_open125_15m_gamma08_noise1_final_overview.mp4"></video>
+
+    <p>新PPO 15M相当: <code>gamma=0.99</code>, <code>robot_init_noise_scale=0.0</code></p>
+    <video controls src="videos/ppo_tcp_return_linearpos_open125_15m_gamma099_fixedinit_overview.mp4"></video>
+
+    <p>新PPO ckpt_196: 約20M</p>
+    <video controls src="videos/ppo_tcp_return_linearpos_open125_gamma099_fixedinit_ckpt196_overview.mp4"></video>
+
+    <p>新PPO ckpt_221: 約22.6M、数値上の最有力候補</p>
+    <video controls src="videos/ppo_tcp_return_linearpos_open125_gamma099_fixedinit_ckpt221_overview.mp4"></video>
+
+    <p>新PPO 25M final: collapse after long training</p>
+    <video controls src="videos/ppo_tcp_return_linearpos_open125_25m_gamma099_fixedinit_final_overview.mp4"></video>
+  </section>
+
+  <section>
+    <h2>Current interpretation</h2>
+    <p>
+      どちらのPPOも 160 env で open は安定して成功している。一方、TCP return はまだ十分ではない。
+      旧PPOは final TCP position error が小さいが、arm joint の最終誤差が大きい。新PPO 15Mは joint 誤差は改善しているが、
+      final TCP position error は悪化している。つまり「開く」は達成できているが、return の定義と観測・制御の対応はまだ詰める必要がある。
+      ckpt_196 と ckpt_221 はどちらも open 160/160 成功で、25M final より明確に良い。
+      数値上は ckpt_221 が最有力だが、学習曲線上では崩壊直前に近いため、
+      安定性を重視するなら ckpt_196 も候補に残す価値がある。
+      また、新PPO 25M final は明確に崩壊しているため、25M を無条件に回すのは長すぎる可能性が高い。
+    </p>
+    <p>
+      SAC は PPO 併走中の <code>utd=0.05</code> と <code>utd=0.25</code> では立ち上がらなかった。
+      PPO 完了後に <code>utd=0.5</code> を単独で走らせ、PPO と同じ 160 env 評価で比較する。
+    </p>
+  </section>
+</body>
+</html>

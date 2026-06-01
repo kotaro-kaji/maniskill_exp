@@ -525,7 +525,9 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 dtype=torch.bool,
                 device=self.device,
             )
-        self.drawer_open_success_reached = drawer_open_success
+        self.drawer_open_success_reached = (
+            self.drawer_open_success_reached | drawer_open_success
+        )
         return {
             "tcp_to_target_distance": self._tcp_to_target_distance(),
             "inner_box_open_amount": self._inner_box_open_amount(),
@@ -615,14 +617,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         reward = reaching_reward + open_reward + gripper_reward
         stage_return_mask = info["drawer_open_success_reached"]
         stage_return_reward = (
-            4.0 * stable_open_target_reward
-            + 4.0 * self._return_to_target_tcp_pose_reward()
-        )
-        reward = torch.where(
-            stage_return_mask,
-            stage_return_reward,
-            outer_box_stability * reward,
-        )
+            4.0 + 4.0 * self._return_to_target_qpos_reward()
+        ) * stable_open_target_reward
+        reward = torch.where(stage_return_mask, stage_return_reward, reward)
+        reward = outer_box_stability * reward
         return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
 
 
