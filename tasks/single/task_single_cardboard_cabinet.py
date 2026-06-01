@@ -82,10 +82,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         ],
         dtype=torch.float32,
     )
-    RETURN_TCP_POSITION_REWARD_SCALE = 8.0
-    RETURN_TCP_ORIENTATION_REWARD_SCALE = 1.0
-    RETURN_TCP_POSITION_REWARD_WEIGHT = 0.8
-    RETURN_TCP_YAW_ERROR_WEIGHT = 0.1
+    RETURN_TCP_POSITION_REWARD_MAX_DISTANCE = 0.60
     RETURN_TARGET_QPOS = torch.tensor(
         [
             -0.00001,
@@ -467,23 +464,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return torch.abs(torch.stack([roll, pitch, yaw], dim=-1))
 
     def _return_to_target_tcp_pose_reward(self) -> torch.Tensor:
-        position_score = 1.0 - torch.tanh(
-            self.RETURN_TCP_POSITION_REWARD_SCALE
-            * self._return_to_target_tcp_position_error()
-        )
-        euler_error = self._return_to_target_tcp_euler_abs_error()
-        euler_weights = torch.tensor(
-            [1.0, 1.0, self.RETURN_TCP_YAW_ERROR_WEIGHT],
-            dtype=torch.float32,
-            device=self.device,
-        ).reshape(1, 3)
-        orientation_error = torch.linalg.norm(euler_error * euler_weights, dim=-1)
-        orientation_score = 1.0 - torch.tanh(
-            self.RETURN_TCP_ORIENTATION_REWARD_SCALE * orientation_error
-        )
-        return (
-            self.RETURN_TCP_POSITION_REWARD_WEIGHT * position_score
-            + (1.0 - self.RETURN_TCP_POSITION_REWARD_WEIGHT) * orientation_score
+        return torch.clamp(
+            1.0
+            - self._return_to_target_tcp_position_error()
+            / self.RETURN_TCP_POSITION_REWARD_MAX_DISTANCE,
+            min=0.0,
+            max=1.0,
         )
 
     def _return_to_target_arm_qpos_reward(self):
