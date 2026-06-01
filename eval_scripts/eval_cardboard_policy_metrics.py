@@ -68,6 +68,10 @@ def main():
     max_shift = torch.zeros(args.num_envs, device=device)
     first_success_seen = torch.zeros(args.num_envs, dtype=torch.bool, device=device)
     first_success_arm_abs_error = torch.full((args.num_envs, 7), float("nan"), device=device)
+    first_success_tcp_position_error = torch.full((args.num_envs,), float("nan"), device=device)
+    first_success_tcp_roll_abs_error = torch.full((args.num_envs,), float("nan"), device=device)
+    first_success_tcp_pitch_abs_error = torch.full((args.num_envs,), float("nan"), device=device)
+    first_success_tcp_yaw_abs_error = torch.full((args.num_envs,), float("nan"), device=device)
     final_info = None
     final_arm_score = None
     final_arm_mean_abs_error = None
@@ -98,6 +102,18 @@ def main():
         first_success_arm_abs_error[first_success_now] = arm_abs_error[
             first_success_now
         ]
+        first_success_tcp_position_error[first_success_now] = info[
+            "return_tcp_position_error"
+        ].reshape(-1).to(device)[first_success_now]
+        first_success_tcp_roll_abs_error[first_success_now] = info[
+            "return_tcp_roll_abs_error"
+        ].reshape(-1).to(device)[first_success_now]
+        first_success_tcp_pitch_abs_error[first_success_now] = info[
+            "return_tcp_pitch_abs_error"
+        ].reshape(-1).to(device)[first_success_now]
+        first_success_tcp_yaw_abs_error[first_success_now] = info[
+            "return_tcp_yaw_abs_error"
+        ].reshape(-1).to(device)[first_success_now]
         first_success_seen = first_success_seen | success_now
 
         final_arm_abs_error = arm_abs_error
@@ -110,6 +126,10 @@ def main():
     assert final_arm_abs_error.shape == (args.num_envs, 7), final_arm_abs_error.shape
     final_open = final_info["inner_box_open_amount"].reshape(-1).to(device)
     final_shift = final_info["outer_box_shift"].reshape(-1).to(device)
+    final_tcp_position_error = final_info["return_tcp_position_error"].reshape(-1).to(device)
+    final_tcp_roll_abs_error = final_info["return_tcp_roll_abs_error"].reshape(-1).to(device)
+    final_tcp_pitch_abs_error = final_info["return_tcp_pitch_abs_error"].reshape(-1).to(device)
+    final_tcp_yaw_abs_error = final_info["return_tcp_yaw_abs_error"].reshape(-1).to(device)
     reached_open_success = (max_open >= 0.12) & (max_shift <= 0.02)
     final_open_success = (final_open >= 0.12) & (final_shift <= 0.02)
 
@@ -134,11 +154,35 @@ def main():
                 "first_success_return_arm_max_abs_error": float(
                     first_success_arm_abs_error[env_idx].max().item()
                 ),
+                "first_success_tcp_position_error": float(
+                    first_success_tcp_position_error[env_idx].item()
+                ),
+                "first_success_tcp_roll_abs_error": float(
+                    first_success_tcp_roll_abs_error[env_idx].item()
+                ),
+                "first_success_tcp_pitch_abs_error": float(
+                    first_success_tcp_pitch_abs_error[env_idx].item()
+                ),
+                "first_success_tcp_yaw_abs_error": float(
+                    first_success_tcp_yaw_abs_error[env_idx].item()
+                ),
                 "final_return_arm_mean_abs_error": float(
                     final_arm_mean_abs_error[env_idx].item()
                 ),
                 "final_return_arm_max_abs_error": float(
                     final_arm_max_abs_error[env_idx].item()
+                ),
+                "final_tcp_position_error": float(
+                    final_tcp_position_error[env_idx].item()
+                ),
+                "final_tcp_roll_abs_error": float(
+                    final_tcp_roll_abs_error[env_idx].item()
+                ),
+                "final_tcp_pitch_abs_error": float(
+                    final_tcp_pitch_abs_error[env_idx].item()
+                ),
+                "final_tcp_yaw_abs_error": float(
+                    final_tcp_yaw_abs_error[env_idx].item()
                 ),
                 "final_return_arm_joint_0_abs_error": float(
                     final_arm_abs_error[env_idx, 0].item()
@@ -214,6 +258,22 @@ def main():
         f"{torch.nanmean(first_success_arm_abs_error.max(dim=1).values).item():.6f}"
     )
     print(
+        "first_success_tcp_position_error_mean "
+        f"{torch.nanmean(first_success_tcp_position_error).item():.6f}"
+    )
+    print(
+        "first_success_tcp_roll_abs_error_mean "
+        f"{torch.nanmean(first_success_tcp_roll_abs_error).item():.6f}"
+    )
+    print(
+        "first_success_tcp_pitch_abs_error_mean "
+        f"{torch.nanmean(first_success_tcp_pitch_abs_error).item():.6f}"
+    )
+    print(
+        "first_success_tcp_yaw_abs_error_mean "
+        f"{torch.nanmean(first_success_tcp_yaw_abs_error).item():.6f}"
+    )
+    print(
         "final_return_arm_mean_abs_error_mean "
         f"{final_arm_mean_abs_error.mean().item():.6f}"
     )
@@ -221,6 +281,10 @@ def main():
         "final_return_arm_max_abs_error_mean "
         f"{final_arm_max_abs_error.mean().item():.6f}"
     )
+    print(f"final_tcp_position_error_mean {final_tcp_position_error.mean().item():.6f}")
+    print(f"final_tcp_roll_abs_error_mean {final_tcp_roll_abs_error.mean().item():.6f}")
+    print(f"final_tcp_pitch_abs_error_mean {final_tcp_pitch_abs_error.mean().item():.6f}")
+    print(f"final_tcp_yaw_abs_error_mean {final_tcp_yaw_abs_error.mean().item():.6f}")
     joint_abs_error_mean = final_arm_abs_error.mean(dim=0)
     joint_abs_error_mean_deg = torch.rad2deg(joint_abs_error_mean)
     first_success_joint_abs_error_mean = torch.nanmean(

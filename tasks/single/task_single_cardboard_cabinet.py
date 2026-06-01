@@ -70,6 +70,22 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     GRIPPER_CLOSE_DISTANCE = 0.04
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
     GRIPPER_OPENING_REWARD_SCALE = 8.0
+    RETURN_TARGET_TCP_POSITION = torch.tensor(
+        [-0.2891441583633423, 0.32909828424453735, 0.35221153497695923],
+        dtype=torch.float32,
+    )
+    RETURN_TARGET_TCP_ROTATION = torch.tensor(
+        [
+            [1.0, 4.522452854871517e-06, 1.1265297871432267e-05],
+            [4.52255198979401e-06, -1.0, -8.828912541503087e-06],
+            [1.1265257853665389e-05, 8.828963473206386e-06, -1.0],
+        ],
+        dtype=torch.float32,
+    )
+    RETURN_TCP_POSITION_REWARD_SCALE = 8.0
+    RETURN_TCP_ORIENTATION_REWARD_SCALE = 1.0
+    RETURN_TCP_POSITION_REWARD_WEIGHT = 0.8
+    RETURN_TCP_YAW_ERROR_WEIGHT = 0.1
     RETURN_TARGET_QPOS = torch.tensor(
         [
             -0.00001,
@@ -320,6 +336,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             position = position.unsqueeze(0)
         return position
 
+    def _tcp_rotation_matrix(self) -> torch.Tensor:
+        matrix = self.agent.tcp.pose.to_transformation_matrix()[..., :3, :3]
+        if matrix.ndim == 2:
+            matrix = matrix.unsqueeze(0)
+        return matrix
+
     def _tcp_to_target_distance(self) -> torch.Tensor:
         return torch.linalg.norm(
             self._tcp_position() - self._current_insert_target_world(),
@@ -418,6 +440,52 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _return_to_target_qpos_reward(self) -> torch.Tensor:
         return self._return_to_target_arm_qpos_reward()
 
+    def _return_target_tcp_position(self) -> torch.Tensor:
+        return self.RETURN_TARGET_TCP_POSITION.to(
+            device=self.device, dtype=torch.float32
+        ).reshape(1, 3)
+
+    def _return_target_tcp_rotation(self) -> torch.Tensor:
+        return self.RETURN_TARGET_TCP_ROTATION.to(
+            device=self.device, dtype=torch.float32
+        ).reshape(1, 3, 3)
+
+    def _return_to_target_tcp_position_error(self) -> torch.Tensor:
+        return torch.linalg.norm(
+            self._tcp_position() - self._return_target_tcp_position(),
+            dim=-1,
+        )
+
+    def _return_to_target_tcp_euler_abs_error(self) -> torch.Tensor:
+        current = self._tcp_rotation_matrix()
+        target = self._return_target_tcp_rotation()
+        relative = torch.matmul(target.transpose(-1, -2), current)
+        pitch_arg = torch.clamp(-relative[:, 2, 0], min=-1.0, max=1.0)
+        roll = torch.atan2(relative[:, 2, 1], relative[:, 2, 2])
+        pitch = torch.asin(pitch_arg)
+        yaw = torch.atan2(relative[:, 1, 0], relative[:, 0, 0])
+        return torch.abs(torch.stack([roll, pitch, yaw], dim=-1))
+
+    def _return_to_target_tcp_pose_reward(self) -> torch.Tensor:
+        position_score = 1.0 - torch.tanh(
+            self.RETURN_TCP_POSITION_REWARD_SCALE
+            * self._return_to_target_tcp_position_error()
+        )
+        euler_error = self._return_to_target_tcp_euler_abs_error()
+        euler_weights = torch.tensor(
+            [1.0, 1.0, self.RETURN_TCP_YAW_ERROR_WEIGHT],
+            dtype=torch.float32,
+            device=self.device,
+        ).reshape(1, 3)
+        orientation_error = torch.linalg.norm(euler_error * euler_weights, dim=-1)
+        orientation_score = 1.0 - torch.tanh(
+            self.RETURN_TCP_ORIENTATION_REWARD_SCALE * orientation_error
+        )
+        return (
+            self.RETURN_TCP_POSITION_REWARD_WEIGHT * position_score
+            + (1.0 - self.RETURN_TCP_POSITION_REWARD_WEIGHT) * orientation_score
+        )
+
     def _return_to_target_arm_qpos_reward(self):
         qpos = self.agent.robot.get_qpos()
         if qpos.ndim == 1:
@@ -462,6 +530,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         outer_box_stable_enough = self._outer_box_stable_enough()
         return_arm_reward = self._return_to_target_arm_qpos_reward()
         return_to_target_qpos_reward = self._return_to_target_qpos_reward()
+        return_to_target_tcp_pose_reward = self._return_to_target_tcp_pose_reward()
+        return_tcp_euler_abs_error = self._return_to_target_tcp_euler_abs_error()
         drawer_open_success = open_enough & outer_box_stable_enough
         if not hasattr(self, "drawer_open_success_reached"):
             self.drawer_open_success_reached = torch.zeros(
@@ -484,6 +554,11 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "gripper_drive_qpos": self._gripper_drive_qpos(),
             "gripper_target_qpos": self._gripper_target_qpos(),
             "return_to_target_qpos_reward": return_to_target_qpos_reward,
+            "return_to_target_tcp_pose_reward": return_to_target_tcp_pose_reward,
+            "return_tcp_position_error": self._return_to_target_tcp_position_error(),
+            "return_tcp_roll_abs_error": return_tcp_euler_abs_error[:, 0],
+            "return_tcp_pitch_abs_error": return_tcp_euler_abs_error[:, 1],
+            "return_tcp_yaw_abs_error": return_tcp_euler_abs_error[:, 2],
             "return_arm_qpos_reward": return_arm_reward,
             "drawer_open_success": drawer_open_success,
             "drawer_open_success_reached": self.drawer_open_success_reached,
@@ -556,7 +631,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         reward = reaching_reward + open_reward + gripper_reward
         stage_return_mask = info["drawer_open_success_reached"]
         stage_return_reward = (
-            4.0 + 4.0 * self._return_to_target_qpos_reward()
+            4.0 + 4.0 * self._return_to_target_tcp_pose_reward()
         ) * stable_open_target_reward
         reward = torch.where(stage_return_mask, stage_return_reward, reward)
         reward = outer_box_stability * reward
