@@ -66,10 +66,13 @@ def main():
     episode_return = torch.zeros(args.num_envs, device=device)
     max_open = torch.zeros(args.num_envs, device=device)
     max_shift = torch.zeros(args.num_envs, device=device)
+    first_success_seen = torch.zeros(args.num_envs, dtype=torch.bool, device=device)
+    first_success_arm_abs_error = torch.full((args.num_envs, 7), float("nan"), device=device)
     final_info = None
     final_arm_score = None
     final_arm_mean_abs_error = None
     final_arm_max_abs_error = None
+    final_arm_abs_error = None
 
     for _ in range(args.num_steps):
         with torch.no_grad():
@@ -90,11 +93,21 @@ def main():
         if qpos.ndim == 1:
             qpos = qpos.unsqueeze(0)
         arm_abs_error = torch.abs(qpos[:, :7] - target)
+        success_now = (open_amount >= 0.12) & (outer_shift <= 0.02)
+        first_success_now = success_now & (~first_success_seen)
+        first_success_arm_abs_error[first_success_now] = arm_abs_error[
+            first_success_now
+        ]
+        first_success_seen = first_success_seen | success_now
+
+        final_arm_abs_error = arm_abs_error
         final_arm_score = (1.0 - torch.tanh(arm_abs_error)).mean(dim=-1)
         final_arm_mean_abs_error = arm_abs_error.mean(dim=-1)
         final_arm_max_abs_error = arm_abs_error.max(dim=-1).values
 
     assert final_info is not None
+    assert final_arm_abs_error is not None
+    assert final_arm_abs_error.shape == (args.num_envs, 7), final_arm_abs_error.shape
     final_open = final_info["inner_box_open_amount"].reshape(-1).to(device)
     final_shift = final_info["outer_box_shift"].reshape(-1).to(device)
     reached_open_success = (max_open >= 0.12) & (max_shift <= 0.02)
@@ -113,12 +126,61 @@ def main():
                 "final_shift": float(final_shift[env_idx].item()),
                 "reached_open_success": bool(reached_open_success[env_idx].item()),
                 "final_open_success": bool(final_open_success[env_idx].item()),
+                "first_success_seen": bool(first_success_seen[env_idx].item()),
                 "final_return_arm_score": float(final_arm_score[env_idx].item()),
+                "first_success_return_arm_mean_abs_error": float(
+                    first_success_arm_abs_error[env_idx].mean().item()
+                ),
+                "first_success_return_arm_max_abs_error": float(
+                    first_success_arm_abs_error[env_idx].max().item()
+                ),
                 "final_return_arm_mean_abs_error": float(
                     final_arm_mean_abs_error[env_idx].item()
                 ),
                 "final_return_arm_max_abs_error": float(
                     final_arm_max_abs_error[env_idx].item()
+                ),
+                "final_return_arm_joint_0_abs_error": float(
+                    final_arm_abs_error[env_idx, 0].item()
+                ),
+                "first_success_return_arm_joint_0_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 0].item()
+                ),
+                "final_return_arm_joint_1_abs_error": float(
+                    final_arm_abs_error[env_idx, 1].item()
+                ),
+                "first_success_return_arm_joint_1_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 1].item()
+                ),
+                "final_return_arm_joint_2_abs_error": float(
+                    final_arm_abs_error[env_idx, 2].item()
+                ),
+                "first_success_return_arm_joint_2_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 2].item()
+                ),
+                "final_return_arm_joint_3_abs_error": float(
+                    final_arm_abs_error[env_idx, 3].item()
+                ),
+                "first_success_return_arm_joint_3_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 3].item()
+                ),
+                "final_return_arm_joint_4_abs_error": float(
+                    final_arm_abs_error[env_idx, 4].item()
+                ),
+                "first_success_return_arm_joint_4_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 4].item()
+                ),
+                "final_return_arm_joint_5_abs_error": float(
+                    final_arm_abs_error[env_idx, 5].item()
+                ),
+                "first_success_return_arm_joint_5_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 5].item()
+                ),
+                "final_return_arm_joint_6_abs_error": float(
+                    final_arm_abs_error[env_idx, 6].item()
+                ),
+                "first_success_return_arm_joint_6_abs_error": float(
+                    first_success_arm_abs_error[env_idx, 6].item()
                 ),
             }
         )
@@ -142,6 +204,15 @@ def main():
     print(f"final_open_mean {final_open.mean().item():.6f}")
     print(f"final_shift_mean {final_shift.mean().item():.6f}")
     print(f"final_return_arm_score_mean {final_arm_score.mean().item():.6f}")
+    print(f"first_success_seen_mean {first_success_seen.float().mean().item():.6f}")
+    print(
+        "first_success_return_arm_mean_abs_error_mean "
+        f"{torch.nanmean(first_success_arm_abs_error.mean(dim=1)).item():.6f}"
+    )
+    print(
+        "first_success_return_arm_max_abs_error_mean "
+        f"{torch.nanmean(first_success_arm_abs_error.max(dim=1).values).item():.6f}"
+    )
     print(
         "final_return_arm_mean_abs_error_mean "
         f"{final_arm_mean_abs_error.mean().item():.6f}"
@@ -150,6 +221,31 @@ def main():
         "final_return_arm_max_abs_error_mean "
         f"{final_arm_max_abs_error.mean().item():.6f}"
     )
+    joint_abs_error_mean = final_arm_abs_error.mean(dim=0)
+    joint_abs_error_mean_deg = torch.rad2deg(joint_abs_error_mean)
+    first_success_joint_abs_error_mean = torch.nanmean(
+        first_success_arm_abs_error, dim=0
+    )
+    first_success_joint_abs_error_mean_deg = torch.rad2deg(
+        first_success_joint_abs_error_mean
+    )
+    for joint_idx in range(7):
+        print(
+            f"first_success_return_arm_joint_{joint_idx}_abs_error_mean "
+            f"{first_success_joint_abs_error_mean[joint_idx].item():.6f}"
+        )
+        print(
+            f"first_success_return_arm_joint_{joint_idx}_abs_error_mean_deg "
+            f"{first_success_joint_abs_error_mean_deg[joint_idx].item():.3f}"
+        )
+        print(
+            f"final_return_arm_joint_{joint_idx}_abs_error_mean "
+            f"{joint_abs_error_mean[joint_idx].item():.6f}"
+        )
+        print(
+            f"final_return_arm_joint_{joint_idx}_abs_error_mean_deg "
+            f"{joint_abs_error_mean_deg[joint_idx].item():.3f}"
+        )
     print(f"output_csv {output_path}")
 
 

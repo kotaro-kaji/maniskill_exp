@@ -62,6 +62,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     FINE_TCP_TO_TARGET_REWARD_SCALE = 30.0
     OPEN_STARTED_DISTANCE = 0.005
     INNER_BOX_OPEN_GOAL_DISTANCE = 0.12
+    INNER_BOX_OPEN_REWARD_TARGET_DISTANCE = 0.14
     OUTER_BOX_STABLE_DISTANCE = 0.02
     OUTER_BOX_SHIFT_PENALTY_SCALE = 0.05 / math.atanh(0.95)
     GRIPPER_OPENING_TARGET_QPOS = 0.44
@@ -354,6 +355,26 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             max=1.0,
         )
 
+    def _inner_box_open_target_reward(self) -> torch.Tensor:
+        open_amount = self._inner_box_open_amount()
+        target_distance = self.INNER_BOX_OPEN_REWARD_TARGET_DISTANCE
+        below_goal = torch.clamp(
+            open_amount / target_distance,
+            min=0.0,
+            max=1.0,
+        )
+        overshoot_fraction = torch.clamp(
+            (open_amount - target_distance) / target_distance,
+            min=0.0,
+            max=1.0,
+        )
+        above_goal = 0.5 * (1.0 + torch.cos(math.pi * overshoot_fraction))
+        return torch.where(
+            open_amount <= target_distance,
+            below_goal,
+            above_goal,
+        )
+
     def _inner_box_open_enough(self) -> torch.Tensor:
         return self._inner_box_open_amount() >= self.INNER_BOX_OPEN_GOAL_DISTANCE
 
@@ -455,6 +476,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "tcp_to_target_distance": self._tcp_to_target_distance(),
             "inner_box_open_amount": self._inner_box_open_amount(),
             "inner_box_open_fraction": self._inner_box_open_fraction(),
+            "inner_box_open_target_reward": self._inner_box_open_target_reward(),
             "open_enough": open_enough,
             "outer_box_shift": self._outer_box_shift(),
             "outer_box_shift_penalty": self._outer_box_shift_penalty(),
@@ -511,8 +533,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         reaching_reward = self._tcp_to_target_reward()
         open_amount = self._inner_box_open_amount()
         outer_box_stability = 1.0 - self._outer_box_shift_penalty()
-        stable_open_fraction = self._inner_box_open_fraction() * outer_box_stability
-        open_reward = 2.0 * stable_open_fraction
+        stable_open_target_reward = (
+            self._inner_box_open_target_reward() * outer_box_stability
+        )
+        open_reward = 2.0 * stable_open_target_reward
 
         open_started = open_amount >= self.OPEN_STARTED_DISTANCE
         reaching_reward = torch.where(
@@ -522,7 +546,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )  # min = 0.0, max = 2.0
         open_reward = torch.where(
             info["open_enough"],
-            torch.full_like(open_reward, 3.0),
+            3.0 * stable_open_target_reward,
             open_reward,
         )  # min = 0.0, max = 3.0
 
@@ -531,7 +555,9 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )
         reward = reaching_reward + open_reward + gripper_reward
         stage_return_mask = info["drawer_open_success_reached"]
-        stage_return_reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
+        stage_return_reward = (
+            4.0 + 4.0 * self._return_to_target_qpos_reward()
+        ) * stable_open_target_reward
         reward = torch.where(stage_return_mask, stage_return_reward, reward)
         reward = outer_box_stability * reward
         return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
