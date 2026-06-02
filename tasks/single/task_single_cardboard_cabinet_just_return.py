@@ -534,8 +534,3 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         
         reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
         return reward 
-
-
-@register_env("MySingleCardboardCabinetJustReturnNoGripperReward-v1", max_episode_steps=100)
-class MyDualCardboardCabinetNoGripperRewardEnv(MyDualCardboardCabinetEnv):
-    GRIPPER_OPENING_REWARD_WEIGHT = 0.0

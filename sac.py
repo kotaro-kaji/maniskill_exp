@@ -143,8 +143,8 @@ class Args:
     """frequency to save training videos in terms of iterations"""
     control_mode: Optional[str] = "pd_joint_delta_pos"
     """the control mode to use for the environment"""
-    robot_init_noise_scale: float = 1.0
-    """Scale factor for robot initial joint randomization (1.0 = default training noise, 0.0 = fixed)."""
+    robot_init_noise_scale: Optional[float] = None
+    """Scale factor for robot initial joint randomization, when the env supports it."""
 
     # Algorithm specific arguments
     total_timesteps: int = 1_000_000
@@ -155,6 +155,8 @@ class Args:
     """where the replay buffer is stored. Can be 'cpu' or 'cuda' for GPU"""
     gamma: float = 0.8
     """the discount factor gamma"""
+    reward_scale: float = 1.0
+    """multiplier applied to rewards before storing them in the SAC replay buffer"""
     tau: float = 0.01
     """target smoothing coefficient"""
     batch_size: int = 1024
@@ -399,7 +401,6 @@ if __name__ == "__main__":
         obs_mode="state",
         render_mode="rgb_array",
         sim_backend="gpu",
-        robot_init_noise_scale=args.robot_init_noise_scale,
         sim_config=dict(
             gpu_memory_config=dict(
                 # default in ManiSkill GPUMemoryConfig: max_rigid_contact_count=2**19
@@ -409,6 +410,8 @@ if __name__ == "__main__":
             )
         ),
     )
+    if args.robot_init_noise_scale is not None:
+        env_kwargs["robot_init_noise_scale"] = args.robot_init_noise_scale
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
@@ -640,7 +643,13 @@ if __name__ == "__main__":
                 for k, v in final_info["episode"].items():
                     logger.add_scalar(f"train/{k}", v[done_mask].float().mean(), global_step)
 
-            rb.add(sanitize_tensor(obs), sanitize_tensor(real_next_obs), actions, rewards, stop_bootstrap)
+            rb.add(
+                sanitize_tensor(obs),
+                sanitize_tensor(real_next_obs),
+                actions,
+                rewards * args.reward_scale,
+                stop_bootstrap,
+            )
 
             # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
             obs = next_obs
