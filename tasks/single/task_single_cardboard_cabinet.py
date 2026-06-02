@@ -147,6 +147,16 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             dtype=np.float32,
         )
         rotation_np = workspace_center_T_front_camera[:3, :3]
+        y_c_rotation_rad = math.radians(-1.0)
+        y_c_rotation = np.array(
+            [
+                [math.cos(y_c_rotation_rad), 0.0, math.sin(y_c_rotation_rad)],
+                [0.0, 1.0, 0.0],
+                [-math.sin(y_c_rotation_rad), 0.0, math.cos(y_c_rotation_rad)],
+            ],
+            dtype=np.float32,
+        )
+        rotation_np = rotation_np @ y_c_rotation
         # 実機カメラ座標とManiSkill上のカメラ座標の定義差を吸収する変換。
         # これは「カメラ座標系だけ」を入れ替える解析的な固定回転で、
         # workspace_center座標系には手を入れない。
