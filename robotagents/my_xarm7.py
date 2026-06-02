@@ -244,8 +244,8 @@ class Xarm7(BaseAgent):
         gripper_pd_joint_pos.mimic = gripper_mimic_map
         gripper_pd_joint_delta_pos = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            lower = -0.1,
-            upper = 0.1,
+            lower = -0.5,
+            upper = 0.5,
             stiffness = self.gripper_stiffness,
             damping =  self.gripper_damping,
             force_limit = self.gripper_force_limit,

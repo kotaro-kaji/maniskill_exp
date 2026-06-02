@@ -689,11 +689,11 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         super()._load_scene(options)
         gripper_qpos = torch.full(
             (6,),
-            self.GRIPPER_OPENING_TARGET_QPOS,
+            0.0,
             dtype=torch.float32,
         )
         self.table_scene.initial_qpos = torch.cat(
-            [self.RETURN_TARGET_QPOS, gripper_qpos]
+            [self.RETURN_TARGET_QPOS, gripper_qpos],
         )
 
     def _sample_initial_box_world_positions(
