@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kirisute Finger Two Stage PPO Result</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1f2933;
+      background: #f7f8fa;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+    }
+    h1 {
+      margin: 0 0 20px;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    h2 {
+      margin: 28px 0 12px;
+      font-size: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border: 1px solid #d8dee8;
+      margin: 12px 0 24px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e9f0;
+      font-size: 14px;
+    }
+    th {
+      background: #eef2f6;
+      font-weight: 650;
+    }
+    video, img {
+      width: 100%;
+      background: #111;
+      border: 1px solid #d8dee8;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .note {
+      color: #52606d;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    @media (max-width: 760px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Kirisute Finger Two Stage PPO Result</h1>
+    <p class="note">
+      RunPod: <code>root@38.147.83.26 -p 18030</code>。左右 finger の visual/collision を kirisute mesh に変更した URDF で実行。
+    </p>
+
+    <h2>Scalar Summary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Stage</th>
+          <th>Env</th>
+          <th>Best eval return</th>
+          <th>Best checkpoint</th>
+          <th>Final eval return</th>
+          <th>Final checkpoint</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>stage1</td>
+          <td><code>MyDualCardboardCabinet-v1</code></td>
+          <td>43.163879 @ 13,312,000 steps</td>
+          <td><code>ckpt_131.pt</code></td>
+          <td>32.072079</td>
+          <td><code>final_ckpt.pt</code></td>
+        </tr>
+        <tr>
+          <td>stage2</td>
+          <td><code>MySingleCardboardCabinetRandomized-v1</code></td>
+          <td>5.033479 @ 11,264,000 steps</td>
+          <td><code>ckpt_111.pt</code></td>
+          <td>3.981696</td>
+          <td><code>final_ckpt.pt</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Best Eval Videos</h2>
+    <div class="grid">
+      <section>
+        <h2>Stage1: ckpt_131</h2>
+        <video controls src="kirisute_stage1_best_ckpt131.mp4"></video>
+      </section>
+      <section>
+        <h2>Stage2: ckpt_111</h2>
+        <video controls src="kirisute_stage2_best_ckpt111.mp4"></video>
+      </section>
+    </div>
+
+    <h2>Return Curves</h2>
+    <div class="grid">
+      <section>
+        <h2>Stage1</h2>
+        <img src="kirisute_stage1_returns.png" alt="Stage1 return curve">
+      </section>
+      <section>
+        <h2>Stage2</h2>
+        <img src="kirisute_stage2_returns.png" alt="Stage2 return curve">
+      </section>
+    </div>
+  </main>
+</body>
+</html>

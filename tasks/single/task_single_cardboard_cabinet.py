@@ -56,7 +56,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         dynamic_friction=0.1,
     )
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
-    BOX_X_OFFSET_FROM_BASE = 0.30
+    BOX_X_OFFSET_FROM_BASE = 0.3373
     INSERT_TARGET_RADIUS = 0.008
     INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
     INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.00525)
