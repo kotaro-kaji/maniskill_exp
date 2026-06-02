@@ -2,6 +2,7 @@ from dataclasses import replace
 import math
 from typing import Any, Dict, Optional
 
+import numpy as np
 import sapien
 import torch
 
@@ -10,6 +11,7 @@ from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
+from mani_skill.utils.geometry.rotation_conversions import matrix_to_quaternion
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 
@@ -103,12 +105,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         robot_init_qpos_noise=0.02,
         robot_init_noise_scale: float = 1.0,
         initial_box_xy: Optional[tuple[float, float]] = None,
+        collect_rmb_data: bool = False,
         **kwargs,
     ):
         assert robot_uids == "my_xarm7"
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
         self.initial_box_xy = initial_box_xy
+        self.collect_rmb_data = bool(collect_rmb_data)
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -129,6 +133,69 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self.agent.robot,
             arm_joint_names,
         ).long()
+
+    @property
+    def _default_sensor_configs(self):
+        workspace_center_pose = self._compute_workspace_center_pose()
+        workspace_center_T_front_camera = np.array(
+            [
+                [-0.77732971, 0.28158974, -0.56255288, 0.82780755],
+                [0.62347855, 0.46404423, -0.62923561, 0.68456820],
+                [0.08386313, -0.83986319, -0.53628053, 0.52510474],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        rotation_np = workspace_center_T_front_camera[:3, :3]
+        # 実機カメラ座標とManiSkill上のカメラ座標の定義差を吸収する変換。
+        # これは「カメラ座標系だけ」を入れ替える解析的な固定回転で、
+        # workspace_center座標系には手を入れない。
+        # 軸対応: x_new = -y_old, y_new = -z_old, z_new = x_old
+        camera_axis_map = np.array(
+            [
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [1.0, 0.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
+        rotation_np = rotation_np @ camera_axis_map
+        rotation = torch.tensor(rotation_np, dtype=torch.float32)
+        translation = torch.tensor(
+            workspace_center_T_front_camera[:3, 3], dtype=torch.float32
+        )
+        front_camera_pose_in_workspace_center = Pose.create_from_pq(
+            p=translation,
+            q=matrix_to_quaternion(rotation),
+        )
+        pose = Pose.create(workspace_center_pose) * front_camera_pose_in_workspace_center
+        scale = 1.0 if self.collect_rmb_data else 0.4
+        # Real front camera calibration for the cardboard cabinet task.
+        base_intrinsic = np.array(
+            [
+                [606.135498046875, 0.0, 330.1974182128906],
+                [0.0, 605.4591674804688, 244.23666381835938],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        intrinsic = base_intrinsic.copy()
+        intrinsic[0, 0] *= scale
+        intrinsic[1, 1] *= scale
+        intrinsic[0, 2] *= scale
+        intrinsic[1, 2] *= scale
+        return [
+            CameraConfig(
+                "top",
+                pose=pose,
+                width=int(640 * scale),
+                height=int(480 * scale),
+                intrinsic=intrinsic,
+                fov=None,
+                near=0.01,
+                far=100,
+            )
+        ]
 
     @property
     def _default_human_render_camera_configs(self):

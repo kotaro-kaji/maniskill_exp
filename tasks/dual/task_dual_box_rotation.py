@@ -174,10 +174,12 @@ class MyDualBoxRotationEnv(BaseEnv):
         # print(f"q:{matrix_to_quaternion(rotation)}")
         pose = Pose.create(bimanual_center_pose) * front_camera_pose_in_bimanual_center
         scale = 1.0 if self.collect_rmb_data else 0.4
+        # This task uses the real "top" camera calibration.
+        # The cardboard cabinet task uses the separate real "front" camera calibration.
         base_intrinsic = np.array(
             [
-                [606.135498046875, 0.0, 330.1974182128906],
-                [0.0, 605.4591674804688, 244.23666381835938],
+                [607.811767578125, 0.0, 321.6131591796875],
+                [0.0, 607.1177368164062, 246.10968017578125],
                 [0.0, 0.0, 1.0],
             ],
             dtype=np.float32,
