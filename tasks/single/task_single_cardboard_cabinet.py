@@ -716,6 +716,8 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         return positions + noise
 
     def _sample_initial_box_orientations(self, env_idx: torch.Tensor) -> torch.Tensor:
+        if self.initial_box_xy is not None:
+            return super()._sample_initial_box_orientations(env_idx)
         base_yaw = math.radians(self.CABINET_SPEC.yaw_deg)
         yaw_noise = (
             2.0 * torch.rand((len(env_idx),), dtype=torch.float32, device=self.device)
@@ -728,4 +730,3 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         orientations[:, 0] = torch.cos(half_yaw)
         orientations[:, 3] = torch.sin(half_yaw)
         return orientations
-
