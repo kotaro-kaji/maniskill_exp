@@ -147,7 +147,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             dtype=np.float32,
         )
         rotation_np = workspace_center_T_front_camera[:3, :3]
-        y_c_rotation_rad = math.radians(-1.0)
+        y_c_rotation_rad = math.radians(0.0)
         y_c_rotation = np.array(
             [
                 [math.cos(y_c_rotation_rad), 0.0, math.sin(y_c_rotation_rad)],
