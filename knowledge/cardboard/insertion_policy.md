@@ -43,4 +43,4 @@ Current no-offset video paths are documented in
 
 The next target is stable 3 mm-level insertion distance. Keep using no fixed
 runtime action offsets. User-provided orientation and gripper-opening hints are
-tracked in `knowledge/cardboard_insertion_user_advice.md`.
+tracked in `insertion_user_advice.md`.

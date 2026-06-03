@@ -56,7 +56,7 @@ rg -n "019e62b0-2453-7b30-b67c-2b10b81fd0fd" ~/.codex/history.jsonl
 ## Related repository artifacts
 
 - Branch: `backup_of_gripper_insertion`
-- Gripper dynamics note: `knowledge/xarm_gripper_joint_dynamics.md`
+- Gripper dynamics note: `gripper_joint_dynamics.md`
 - Main gripper commit: `13809b3 fix: tune xarm gripper mimic dynamics`
 - Lowered cardboard target commit: `142ae46 exp: lower cardboard insert target`
 - Kept checkpoint artifact commit:
