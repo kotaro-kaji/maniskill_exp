@@ -27,8 +27,8 @@ authoritative recent PPO/SAC command patterns.
 
 ## Remote GPU / RunPod Notes
 The user often provides RunPod-style GPU servers for long ManiSkill experiments.
-Before setting up or debugging a new server, read `knowledge/runpod_maniskill_gpu.md`
-and `knowledge/remote_experiment_workflow.md`. Reuse those notes when the server
+Before setting up or debugging a new server, read `knowledge/remote/runpod_maniskill_gpu.md`
+and `knowledge/remote/experiment_workflow.md`. Reuse those notes when the server
 looks similar, but still verify the actual GPU, Python environment, CUDA, Vulkan,
 and ManiSkill smoke tests on the current server.
 
@@ -37,12 +37,12 @@ user explicitly asks to commit them. Store durable operational findings in
 `knowledge/`, and keep throwaway scripts/logs in `tmp_note/`.
 
 For cardboard insertion experiments, read
-`knowledge/cardboard_insertion_policy.md` before reporting results. Do not use
+`knowledge/cardboard/insertion_policy.md` before reporting results. Do not use
 fixed evaluation-time action offsets; results should reflect the policy action
 itself, with only normal action clipping.
 
 For cardboard drawer return experiments, read
-`knowledge/cardboard_arm_qpos_return_handoff.md` before changing the reward,
+`knowledge/cardboard/arm_qpos_return_handoff.md` before changing the reward,
 launching PPO/SAC runs, or reporting results. The current direction is
 arm-only qpos return; TCP return may remain as a diagnostic metric but should
 not be used as the training reward unless the user explicitly changes the

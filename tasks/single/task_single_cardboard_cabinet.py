@@ -36,6 +36,10 @@ from scenebuilders.xarm7_table_scene_builder import (
     ROBOT_BASE_X_OFFSET,
 )
 
+from scenebuilders.xarm7_initial_randomization_scene_builder import (
+    Xarm7InitialRandomizationSceneBuilder,
+)
+
 
 @register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
 class MyDualCardboardCabinetEnv(BaseEnv):
@@ -764,13 +768,10 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
 
     def _load_scene(self, options: Dict[str, Any]):
         super()._load_scene(options)
-        gripper_qpos = torch.full(
-            (6,),
-            0.0,
-            dtype=torch.float32,
-        )
-        self.table_scene.initial_qpos = torch.cat(
-            [self.RETURN_TARGET_QPOS, gripper_qpos],
+        self.table_scene.initial_qpos = (
+            Xarm7InitialRandomizationSceneBuilder
+            ._RESET_STATE_OF_ROBOMANIPBASELINES
+            .clone()
         )
 
     def _sample_initial_box_world_positions(
@@ -807,3 +808,9 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         orientations[:, 0] = torch.cos(half_yaw)
         orientations[:, 3] = torch.sin(half_yaw)
         return orientations
+
+
+@register_env("MySingleCardboardCabinetRandomized-v2", max_episode_steps=100)
+class MySingleCardboardCabinetRandomizedWideYEnv(MySingleCardboardCabinetRandomizedEnv):
+    BOX_POSITION_NOISE_LOW = (-0.03, -0.06, 0.0)
+    BOX_POSITION_NOISE_HIGH = (0.03, 0.06, 0.0)
