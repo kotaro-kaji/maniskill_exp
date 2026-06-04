@@ -789,8 +789,8 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
     BOX_POSITION_NOISE_LOW = (-0.03, -0.03, 0.0)
     BOX_POSITION_NOISE_HIGH = (0.03, 0.03, 0.0)
     BOX_YAW_NOISE_DEG = 5.0
-    MARKER_TRANSLATION_OBS_BIAS_RANGE = 0.005
-    MARKER_TRANSLATION_OBS_NOISE_STD = 0.005
+    MARKER_TRANSLATION_OBS_BIAS_RANGE = 0.0025
+    MARKER_TRANSLATION_OBS_NOISE_STD = 0.0025
 
     def __init__(self, *args, robot_init_noise_scale: float = 0.25, **kwargs):
         super().__init__(
