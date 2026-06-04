@@ -33,6 +33,9 @@ from scenebuilders.xarm7_table_scene_builder import (
     PEDESTAL_HEIGHT,
     ROBOT_BASE_X_OFFSET,
 )
+from scenebuilders.xarm7_initial_randomization_scene_builder import (
+    Xarm7InitialRandomizationSceneBuilder,
+)
 
 
 @register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
@@ -102,11 +105,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         robot_uids="my_xarm7",
         robot_init_qpos_noise=0.02,
         robot_init_noise_scale: float = 1.0,
+        initial_box_xy: Optional[tuple[float, float]] = None,
         **kwargs,
     ):
         assert robot_uids == "my_xarm7"
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
+        self.initial_box_xy = initial_box_xy
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -208,19 +213,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                 )
             self.drawer_open_success_reached[env_idx] = False
 
-            positions = self._initial_box_world_position().unsqueeze(0).repeat(
-                len(env_idx), 1
-            )
-            orientations = cardboard_cabinet_quaternion(
-                self.CABINET_SPEC,
-                device=self.device,
-            ).unsqueeze(0).repeat(len(env_idx), 1)
+            positions = self._sample_initial_box_world_positions(env_idx)
+            self._set_initial_box_reference_positions(env_idx, positions)
+            orientations = self._sample_initial_box_orientations(env_idx)
             self.cardboard_cabinet.set_pose(Pose.create_from_pq(positions, orientations))
             self.cardboard_inner_box.set_pose(
                 Pose.create_from_pq(
-                    self._initial_inner_box_world_position().unsqueeze(0).repeat(
-                        len(env_idx), 1
-                    ),
+                    self._initial_inner_box_world_positions(positions),
                     orientations,
                 )
             )
@@ -245,6 +244,40 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )
         return local + center
 
+    def _sample_initial_box_world_positions(
+        self, env_idx: torch.Tensor
+    ) -> torch.Tensor:
+        position = self._initial_box_world_position()
+        if self.initial_box_xy is not None:
+            assert len(self.initial_box_xy) == 2, self.initial_box_xy
+            position = position.clone()
+            center = torch.tensor(
+                self.workspace_center_pose.p,
+                dtype=position.dtype,
+                device=position.device,
+            )
+            position[0] = center[0] + float(self.initial_box_xy[0])
+            position[1] = center[1] + float(self.initial_box_xy[1])
+        return position.unsqueeze(0).repeat(len(env_idx), 1)
+
+    def _sample_initial_box_orientations(self, env_idx: torch.Tensor) -> torch.Tensor:
+        return (
+            cardboard_cabinet_quaternion(self.CABINET_SPEC, device=self.device)
+            .unsqueeze(0)
+            .repeat(len(env_idx), 1)
+        )
+
+    def _set_initial_box_reference_positions(
+        self, env_idx: torch.Tensor, positions: torch.Tensor
+    ):
+        if not hasattr(self, "_initial_box_reference_positions"):
+            self._initial_box_reference_positions = (
+                self._initial_box_world_position()
+                .unsqueeze(0)
+                .repeat(self.num_envs, 1)
+            )
+        self._initial_box_reference_positions[env_idx.long()] = positions
+
     def _initial_cabinet_pose(self) -> sapien.Pose:
         return sapien.Pose(
             p=self._initial_box_world_position().detach().cpu().tolist(),
@@ -258,9 +291,16 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         )
 
     def _initial_inner_box_world_position(self) -> torch.Tensor:
-        position = self._initial_box_world_position().clone()
-        position[1] += self.INNER_BOX_WORLD_Y_OFFSET
-        return position
+        return self._initial_inner_box_world_positions(
+            self._initial_box_world_position()
+        )
+
+    def _initial_inner_box_world_positions(
+        self, box_positions: torch.Tensor
+    ) -> torch.Tensor:
+        positions = box_positions.clone()
+        positions[..., 1] += self.INNER_BOX_WORLD_Y_OFFSET
+        return positions
 
     def _insert_side_origin_box_local(self) -> torch.Tensor:
         spec = self.INNER_BOX_SPEC
@@ -401,7 +441,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         current_pos = self.cardboard_cabinet.pose.p
         if current_pos.ndim == 1:
             current_pos = current_pos.unsqueeze(0)
-        initial_pos = self._initial_box_world_position().reshape(1, 3)
+        if hasattr(self, "_initial_box_reference_positions"):
+            initial_pos = self._initial_box_reference_positions[: current_pos.shape[0]]
+        else:
+            initial_pos = self._initial_box_world_position().reshape(1, 3)
         return torch.linalg.norm(current_pos - initial_pos, dim=-1)
 
     def _outer_box_shift_penalty(self) -> torch.Tensor:
@@ -624,6 +667,63 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             outer_box_stability * reward,
         )
         return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+
+
+@register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
+class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
+    BOX_POSITION_NOISE_LOW = (-0.03, -0.03, 0.0)
+    BOX_POSITION_NOISE_HIGH = (0.03, 0.03, 0.0)
+    BOX_YAW_NOISE_DEG = 5.0
+
+    def __init__(self, *args, robot_init_noise_scale: float = 0.25, **kwargs):
+        super().__init__(
+            *args,
+            robot_init_noise_scale=robot_init_noise_scale,
+            **kwargs,
+        )
+
+    def _load_scene(self, options: Dict[str, Any]):
+        super()._load_scene(options)
+        self.table_scene.initial_qpos = (
+            Xarm7InitialRandomizationSceneBuilder
+            ._RESET_STATE_OF_ROBOMANIPBASELINES
+            .clone()
+        )
+
+    def _sample_initial_box_world_positions(
+        self, env_idx: torch.Tensor
+    ) -> torch.Tensor:
+        positions = super()._sample_initial_box_world_positions(env_idx)
+        if self.initial_box_xy is not None:
+            return positions
+        noise_low = torch.tensor(
+            self.BOX_POSITION_NOISE_LOW,
+            dtype=torch.float32,
+            device=self.device,
+        )
+        noise_high = torch.tensor(
+            self.BOX_POSITION_NOISE_HIGH,
+            dtype=torch.float32,
+            device=self.device,
+        )
+        noise = noise_low + torch.rand_like(positions) * (noise_high - noise_low)
+        return positions + noise
+
+    def _sample_initial_box_orientations(self, env_idx: torch.Tensor) -> torch.Tensor:
+        if self.initial_box_xy is not None:
+            return super()._sample_initial_box_orientations(env_idx)
+        base_yaw = math.radians(self.CABINET_SPEC.yaw_deg)
+        yaw_noise = (
+            2.0 * torch.rand((len(env_idx),), dtype=torch.float32, device=self.device)
+            - 1.0
+        ) * math.radians(self.BOX_YAW_NOISE_DEG)
+        half_yaw = 0.5 * (base_yaw + yaw_noise)
+        orientations = torch.zeros(
+            (len(env_idx), 4), dtype=torch.float32, device=self.device
+        )
+        orientations[:, 0] = torch.cos(half_yaw)
+        orientations[:, 3] = torch.sin(half_yaw)
+        return orientations
 
 
 @register_env("MyDualCardboardCabinetNoGripperReward-v1", max_episode_steps=100)

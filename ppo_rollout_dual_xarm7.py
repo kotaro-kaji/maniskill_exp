@@ -102,6 +102,16 @@ class RolloutArgs:
     """Print raw actions each step."""
     gripper_joint_indices: Optional[str] = "7,15"
     """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 119.0 override)."""
+    initial_box_xy: Optional[str] = None
+    """Fixed initial cardboard box XY in the workspace-center frame as 'x,y'. If omitted, the environment default is used."""
+
+
+def _parse_initial_box_xy(value: Optional[str]) -> Optional[tuple[float, float]]:
+    if value is None:
+        return None
+    tokens = [token.strip() for token in value.split(",")]
+    assert len(tokens) == 2, value
+    return float(tokens[0]), float(tokens[1])
 
 
 def _build_env(args: RolloutArgs):
@@ -116,6 +126,9 @@ def _build_env(args: RolloutArgs):
     )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
+    initial_box_xy = _parse_initial_box_xy(args.initial_box_xy)
+    if initial_box_xy is not None:
+        env_kwargs["initial_box_xy"] = initial_box_xy
 
     eval_envs = gym.make(
         args.env_id,

@@ -29,6 +29,16 @@ uv run python ppo_dual_xarm7.py \
     --update-epochs 8 --num-minibatches 32 \
     --total-timesteps 25_000_000 --eval-freq 5 --gamma 0.99
 
+# cardboard cabinet drawer PPO: 固定環境ckptから小さめランダマイズ環境で継続
+uv run python ppo_dual_xarm7.py \
+    --checkpoint <stage1_ckpt> \
+    --env-id MySingleCardboardCabinetRandomized-v1 \
+    --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.25 \
+    --num-envs 1024 --num-steps 100 --num-eval-steps 100 \
+    --num-eval-envs 64 --num-eval-video-envs 4 \
+    --update-epochs 8 --num-minibatches 32 \
+    --total-timesteps 15_000_000 --eval-freq 5 --gamma 0.99
+
 # cardboard cabinet just-return PPO
 uv run python ppo_dual_xarm7.py \
     --exp-name cardboard_just_return_unique_ppo_seed1 \
@@ -42,9 +52,11 @@ uv run python ppo_dual_xarm7.py \
 # single-arm checkpoint policy rollout: state と action の時系列を rollout_dual_log.csv に保存
 uv run python ppo_rollout_single_xarm7.py \
     --checkpoint runs/cardboard_drawer_soft_pd_small_return_jump_ppo_seed1/ckpt_241.pt \
+    --env-id MySingleCardboardCabinetRandomized-v1 \
     --control-mode pd_joint_delta_pos \
     --num-eval-envs 1 --num-eval-steps 100 \
-    --no-capture-video --sim-backend cpu
+    --robot-init-noise-scale 0.0 \
+    --initial-box-xy 0.30,0.00
 
 # cardboard cabinet drawer SAC: joint delta controller での比較
 uv run python sac.py \
