@@ -558,22 +558,29 @@
       <inertia ixx="1.7493E-05" ixy="-4.2156E-19" ixz="6.9164E-18" iyy="1.7225E-05" iyz="4.6433E-06" izz="5.1466E-06"/>
     </inertial>
     <visual>
-      <!-- <geometry>
+      <geometry>
         <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
-      <material name="Black"/> -->
+      <material name="Black"/>
+      <!-- Box fallback:
       <geometry>
         <box size="0.012 0.006 0.040"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.000025 -0.01575 0.0325"/>
+      -->
     </visual>
     <collision>
       <geometry>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
+      <!-- Box fallback:
+      <geometry>
         <box size="0.012 0.006 0.040"/>
-        <!-- <box size="0.012 0.006 0.040"/> -->
       </geometry>
       <origin rpy="0 0 0" xyz="-0.000025 -0.01575 0.0325"/>
+      -->
     </collision>
   </link>
   <joint name="left_finger_joint" type="revolute">
@@ -643,30 +650,31 @@
       <inertia ixx="1.7493E-05" ixy="-5.0014E-19" ixz="-7.5079E-18" iyy="1.7225E-05" iyz="-4.6435E-06" izz="5.1466E-06"/>
     </inertial>
     <visual>
-      <!-- <geometry>
+      <geometry>
         <mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010475 -0.005449 -0.006592"/>
-      <material name="Silver"/> -->
+      <material name="Silver"/>
+      <!-- Box fallback:
       <geometry>
         <box size="0.012 0.006 0.040"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0.000025 0.01575 0.0325"/>
+      -->
     </visual>
     
     <collision>
       <geometry>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="-0.010475 -0.005449 -0.006592"/>
+      <!-- Box fallback:
+      <geometry>
         <box size="0.012 0.006 0.040"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0.000025 0.01575 0.0325"/>
+      -->
     </collision>
-
-    <!-- <collision>
-      <geometry>
-        <box size="0.028 0.010 0.036"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 -0.02110 0.04295"/>
-    </collision> -->
     
   </link>
   <joint name="right_finger_joint" type="revolute">
