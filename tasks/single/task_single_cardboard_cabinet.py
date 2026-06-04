@@ -737,37 +737,48 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return obs
 
     def compute_normalized_dense_reward(self, obs, action, info):
-        reaching_reward = self._tcp_to_target_reward()
+
+        # calculate individual reward components
+        reward_reaching = self._tcp_to_target_reward()
         open_amount = self._inner_box_open_amount()
         outer_box_stability = 1.0 - self._outer_box_shift_penalty()
+
         stable_open_target_reward = (
             self._inner_box_open_target_reward() * outer_box_stability
         )
-        open_reward = 2.0 * stable_open_target_reward
+        reward_open = 2.0 * stable_open_target_reward
 
         open_started = open_amount >= self.OPEN_STARTED_DISTANCE
-        reaching_reward = torch.where(
-            open_started,
-            torch.full_like(reaching_reward, 2.0),
-            reaching_reward,
-        )  # min = 0.0, max = 2.0
-        open_reward = torch.where(
+        reward_open = torch.where(
             info["open_enough"],
             3.0 * stable_open_target_reward,
-            open_reward,
+            reward_open,
         )  # min = 0.0, max = 3.0
 
-        gripper_reward = (
+        reward_gripper = (
             self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
-        )
-        reward = reaching_reward + open_reward + gripper_reward
-        stage_return_mask = info["drawer_open_success_reached"]
-        stage_return_reward = (
-            4.0 + 4.0 * self._return_to_target_qpos_reward()
-        ) * stable_open_target_reward
-        reward = torch.where(stage_return_mask, stage_return_reward, reward)
-        reward = outer_box_stability * reward
-        return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+        )  # min = 0.0, max = GRIPPER_OPENING_REWARD_WEIGHT
+        reward_return_qpos = 4.0 * self._return_to_target_qpos_reward()
+        # min = 0.0, max = 4.0
+
+        # reward shaping design:
+        # Stage 1: reach the marker panel before the drawer starts opening.
+        stage_1_reward = reward_reaching + reward_open + reward_gripper
+        reward = stage_1_reward
+
+        # Stage 2: once the drawer starts opening, keep the reaching term at
+        # its maximum and reward opening progress.
+        stage_2_mask = open_started
+        stage_2_reward = 2.0 + reward_open + reward_gripper
+        reward = torch.where(stage_2_mask, stage_2_reward, reward)
+
+        # Stage 3: after the drawer has been opened once, keep the opening
+        # reward and add an arm-qpos return bonus.
+        stage_3_mask = info["drawer_open_success_reached"]
+        stage_3_reward = reward + reward_return_qpos
+        reward = torch.where(stage_3_mask, stage_3_reward, reward)
+
+        return reward / (9.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
 
 
 @register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
