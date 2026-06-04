@@ -68,6 +68,12 @@ uv run python ppo_rollout_single_xarm7.py \
     --robot-init-noise-scale 0.0 \
     --initial-box-xy 0.30,0.00
 
+# randomized-v2 checkpoint policy metrics: 初期箱位置ごとの成功率と開き量をCSVに保存
+uv run python eval_scripts/eval_cardboard_randomized_policy_metrics.py \
+    --checkpoint <randomized_v2_ckpt> \
+    --num-envs 160 --num-steps 100 \
+    --output-csv tmp_note/randomized_v2_eval_metrics.csv
+
 # cardboard cabinet drawer SAC: joint delta controller での比較
 uv run python sac.py \
     --env-id MyDualCardboardCabinet-v1 \
