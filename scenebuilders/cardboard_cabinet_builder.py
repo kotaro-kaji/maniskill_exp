@@ -33,14 +33,14 @@ class CardboardInnerBoxSpec:
     outer_length_x: float
     outer_width_y: float
     outer_height_z: float
-    wall_thickness: float = 0.006
+    wall_thickness: float = 0.002
     density: float = 250.0
-    static_friction: float = 0.9
-    dynamic_friction: float = 0.75
+    static_friction: float = 0.2
+    dynamic_friction: float = 0.1
     color_hex: str = "#B0916E"
     marker_panel_color_hex: str = "#F472B6"
     notch_width_x: float = 0.06
-    notch_height_z: float = 0.018
+    notch_height_z: float = 0.013
     notch_side_collision: bool = True
     name: str = "cardboard_inner_box"
 
@@ -51,21 +51,41 @@ def make_cardboard_inner_box_spec(
     length_delta: float = 0.007,
     width_delta: float = 0.015,
     height_delta: float = 0.015,
+    wall_thickness: float = 0.002,
+    static_friction: float = 0.2,
+    dynamic_friction: float = 0.1,
     notch_width_x: float = 0.06,
-    notch_height_z: float = 0.018,
+    notch_height_z: float = 0.013,
 ) -> CardboardInnerBoxSpec:
     return CardboardInnerBoxSpec(
         outer_length_x=cabinet_spec.outer_length_x - length_delta,
         outer_width_y=cabinet_spec.outer_width_y - width_delta,
         outer_height_z=cabinet_spec.outer_height_z - height_delta,
-        wall_thickness=cabinet_spec.wall_thickness,
+        wall_thickness=wall_thickness,
         density=cabinet_spec.density,
-        static_friction=cabinet_spec.static_friction,
-        dynamic_friction=cabinet_spec.dynamic_friction,
+        static_friction=static_friction,
+        dynamic_friction=dynamic_friction,
         color_hex=cabinet_spec.color_hex,
         marker_panel_color_hex="#F472B6",
         notch_width_x=notch_width_x,
         notch_height_z=notch_height_z,
+    )
+
+
+def make_cardboard_cabinet_task_spec(
+    base_spec: CardboardCabinetSpec = DEFAULT_CARDBOARD_CABINET_SPEC,
+) -> CardboardCabinetSpec:
+    return CardboardCabinetSpec(
+        outer_length_x=base_spec.outer_length_x,
+        outer_width_y=base_spec.outer_width_y,
+        outer_height_z=base_spec.outer_height_z,
+        wall_thickness=base_spec.wall_thickness,
+        static_friction=base_spec.static_friction,
+        dynamic_friction=base_spec.dynamic_friction,
+        yaw_deg=base_spec.yaw_deg,
+        name=base_spec.name,
+        color_hex="#4C78A8",
+        density=2500.0,
     )
 
 

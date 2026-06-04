@@ -1,4 +1,3 @@
-from dataclasses import replace
 import math
 from typing import Any, Dict, Optional
 
@@ -24,6 +23,7 @@ from scenebuilders.cardboard_cabinet_builder import (
     cardboard_cabinet_quaternion,
     cardboard_inner_box_panel_specs,
     INNER_MARKER_PANEL_INDEX,
+    make_cardboard_cabinet_task_spec,
     make_cardboard_inner_box_spec,
     OUTER_MARKER_PANEL_INDEX,
 )
@@ -47,23 +47,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     agent: Xarm7
 
     OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
-    CABINET_SPEC = replace(
-        OUTER_CARDBOARD_BASE_SPEC,
-        color_hex="#4C78A8",
-        density=2500.0,
-    )
-    INNER_BOX_SPEC = replace(
-        make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC),
-        wall_thickness=0.002,
-        density=OUTER_CARDBOARD_BASE_SPEC.density,
-        static_friction=0.2,
-        dynamic_friction=0.1,
-    )
+    CABINET_SPEC = make_cardboard_cabinet_task_spec(OUTER_CARDBOARD_BASE_SPEC)
+    INNER_BOX_SPEC = make_cardboard_inner_box_spec(OUTER_CARDBOARD_BASE_SPEC)
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.3373
     INSERT_TARGET_RADIUS = 0.008
     INSERT_TARGET_COLOR = (0.5, 1.0, 0.0, 1.0)
-    INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.00525)
+    INSERT_TARGET_SIDE_LOCAL = (0.0, 0.0, 0.00925)
     TCP_TO_TARGET_REWARD_SCALE = 5.0
     FINE_TCP_TO_TARGET_REWARD_SCALE = 30.0
     OPEN_STARTED_DISTANCE = 0.005
@@ -746,14 +736,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         stable_open_target_reward = (
             self._inner_box_open_target_reward() * outer_box_stability
         )
-        reward_open = 2.0 * stable_open_target_reward
+        reward_open = 3.0 * stable_open_target_reward
+        # min = 0.0, max = 3.0
 
         open_started = open_amount >= self.OPEN_STARTED_DISTANCE
-        reward_open = torch.where(
-            info["open_enough"],
-            3.0 * stable_open_target_reward,
-            reward_open,
-        )  # min = 0.0, max = 3.0
 
         reward_gripper = (
             self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
@@ -764,14 +750,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         # reward shaping design:
         # Stage 1: reach the marker panel before the drawer starts opening.
         stage_1_reward = reward_reaching + reward_open + reward_gripper
-        # min = 0.0, max < 1.13
+        # min = 0.0, max < 1.17
         reward = stage_1_reward
 
         # Stage 2: once the drawer starts opening, keep the reaching term at
         # its maximum and reward opening progress.
         stage_2_mask = open_started
         stage_2_reward = 2.0 + reward_open + reward_gripper
-        # min = 2.0, max < 3.97 before drawer_open_success
+        # min = 2.0, max < 4.93 before drawer_open_success
         reward = torch.where(stage_2_mask, stage_2_reward, reward)
 
         # Stage 3: while the drawer is currently open and the outer box is
