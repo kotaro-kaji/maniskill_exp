@@ -671,8 +671,9 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
 @register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
 class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
-    BOX_POSITION_NOISE_LOW = (-0.03, -0.03, 0.0)
-    BOX_POSITION_NOISE_HIGH = (0.03, 0.03, 0.0)
+    BOX_X_OFFSET_FROM_BASE = 0.3373
+    BOX_POSITION_NOISE_LOW = (-0.01, -0.02, 0.0)
+    BOX_POSITION_NOISE_HIGH = (0.01, 0.02, 0.0)
     BOX_YAW_NOISE_DEG = 5.0
 
     def __init__(self, *args, robot_init_noise_scale: float = 0.25, **kwargs):
@@ -724,6 +725,12 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         orientations[:, 0] = torch.cos(half_yaw)
         orientations[:, 3] = torch.sin(half_yaw)
         return orientations
+
+
+@register_env("MySingleCardboardCabinetRandomized-v2", max_episode_steps=100)
+class MySingleCardboardCabinetRandomizedWideYEnv(MySingleCardboardCabinetRandomizedEnv):
+    BOX_POSITION_NOISE_LOW = (-0.03, -0.06, 0.0)
+    BOX_POSITION_NOISE_HIGH = (0.03, 0.06, 0.0)
 
 
 @register_env("MyDualCardboardCabinetNoGripperReward-v1", max_episode_steps=100)

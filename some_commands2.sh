@@ -33,6 +33,16 @@ uv run python ppo_dual_xarm7.py \
 uv run python ppo_dual_xarm7.py \
     --checkpoint <stage1_ckpt> \
     --env-id MySingleCardboardCabinetRandomized-v1 \
+    --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.10 \
+    --num-envs 1024 --num-steps 100 --num-eval-steps 100 \
+    --num-eval-envs 64 --num-eval-video-envs 4 \
+    --update-epochs 8 --num-minibatches 32 \
+    --total-timesteps 15_000_000 --eval-freq 5 --gamma 0.99
+
+# cardboard cabinet drawer PPO: v1ランダマイズckptからy広めランダマイズ環境で継続
+uv run python ppo_dual_xarm7.py \
+    --checkpoint <randomized_v1_ckpt> \
+    --env-id MySingleCardboardCabinetRandomized-v2 \
     --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.25 \
     --num-envs 1024 --num-steps 100 --num-eval-steps 100 \
     --num-eval-envs 64 --num-eval-video-envs 4 \
