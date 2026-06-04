@@ -32,13 +32,13 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
     # Desired joint configuration (arm joints 1-7, gripper drive + mimics)
     _RESET_STATE_OF_ROBOMANIPBASELINES = torch.tensor(
         [
-            -0.332,
-            0.143,
-            0.623,
-            0.491,
-            -1.038,
-            0.992,
-            1.182,
+            -0.152,
+            0.463,
+            0.554,
+            0.771,
+            -1.123,
+            1.395,
+            1.370,
             0.44,
             0.44,
             0.44,
@@ -52,13 +52,13 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
     # Desired joint configuration (arm joints 1-7 only)
     _JOINT_ONLY_RESET_STATE_OF_ROBOMANIPBASELINES_ = torch.tensor(
         [
-            -0.332,
-            0.143,
-            0.623,
-            0.491,
-            -1.038,
-            0.992,
-            1.182,
+            -0.152,
+            0.463,
+            0.554,
+            0.771,
+            -1.123,
+            1.395,
+            1.370,
         ],
         dtype=torch.float32,
     )

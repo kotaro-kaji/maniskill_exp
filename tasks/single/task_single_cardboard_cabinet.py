@@ -764,18 +764,21 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         # reward shaping design:
         # Stage 1: reach the marker panel before the drawer starts opening.
         stage_1_reward = reward_reaching + reward_open + reward_gripper
+        # min = 0.0, max < 1.13
         reward = stage_1_reward
 
         # Stage 2: once the drawer starts opening, keep the reaching term at
         # its maximum and reward opening progress.
         stage_2_mask = open_started
         stage_2_reward = 2.0 + reward_open + reward_gripper
+        # min = 2.0, max < 3.97 before drawer_open_success
         reward = torch.where(stage_2_mask, stage_2_reward, reward)
 
-        # Stage 3: after the drawer has been opened once, keep the opening
-        # reward and add an arm-qpos return bonus.
-        stage_3_mask = info["drawer_open_success_reached"]
+        # Stage 3: while the drawer is currently open and the outer box is
+        # stable, keep the opening reward and add an arm-qpos return bonus.
+        stage_3_mask = info["drawer_open_success"]
         stage_3_reward = reward + reward_return_qpos
+        # min = 2.0 + reward_open + reward_gripper, max = 9.05
         reward = torch.where(stage_3_mask, stage_3_reward, reward)
 
         return reward / (9.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
