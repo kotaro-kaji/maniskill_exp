@@ -40,7 +40,7 @@ class CardboardInnerBoxSpec:
     color_hex: str = "#B0916E"
     marker_panel_color_hex: str = "#F472B6"
     notch_width_x: float = 0.06
-    notch_height_z: float = 0.018
+    notch_height_z: float = 0.013
     notch_side_collision: bool = True
     name: str = "cardboard_inner_box"
 
@@ -52,7 +52,7 @@ def make_cardboard_inner_box_spec(
     width_delta: float = 0.015,
     height_delta: float = 0.015,
     notch_width_x: float = 0.06,
-    notch_height_z: float = 0.018,
+    notch_height_z: float = 0.013,
 ) -> CardboardInnerBoxSpec:
     return CardboardInnerBoxSpec(
         outer_length_x=cabinet_spec.outer_length_x - length_delta,
