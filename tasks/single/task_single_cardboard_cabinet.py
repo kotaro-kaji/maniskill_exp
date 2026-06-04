@@ -290,6 +290,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
                     device=self.device,
                 )
             self.drawer_open_success_reached[env_idx] = False
+            self._reset_marker_translation_obs_bias(env_idx)
 
             positions = self._sample_initial_box_world_positions(env_idx)
             self._set_initial_box_reference_positions(env_idx, positions)
@@ -434,6 +435,16 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             OUTER_MARKER_PANEL_INDEX
         ]
         return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
+
+    def _reset_marker_translation_obs_bias(self, env_idx: torch.Tensor):
+        pass
+
+    def _add_marker_translation_obs_noise(
+        self,
+        inner_position: torch.Tensor,
+        outer_position: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return inner_position, outer_position
 
     def _marker_panel_world_pose(self, actor, local_position: torch.Tensor):
         position = self._actor_local_point_world(actor, local_position)
@@ -693,12 +704,18 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             dtype=inner_marker_panel_position.dtype,
             device=inner_marker_panel_position.device,
         )
+        inner_marker_panel_position, outer_marker_panel_position = (
+            self._add_marker_translation_obs_noise(
+                inner_marker_panel_position - center,
+                outer_marker_panel_position - center,
+            )
+        )
         return {
-            "inner_marker_panel_position": inner_marker_panel_position - center,
+            "inner_marker_panel_position": inner_marker_panel_position,
             "inner_marker_panel_rotation_6d": self._actor_rotation_6d(
                 self.cardboard_inner_box
             ),
-            "outer_marker_panel_position": outer_marker_panel_position - center,
+            "outer_marker_panel_position": outer_marker_panel_position,
             "outer_marker_panel_rotation_6d": self._actor_rotation_6d(
                 self.cardboard_cabinet
             ),
@@ -758,6 +775,8 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
     BOX_POSITION_NOISE_LOW = (-0.03, -0.03, 0.0)
     BOX_POSITION_NOISE_HIGH = (0.03, 0.03, 0.0)
     BOX_YAW_NOISE_DEG = 5.0
+    MARKER_TRANSLATION_OBS_BIAS_RANGE = 0.005
+    MARKER_TRANSLATION_OBS_NOISE_STD = 0.005
 
     def __init__(self, *args, robot_init_noise_scale: float = 0.25, **kwargs):
         super().__init__(
@@ -773,6 +792,49 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
             ._RESET_STATE_OF_ROBOMANIPBASELINES
             .clone()
         )
+
+    def _reset_marker_translation_obs_bias(self, env_idx: torch.Tensor):
+        if len(env_idx) == 0:
+            return
+        if not hasattr(self, "_inner_marker_translation_obs_bias"):
+            self._inner_marker_translation_obs_bias = torch.zeros(
+                (self.num_envs, 3), dtype=torch.float32, device=self.device
+            )
+            self._outer_marker_translation_obs_bias = torch.zeros(
+                (self.num_envs, 3), dtype=torch.float32, device=self.device
+            )
+        bias_range = float(self.MARKER_TRANSLATION_OBS_BIAS_RANGE)
+        env_idx = env_idx.long()
+        self._inner_marker_translation_obs_bias[env_idx] = (
+            2.0 * torch.rand((len(env_idx), 3), dtype=torch.float32, device=self.device)
+            - 1.0
+        ) * bias_range
+        self._outer_marker_translation_obs_bias[env_idx] = (
+            2.0 * torch.rand((len(env_idx), 3), dtype=torch.float32, device=self.device)
+            - 1.0
+        ) * bias_range
+
+    def _add_marker_translation_obs_noise(
+        self,
+        inner_position: torch.Tensor,
+        outer_position: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not hasattr(self, "_inner_marker_translation_obs_bias"):
+            env_idx = torch.arange(self.num_envs, device=self.device)
+            self._reset_marker_translation_obs_bias(env_idx)
+        count = inner_position.shape[0]
+        noise_std = float(self.MARKER_TRANSLATION_OBS_NOISE_STD)
+        inner_position = (
+            inner_position
+            + self._inner_marker_translation_obs_bias[:count]
+            + torch.randn_like(inner_position) * noise_std
+        )
+        outer_position = (
+            outer_position
+            + self._outer_marker_translation_obs_bias[:count]
+            + torch.randn_like(outer_position) * noise_std
+        )
+        return inner_position, outer_position
 
     def _sample_initial_box_world_positions(
         self, env_idx: torch.Tensor
