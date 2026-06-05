@@ -559,7 +559,7 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
       <material name="Black"/>
@@ -573,7 +573,7 @@
     <collision>
       <!-- Kirisute collision
       <geometry>
-        <mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
       -->
@@ -657,7 +657,7 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010475 -0.005449 -0.006592"/>
       <material name="Silver"/>
@@ -672,7 +672,7 @@
     <collision>
       <!-- Kirisute collision
       <geometry>
-        <mesh filename="file:///home/kotaro/my_projects/robotics/maniskill_exp/xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010475 -0.005449 -0.006592"/>
       -->
