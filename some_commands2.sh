@@ -68,6 +68,14 @@ uv run python ppo_rollout_single_xarm7.py \
     --robot-init-noise-scale 0.0 \
     --initial-box-xy 0.30,0.00
 
+# randomized-v2 checkpoint policy video: slot_open 近接視点で録画
+uv run python eval_scripts/record_cardboard_policy_video.py \
+    --checkpoint <randomized_v2_ckpt> \
+    --env-id MySingleCardboardCabinetRandomized-v2 \
+    --output-dir tmp_note/randomized_v2_slot_open_video \
+    --num-envs 1 --num-steps 100 \
+    --camera slot_open
+
 # randomized-v2 checkpoint policy metrics: 初期箱位置ごとの成功率と開き量をCSVに保存
 uv run python eval_scripts/eval_cardboard_randomized_policy_metrics.py \
     --checkpoint <randomized_v2_ckpt> \
