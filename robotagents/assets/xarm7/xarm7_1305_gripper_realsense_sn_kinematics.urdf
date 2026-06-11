@@ -701,16 +701,28 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
+      <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
+      <material name="Black"/>
     </visual>
     <collision>
+      <!-- Finger mesh collision disabled
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/left_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
+      -->
+      <geometry>
+        <box size="0.012 0.006 0.040"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="-0.000025 -0.01575 0.0325"/>
+    </collision>
+    <collision>
+      <geometry>
+        <box size="0.012 0.01 0.010"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="-0.000025 -0.02075 0.0165"/>
     </collision>
   </link>
   <joint name="left_finger_joint" type="revolute">
@@ -789,16 +801,28 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
+        <mesh filename="../../../xarm_description/meshes/gripper/xarm/right_kirisute1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="-0.010475 -0.005449 -0.006592"/>
       <material name="Silver"/>
     </visual>
     <collision>
+      <!-- Finger mesh collision disabled
       <geometry>
         <mesh filename="package://xarm_description/meshes/gripper/xarm/right_finger.stl"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
+      -->
+      <geometry>
+        <box size="0.012 0.006 0.040"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0.000025 0.01575 0.0325"/>
+    </collision>
+    <collision>
+      <geometry>
+        <box size="0.012 0.01 0.010"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0.000025 0.02075 0.0165"/>
     </collision>
   </link>
   <joint name="right_finger_joint" type="revolute">
