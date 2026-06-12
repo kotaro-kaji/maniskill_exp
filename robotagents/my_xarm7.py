@@ -14,6 +14,7 @@ from mani_skill.utils.structs.actor import Actor
 @register_agent()
 class Xarm7(BaseAgent):
     uid = "my_xarm7"
+    arm_delta_pos_limit = 0.06
     urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
     #urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
     urdf_config = dict(
@@ -198,8 +199,8 @@ class Xarm7(BaseAgent):
         )
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
-            lower = -0.003,
-            upper = 0.003,
+            lower = -self.arm_delta_pos_limit,
+            upper = self.arm_delta_pos_limit,
             stiffness = self.arm_stiffness,
             damping =  self.arm_damping,
             force_limit = self.arm_force_limit,

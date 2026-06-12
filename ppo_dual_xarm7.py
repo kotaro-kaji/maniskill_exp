@@ -40,8 +40,8 @@ from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwit
 
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
-SIM_FREQUENCY_HZ = 20
-CONTROL_FREQUENCY_HZ = 20
+SIM_FREQUENCY_HZ = int(os.getenv("PPO_DUAL_XARM7_SIM_FREQUENCY_HZ", "100"))
+CONTROL_FREQUENCY_HZ = int(os.getenv("PPO_DUAL_XARM7_CONTROL_FREQUENCY_HZ", "20"))
 
 
 class InfoDirectoryLogger:

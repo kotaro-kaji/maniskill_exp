@@ -102,8 +102,9 @@ uv run python sac.py \
 
 
 
------------------------実機に即したコントローラーでの継続学習
-python ppo_dual_xarm7.py     --env-id MyDualCardboardCabinet-v1    \
+# 実機に即した small-delta controller での継続学習
+uv run python ppo_dual_xarm7_low_freq.py \
+    --env-id MyDualCardboardCabinetSmallDelta-v1 \
  --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0     --num-envs 1024 \
  --num-steps 200 --num-eval-steps 200 --num-eval-envs 64 --num-eval-video-envs 4    \
   --update-epochs 8 --num-minibatches 32     --total-timesteps 25_000_000 --eval-freq 5 \

@@ -16,6 +16,7 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 
 from robotagents.my_xarm7 import Xarm7
+from robotagents.my_xarm7_small_delta import Xarm7SmallDelta
 from scenebuilders.cardboard_cabinet_builder import (
     DEFAULT_CARDBOARD_CABINET_SPEC,
     build_cardboard_cabinet_actor,
@@ -40,7 +41,7 @@ from scenebuilders.xarm7_initial_randomization_scene_builder import (
 )
 
 
-@register_env("MyDualCardboardCabinet-v1", max_episode_steps=200)
+@register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
 class MyDualCardboardCabinetEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7"]
     agent: Xarm7
@@ -111,7 +112,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         collect_rmb_data: bool = False,
         **kwargs,
     ):
-        assert robot_uids == "my_xarm7"
+        assert robot_uids in self.SUPPORTED_ROBOTS, robot_uids
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
         self.initial_box_xy = initial_box_xy
@@ -744,6 +745,15 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             outer_box_stability * reward,
         )
         return reward / (8.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+
+
+@register_env("MyDualCardboardCabinetSmallDelta-v1", max_episode_steps=200)
+class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
+    SUPPORTED_ROBOTS = ["my_xarm7_small_delta"]
+    agent: Xarm7SmallDelta
+
+    def __init__(self, *args, robot_uids="my_xarm7_small_delta", **kwargs):
+        super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
 
 @register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
