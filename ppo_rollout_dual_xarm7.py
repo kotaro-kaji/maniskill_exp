@@ -1,18 +1,27 @@
 from __future__ import annotations
 
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import csv
 import json
 import os
 import random
 from collections import defaultdict
 from dataclasses import dataclass
+from os import devnull
 from typing import Any, List, Optional
 
 import gymnasium as gym
 import mani_skill.envs  # noqa: F401
+import matplotlib.pyplot as plt
 import numpy as np
+import pytorch_kinematics as pk
 import torch
 import tyro
+from mani_skill.utils import gym_utils
+from mani_skill.utils.geometry.rotation_conversions import (
+    matrix_to_euler_angles,
+    quaternion_to_matrix,
+)
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -40,6 +49,8 @@ _NORMALIZED_ACTION_HIGH = torch.tensor(1.0, dtype=torch.float32)
 
 CSV_LOG_FILENAME = "rollout_dual_log.csv"
 INFO_LOG_FILENAME = "rollout_dual_info.jsonl"
+TCP_TRACE_CSV_FILENAME = "rollout_tcp_trace.csv"
+TCP_TRACE_PNG_PREFIX = "rollout_tcp_trace"
 
 
 def _to_serializable(obj: Any):
@@ -54,6 +65,189 @@ def _to_serializable(obj: Any):
     if isinstance(obj, (list, tuple)):
         return [_to_serializable(value) for value in obj]
     return repr(obj)
+
+
+@contextmanager
+def _suppress_stdout_stderr():
+    with open(devnull, "w") as fnull:
+        with redirect_stderr(fnull), redirect_stdout(fnull):
+            yield
+
+
+def _get_physical_bounds(controller):
+    if hasattr(controller, "action_space_low") and hasattr(controller, "action_space_high"):
+        return controller.action_space_low, controller.action_space_high
+
+    if hasattr(controller, "controllers"):
+        lows = []
+        highs = []
+        for sub_controller in controller.controllers.values():
+            low, high = _get_physical_bounds(sub_controller)
+            lows.append(torch.as_tensor(low))
+            highs.append(torch.as_tensor(high))
+        return torch.cat(lows, dim=-1), torch.cat(highs, dim=-1)
+
+    space = getattr(controller, "_original_single_action_space", None)
+    if space is None:
+        space = getattr(controller, "single_action_space", None)
+    assert isinstance(space, gym.spaces.Box), type(space)
+    return torch.as_tensor(space.low), torch.as_tensor(space.high)
+
+
+class TcpTraceLogger:
+    def __init__(self, env, action_dim: int, device: torch.device):
+        base_env = env.base_env
+        agent = base_env.agent
+        if not hasattr(agent, "urdf_path"):
+            agent = agent.agents[0]
+        assert hasattr(agent, "urdf_path"), type(agent)
+        assert hasattr(agent, "ee_link_name"), type(agent)
+        assert hasattr(agent, "arm_joint_names"), type(agent)
+
+        self.agent = agent
+        self.device = device
+        self.action_dim = action_dim
+        self.arm_dim = len(agent.arm_joint_names)
+        assert action_dim >= self.arm_dim, (action_dim, self.arm_dim)
+
+        with open(agent.urdf_path, "rb") as f:
+            urdf = f.read()
+        with _suppress_stdout_stderr():
+            self.chain = pk.build_serial_chain_from_urdf(
+                urdf,
+                agent.ee_link_name,
+            ).to(device=device)
+        chain_joint_names = self.chain.get_joint_parameter_names()
+        assert chain_joint_names == agent.arm_joint_names, (
+            chain_joint_names,
+            agent.arm_joint_names,
+        )
+        self.rows = []
+
+    def fk_world_pose(self, arm_qpos: torch.Tensor):
+        arm_qpos = arm_qpos.to(self.device)
+        local_matrix = self.chain.forward_kinematics(arm_qpos).get_matrix()
+        root_pose = self.agent.robot.root_pose.raw_pose.to(self.device)
+        root_p = root_pose[:, :3]
+        root_q = root_pose[:, 3:7]
+        root_rotation = quaternion_to_matrix(root_q)
+        local_position = local_matrix[:, :3, 3]
+        local_rotation = local_matrix[:, :3, :3]
+        world_position = root_p + torch.bmm(
+            root_rotation,
+            local_position.unsqueeze(-1),
+        ).squeeze(-1)
+        world_rotation = torch.bmm(root_rotation, local_rotation)
+        world_rpy = matrix_to_euler_angles(world_rotation, "XYZ")
+        return world_position, world_rpy
+
+    def log(self, step: int, time_sec: float, qpos: torch.Tensor, clipped_action: torch.Tensor, physical_action: torch.Tensor):
+        qpos = qpos.to(self.device)
+        if qpos.ndim == 1:
+            qpos = qpos.unsqueeze(0)
+        current_arm_qpos = qpos[:, : self.arm_dim]
+        commanded_arm_qpos = current_arm_qpos + physical_action[:, : self.arm_dim]
+        current_tcp, current_rpy = self.fk_world_pose(current_arm_qpos)
+        commanded_tcp, commanded_rpy = self.fk_world_pose(commanded_arm_qpos)
+        delta_tcp = commanded_tcp - current_tcp
+        delta_rpy = commanded_rpy - current_rpy
+
+        row = {
+            "step": step,
+            "time": time_sec,
+            "current_tcp_x": float(current_tcp[0, 0].detach().cpu().item()),
+            "current_tcp_y": float(current_tcp[0, 1].detach().cpu().item()),
+            "current_tcp_z": float(current_tcp[0, 2].detach().cpu().item()),
+            "commanded_tcp_x": float(commanded_tcp[0, 0].detach().cpu().item()),
+            "commanded_tcp_y": float(commanded_tcp[0, 1].detach().cpu().item()),
+            "commanded_tcp_z": float(commanded_tcp[0, 2].detach().cpu().item()),
+            "delta_tcp_x": float(delta_tcp[0, 0].detach().cpu().item()),
+            "delta_tcp_y": float(delta_tcp[0, 1].detach().cpu().item()),
+            "delta_tcp_z": float(delta_tcp[0, 2].detach().cpu().item()),
+            "current_tcp_roll": float(current_rpy[0, 0].detach().cpu().item()),
+            "current_tcp_pitch": float(current_rpy[0, 1].detach().cpu().item()),
+            "current_tcp_yaw": float(current_rpy[0, 2].detach().cpu().item()),
+            "commanded_tcp_roll": float(commanded_rpy[0, 0].detach().cpu().item()),
+            "commanded_tcp_pitch": float(commanded_rpy[0, 1].detach().cpu().item()),
+            "commanded_tcp_yaw": float(commanded_rpy[0, 2].detach().cpu().item()),
+            "delta_tcp_roll": float(delta_rpy[0, 0].detach().cpu().item()),
+            "delta_tcp_pitch": float(delta_rpy[0, 1].detach().cpu().item()),
+            "delta_tcp_yaw": float(delta_rpy[0, 2].detach().cpu().item()),
+        }
+        for idx in range(self.arm_dim):
+            row[f"qpos_{idx}"] = float(current_arm_qpos[0, idx].detach().cpu().item())
+            row[f"commanded_qpos_{idx}"] = float(
+                commanded_arm_qpos[0, idx].detach().cpu().item()
+            )
+            row[f"action_{idx}"] = float(clipped_action[0, idx].detach().cpu().item())
+            row[f"delta_q_{idx}"] = float(physical_action[0, idx].detach().cpu().item())
+        self.rows.append(row)
+
+    def save(self, csv_path: str, png_prefix: str):
+        assert self.rows, "TCP trace has no rows"
+        csv_abs = os.path.abspath(csv_path)
+        png_prefix_abs = os.path.abspath(png_prefix)
+        with open(csv_abs, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=list(self.rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(self.rows)
+
+        steps = [row["step"] for row in self.rows]
+        plots = [
+            ("x", "tcp x [m]", "current_tcp_x", "commanded_tcp_x", "delta_tcp_x"),
+            ("y", "tcp y [m]", "current_tcp_y", "commanded_tcp_y", "delta_tcp_y"),
+            ("z", "tcp z [m]", "current_tcp_z", "commanded_tcp_z", "delta_tcp_z"),
+            (
+                "roll",
+                "tcp roll [rad]",
+                "current_tcp_roll",
+                "commanded_tcp_roll",
+                "delta_tcp_roll",
+            ),
+            (
+                "pitch",
+                "tcp pitch [rad]",
+                "current_tcp_pitch",
+                "commanded_tcp_pitch",
+                "delta_tcp_pitch",
+            ),
+            ("yaw", "tcp yaw [rad]", "current_tcp_yaw", "commanded_tcp_yaw", "delta_tcp_yaw"),
+        ]
+        output_paths = []
+        for suffix, ylabel, current_key, commanded_key, delta_key in plots:
+            fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
+            axes[0].plot(
+                steps,
+                [row[current_key] for row in self.rows],
+                label=current_key,
+            )
+            axes[0].plot(
+                steps,
+                [row[commanded_key] for row in self.rows],
+                label=commanded_key,
+                linewidth=1.0,
+            )
+            axes[0].set_ylabel(ylabel)
+            axes[0].grid(True, alpha=0.25)
+            axes[0].legend(loc="upper right")
+            axes[1].plot(
+                steps,
+                [row[delta_key] for row in self.rows],
+                label=delta_key,
+                color="tab:red",
+            )
+            axes[1].set_ylabel("command - current")
+            axes[1].set_xlabel("step")
+            axes[1].grid(True, alpha=0.25)
+            axes[1].legend(loc="upper right")
+            fig.tight_layout()
+            output_path = f"{png_prefix_abs}_{suffix}.png"
+            fig.savefig(output_path, dpi=160)
+            plt.close(fig)
+            output_paths.append(output_path)
+        print(f"Saved TCP trace CSV to {csv_abs}")
+        for output_path in output_paths:
+            print(f"Saved TCP trace PNG to {output_path}")
 
 
 @dataclass
@@ -190,6 +384,10 @@ def run_rollout(args: RolloutArgs) -> None:
     action_dim = eval_envs.single_action_space.shape[0]
     control_timestep = float(eval_envs.base_env.control_timestep)
     obs_dim = int(obs.shape[-1])
+    physical_low, physical_high = _get_physical_bounds(eval_envs.base_env.agent.controller)
+    physical_low = torch.as_tensor(physical_low, device=device, dtype=torch.float32)
+    physical_high = torch.as_tensor(physical_high, device=device, dtype=torch.float32)
+    tcp_trace_logger = TcpTraceLogger(eval_envs, action_dim, device)
 
     csv_path = os.path.abspath(CSV_LOG_FILENAME)
     csv_file = open(csv_path, "w", newline="")
@@ -237,11 +435,24 @@ def run_rollout(args: RolloutArgs) -> None:
         if args.print_actions:
             print(f"step={step} action={action.detach().cpu().numpy()}")
         clipped_action = torch.clamp(action, normalized_low, normalized_high)
+        physical_action = gym_utils.clip_and_scale_action(
+            clipped_action,
+            physical_low,
+            physical_high,
+        )
+        qpos_before = tcp_trace_logger.agent.robot.get_qpos().detach()
         obs_cpu = obs.detach().cpu()
 
         action_cpu = action.detach().cpu()
         clipped_cpu = clipped_action.detach().cpu()
         time_sec = step * control_timestep
+        tcp_trace_logger.log(
+            step,
+            time_sec,
+            qpos_before,
+            clipped_action,
+            physical_action,
+        )
         for env_index in range(args.num_eval_envs):
             row = {
                 "step": step,
@@ -314,6 +525,7 @@ def run_rollout(args: RolloutArgs) -> None:
         info_logger.close()
     csv_file.close()
     info_file.close()
+    tcp_trace_logger.save(TCP_TRACE_CSV_FILENAME, TCP_TRACE_PNG_PREFIX)
 
     if metrics:
         print("Rollout metrics:")
