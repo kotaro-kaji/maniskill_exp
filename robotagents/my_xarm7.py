@@ -72,9 +72,9 @@ class Xarm7(BaseAgent):
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 1100))
+        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 11000))
         self.arm_damping = float(os.getenv("XARM_ARM_KD", 80))
-        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 1000))
+        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 10000))
         # Gripper
         self.gripper_stiffness = float( 1e3)
         self.gripper_damping = float( 5e2)
