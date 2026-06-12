@@ -15,8 +15,8 @@ from mani_skill.utils.structs.actor import Actor
 class Xarm7(BaseAgent):
     uid = "my_xarm7"
     arm_delta_pos_limit = 0.06
-    urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
-    #urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
+    urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
+    # urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
     urdf_config = dict(
         _materials=dict(
             gripper=dict(static_friction=2.0, dynamic_friction=2.0, restitution=0.0)
