@@ -34,6 +34,7 @@ def parse_args():
     parser.add_argument("--deadzone", type=float, default=0.0)
     parser.add_argument("--gripper-action", type=float, default=0.4)
     parser.add_argument("--control-hz", type=float, default=60.0)
+    parser.add_argument("--sim-backend", default="physx_cuda")
     parser.add_argument("--log-dir", default="teleop_logs")
     parser.add_argument("--print-devices", action="store_true")
     return parser.parse_args()
@@ -242,6 +243,7 @@ def main():
         obs_mode="state",
         control_mode="pd_ee_delta_pose",
         render_mode="human",
+        sim_backend=args.sim_backend,
     )
     uids = agent_uids(env)
     assert len(uids) in (1, 2), uids
