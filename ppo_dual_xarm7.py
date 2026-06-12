@@ -40,7 +40,7 @@ from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwit
 
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20
-SIM_FREQUENCY_HZ = 100
+SIM_FREQUENCY_HZ = 20
 CONTROL_FREQUENCY_HZ = 20
 
 

@@ -99,3 +99,12 @@ uv run python sac.py \
     --total-timesteps 25_000_000 --eval-freq 25_000 \
     --num-eval-envs 64 --num-eval-video-envs 4 --num-steps 100 --num-eval-steps 100 \
     --gamma 0.99
+
+
+
+-----------------------実機に即したコントローラーでの継続学習
+python ppo_dual_xarm7.py     --env-id MyDualCardboardCabinet-v1    \
+ --control-mode pd_joint_delta_pos --robot-init-noise-scale 0.0     --num-envs 1024 \
+ --num-steps 200 --num-eval-steps 200 --num-eval-envs 64 --num-eval-video-envs 4    \
+  --update-epochs 8 --num-minibatches 32     --total-timesteps 25_000_000 --eval-freq 5 \
+  --gamma 0.99 --checkpoint runs/MyDualCardboardCabinet-v1__ppo_dual_xarm7__1__1781171202/ckpt_36.pt

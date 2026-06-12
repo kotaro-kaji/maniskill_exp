@@ -40,7 +40,7 @@ from scenebuilders.xarm7_initial_randomization_scene_builder import (
 )
 
 
-@register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
+@register_env("MyDualCardboardCabinet-v1", max_episode_steps=200)
 class MyDualCardboardCabinetEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["my_xarm7"]
     agent: Xarm7
