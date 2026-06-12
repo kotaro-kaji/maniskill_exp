@@ -753,6 +753,9 @@ class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
         "my_xarm7_delta001",
         "my_xarm7_delta003",
         "my_xarm7_delta03",
+        "my_xarm7_kinematics_delta001",
+        "my_xarm7_kinematics_delta003",
+        "my_xarm7_kinematics_delta03",
     ]
     agent: Xarm7SmallDelta
 
