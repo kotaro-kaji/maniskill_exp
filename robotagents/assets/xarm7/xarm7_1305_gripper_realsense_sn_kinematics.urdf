@@ -704,7 +704,7 @@
         <mesh filename="../../../xarm_description/meshes/gripper/xarm/left_kirisute.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin rpy="0 0 0" xyz="-0.010518 -0.025412 -0.006599"/>
-      <material name="Black"/>
+      <material name="Silver"/>
     </visual>
     <collision>
       <!-- Finger mesh collision disabled
