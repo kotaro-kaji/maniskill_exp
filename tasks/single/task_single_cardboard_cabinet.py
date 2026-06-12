@@ -749,10 +749,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 
 @register_env("MyDualCardboardCabinetSmallDelta-v1", max_episode_steps=200)
 class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
-    SUPPORTED_ROBOTS = ["my_xarm7_small_delta"]
+    SUPPORTED_ROBOTS = [
+        "my_xarm7_delta001",
+        "my_xarm7_delta003",
+        "my_xarm7_delta03",
+    ]
     agent: Xarm7SmallDelta
 
-    def __init__(self, *args, robot_uids="my_xarm7_small_delta", **kwargs):
+    def __init__(self, *args, robot_uids="my_xarm7_delta003", **kwargs):
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
 

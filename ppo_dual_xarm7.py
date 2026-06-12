@@ -200,6 +200,8 @@ class Args:
     """for benchmarking purposes we want to reconfigure the eval environment each reset to ensure objects are randomized in some tasks"""
     control_mode: Optional[str] = None
     """the control mode to use for the environment (defaults per task)"""
+    robot_uid: Optional[str] = None
+    """the robot uid to use for the environment"""
     anneal_lr: bool = False
     """Toggle learning rate annealing for policy and value networks"""
     gamma: float = 0.8
@@ -346,6 +348,8 @@ if __name__ == "__main__":
     )
     if args.robot_init_noise_scale is not None:
         env_kwargs["robot_init_noise_scale"] = args.robot_init_noise_scale
+    if args.robot_uid is not None:
+        env_kwargs["robot_uids"] = args.robot_uid
 
     if args.control_mode is not None:
         control_mode = args.control_mode
