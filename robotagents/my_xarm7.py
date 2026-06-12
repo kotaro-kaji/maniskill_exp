@@ -15,6 +15,9 @@ from mani_skill.utils.structs.actor import Actor
 class Xarm7(BaseAgent):
     uid = "my_xarm7"
     arm_delta_pos_limit = 0.06
+    arm_stiffness_default = 1100
+    arm_damping_default = 80
+    arm_force_limit_default = 1000
     urdf_path = "robotagents/assets/xarm7/xarm7_1305_left.urdf"
     # urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
     urdf_config = dict(
@@ -72,9 +75,9 @@ class Xarm7(BaseAgent):
 
         # PD parameters (defaults) — overridable via env vars for quick tuning
         # Arm
-        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", 11000))
-        self.arm_damping = float(os.getenv("XARM_ARM_KD", 80))
-        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", 10000))
+        self.arm_stiffness = float(os.getenv("XARM_ARM_KP", self.arm_stiffness_default))
+        self.arm_damping = float(os.getenv("XARM_ARM_KD", self.arm_damping_default))
+        self.arm_force_limit = float(os.getenv("XARM_ARM_FMAX", self.arm_force_limit_default))
         # Gripper
         self.gripper_stiffness = float( 1e3)
         self.gripper_damping = float( 5e2)
