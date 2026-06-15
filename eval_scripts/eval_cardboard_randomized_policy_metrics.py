@@ -12,6 +12,7 @@ if (cwd / "ppo_dual_xarm7.py").exists():
     sys.path.insert(0, str(cwd))
 
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
+from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 from ppo_dual_xarm7 import Agent
 
@@ -79,6 +80,12 @@ def main():
     )
     if isinstance(env.action_space, gym.spaces.Dict):
         env = FlattenActionSpaceWrapper(env)
+    env = ManiSkillVectorEnv(
+        env,
+        args.num_envs,
+        ignore_terminations=True,
+        record_metrics=True,
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     agent = Agent(env).to(device)

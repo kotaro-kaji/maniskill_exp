@@ -13,6 +13,7 @@ if (cwd / "ppo_dual_xarm7.py").exists():
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
+from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
 import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 from ppo_dual_xarm7 import Agent
@@ -79,6 +80,12 @@ def main():
         trajectory_name="rollout",
         max_steps_per_video=args.num_steps,
         video_fps=20,
+    )
+    env = ManiSkillVectorEnv(
+        env,
+        args.num_envs,
+        ignore_terminations=True,
+        record_metrics=True,
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
