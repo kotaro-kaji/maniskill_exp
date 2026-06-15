@@ -751,9 +751,11 @@ class MyDualCardboardCabinetEnv(BaseEnv):
 class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
     SUPPORTED_ROBOTS = [
         "my_xarm7_delta001",
+        "my_xarm7_delta01",
         "my_xarm7_delta003",
         "my_xarm7_delta03",
         "my_xarm7_kinematics_delta001",
+        "my_xarm7_kinematics_delta01",
         "my_xarm7_kinematics_delta003",
         "my_xarm7_kinematics_delta03",
     ]
@@ -765,6 +767,17 @@ class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
 
 @register_env("MySingleCardboardCabinetRandomized-v1", max_episode_steps=100)
 class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
+    SUPPORTED_ROBOTS = [
+        "my_xarm7",
+        "my_xarm7_delta001",
+        "my_xarm7_delta01",
+        "my_xarm7_delta003",
+        "my_xarm7_delta03",
+        "my_xarm7_kinematics_delta001",
+        "my_xarm7_kinematics_delta01",
+        "my_xarm7_kinematics_delta003",
+        "my_xarm7_kinematics_delta03",
+    ]
     BOX_X_OFFSET_FROM_BASE = 0.3373
     BOX_POSITION_NOISE_LOW = (-0.01, -0.02, 0.0)
     BOX_POSITION_NOISE_HIGH = (0.01, 0.02, 0.0)

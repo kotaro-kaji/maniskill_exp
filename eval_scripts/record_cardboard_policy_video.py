@@ -53,6 +53,7 @@ def main():
     parser.add_argument("--num-steps", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--control-mode", default="pd_joint_delta_pos")
+    parser.add_argument("--robot-uid", default=None)
     parser.add_argument("--sim-backend", default="physx_cuda")
     parser.add_argument("--camera", choices=("slot_open", "overview", "default"), default="slot_open")
     args = parser.parse_args()
@@ -65,6 +66,7 @@ def main():
         sim_backend=args.sim_backend,
         control_mode=args.control_mode,
         robot_init_noise_scale=0.0,
+        robot_uids=args.robot_uid if args.robot_uid is not None else "my_xarm7",
         reconfiguration_freq=1,
         human_render_camera_configs=camera_config(args.camera),
     )
@@ -116,6 +118,7 @@ def main():
     env.close()
 
     print(f"num_envs {args.num_envs}")
+    print(f"robot_uid {args.robot_uid if args.robot_uid is not None else 'my_xarm7'}")
     print(f"episode_return_mean {episode_return.mean().item():.6f}")
     print(f"max_open_mean {max_open.mean().item():.6f}")
     print(f"max_shift_mean {max_shift.mean().item():.6f}")

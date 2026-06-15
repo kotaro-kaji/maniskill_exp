@@ -12,6 +12,14 @@ class Xarm7SmallDelta(Xarm7):
 
 
 @register_agent()
+class Xarm7Delta01Stiff(Xarm7):
+    uid = "my_xarm7_delta01"
+    arm_delta_pos_limit = 0.01
+    arm_stiffness_default = 11000
+    arm_force_limit_default = 10000
+
+
+@register_agent()
 class Xarm7Delta001Stiff(Xarm7):
     uid = "my_xarm7_delta001"
     arm_delta_pos_limit = 0.001
@@ -30,6 +38,12 @@ class Xarm7Delta03Soft(Xarm7):
 @register_agent()
 class Xarm7KinematicsDelta001(Xarm7Delta001Stiff):
     uid = "my_xarm7_kinematics_delta001"
+    urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
+
+
+@register_agent()
+class Xarm7KinematicsDelta01(Xarm7Delta01Stiff):
+    uid = "my_xarm7_kinematics_delta01"
     urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
 
 

@@ -60,6 +60,7 @@ def main():
     parser.add_argument("--num-steps", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--control-mode", default="pd_joint_delta_pos")
+    parser.add_argument("--robot-uid", default=None)
     parser.add_argument("--sim-backend", default="physx_cuda")
     parser.add_argument("--robot-init-noise-scale", type=float, default=0.25)
     parser.add_argument("--output-csv", required=True)
@@ -73,6 +74,7 @@ def main():
         sim_backend=args.sim_backend,
         control_mode=args.control_mode,
         robot_init_noise_scale=args.robot_init_noise_scale,
+        robot_uids=args.robot_uid if args.robot_uid is not None else "my_xarm7",
         reconfiguration_freq=1,
     )
     if isinstance(env.action_space, gym.spaces.Dict):
@@ -185,6 +187,7 @@ def main():
         writer.writerows(rows)
 
     print(f"env_id {args.env_id}")
+    print(f"robot_uid {args.robot_uid if args.robot_uid is not None else 'my_xarm7'}")
     print(f"num_envs {args.num_envs}")
     print("randomized_center_x 0.337300")
     print("randomized_x_range [0.307300, 0.367300]")
