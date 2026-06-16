@@ -736,10 +736,12 @@ class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
     SUPPORTED_ROBOTS = [
         "my_xarm7_delta001",
         "my_xarm7_delta01",
+        "my_xarm7_delta02",
         "my_xarm7_delta003",
         "my_xarm7_delta03",
         "my_xarm7_kinematics_delta001",
         "my_xarm7_kinematics_delta01",
+        "my_xarm7_kinematics_delta02",
         "my_xarm7_kinematics_delta003",
         "my_xarm7_kinematics_delta03",
     ]
@@ -755,10 +757,12 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
         "my_xarm7",
         "my_xarm7_delta001",
         "my_xarm7_delta01",
+        "my_xarm7_delta02",
         "my_xarm7_delta003",
         "my_xarm7_delta03",
         "my_xarm7_kinematics_delta001",
         "my_xarm7_kinematics_delta01",
+        "my_xarm7_kinematics_delta02",
         "my_xarm7_kinematics_delta003",
         "my_xarm7_kinematics_delta03",
     ]
