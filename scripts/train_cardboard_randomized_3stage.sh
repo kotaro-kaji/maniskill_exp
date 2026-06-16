@@ -43,7 +43,6 @@ preferred = [
     "eval/drawer_open_success",
     "eval/success_at_end",
     "eval/success",
-    "eval/drawer_open_success_ever",
     "eval/return",
     "eval/reward",
     "eval/r",

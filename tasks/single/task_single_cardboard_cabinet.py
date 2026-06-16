@@ -862,18 +862,6 @@ class MyDualCardboardCabinet66de62bEnv(MyDualCardboardCabinetLegacyRotation6DEnv
         dtype=torch.float32,
     )
 
-    def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
-        super()._initialize_episode(env_idx, options)
-        if len(env_idx) == 0:
-            return
-        if not hasattr(self, "_drawer_open_success_ever"):
-            self._drawer_open_success_ever = torch.zeros(
-                self.num_envs,
-                dtype=torch.bool,
-                device=self.device,
-            )
-        self._drawer_open_success_ever[env_idx] = False
-
     def _return_to_target_qpos_reward(self) -> torch.Tensor:
         arm_score, gripper_score = self._return_to_target_qpos_component_rewards()
         return (
@@ -903,15 +891,6 @@ class MyDualCardboardCabinet66de62bEnv(MyDualCardboardCabinetLegacyRotation6DEnv
             return_to_target_qpos_reward >= self.RETURN_TARGET_QPOS_SUCCESS_SCORE
         )
         drawer_open_success = open_enough & outer_box_stable_enough
-        if not hasattr(self, "_drawer_open_success_ever"):
-            self._drawer_open_success_ever = torch.zeros(
-                self.num_envs,
-                dtype=torch.bool,
-                device=self.device,
-            )
-        self._drawer_open_success_ever = (
-            self._drawer_open_success_ever | drawer_open_success
-        )
         return {
             "tcp_to_target_distance": self._tcp_to_target_distance(),
             "inner_box_open_amount": self._inner_box_open_amount(),
@@ -927,9 +906,8 @@ class MyDualCardboardCabinet66de62bEnv(MyDualCardboardCabinetLegacyRotation6DEnv
             "return_gripper_qpos_reward": return_gripper_reward,
             "return_pose_enough": return_pose_enough,
             "drawer_open_success": drawer_open_success,
-            "drawer_open_success_ever": self._drawer_open_success_ever,
             "success": (
-                self._drawer_open_success_ever
+                drawer_open_success
                 & outer_box_stable_enough
                 & return_pose_enough
             ),
@@ -978,7 +956,7 @@ class MyDualCardboardCabinet66de62bEnv(MyDualCardboardCabinetLegacyRotation6DEnv
             self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
         )
         reward = reaching_reward + open_reward + gripper_reward
-        stage_return_mask = info["drawer_open_success_ever"]
+        stage_return_mask = info["drawer_open_success"]
         stage_return_reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
         reward = torch.where(stage_return_mask, stage_return_reward, reward)
         reward = outer_box_stability * reward
