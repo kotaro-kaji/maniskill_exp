@@ -7,7 +7,7 @@ from .my_xarm7 import Xarm7
 class Xarm7SmallDelta(Xarm7):
     uid = "my_xarm7_delta003"
     arm_delta_pos_limit = 0.003
-    arm_stiffness_default = 21000
+    arm_stiffness_default = 22000
     arm_force_limit_default = 20000
 
 
@@ -15,24 +15,24 @@ class Xarm7SmallDelta(Xarm7):
 class Xarm7Delta01Stiff(Xarm7):
     uid = "my_xarm7_delta01"
     arm_delta_pos_limit = 0.01
-    arm_stiffness_default = 11000
-    arm_force_limit_default = 10000
+    arm_stiffness_default = 6600
+    arm_force_limit_default = 6000
 
 
 @register_agent()
 class Xarm7Delta001Stiff(Xarm7):
     uid = "my_xarm7_delta001"
     arm_delta_pos_limit = 0.001
-    arm_stiffness_default = 11000
-    arm_force_limit_default = 10000
+    arm_stiffness_default = 66000
+    arm_force_limit_default = 60000
 
 
 @register_agent()
 class Xarm7Delta03Soft(Xarm7):
     uid = "my_xarm7_delta03"
     arm_delta_pos_limit = 0.03
-    arm_stiffness_default = 5500
-    arm_force_limit_default = 5000
+    arm_stiffness_default = 2200
+    arm_force_limit_default = 2000
 
 
 @register_agent()

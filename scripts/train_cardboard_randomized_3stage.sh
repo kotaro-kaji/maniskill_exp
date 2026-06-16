@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Stage 1: train MyDualCardboardCabinet-v1 from scratch with delta=0.06.
-# Stage 2: continue from the best stage-1 checkpoint on randomized-v1.
-# Stage 3: continue from the best stage-2 checkpoint on randomized-v2.
+# Reproducible three-stage delta=0.06 curriculum:
+# Stage 1: train MyDualCardboardCabinet-v1 from scratch.
+# Stage 2: continue conservatively on randomized-v1.
+# Stage 3: continue conservatively on randomized-v2.
 
 SEED="${SEED:-1}"
 NUM_ENVS="${NUM_ENVS:-1024}"
@@ -13,7 +14,12 @@ STAGE1_TIMESTEPS="${STAGE1_TIMESTEPS:-25000000}"
 STAGE2_TIMESTEPS="${STAGE2_TIMESTEPS:-15000000}"
 STAGE3_TIMESTEPS="${STAGE3_TIMESTEPS:-15000000}"
 CHECKPOINT_STAGE1="${CHECKPOINT_STAGE1:-}"
+CHECKPOINT_STAGE2="${CHECKPOINT_STAGE2:-}"
 PYTHON_BIN="${PYTHON_BIN:-uv run python}"
+FINETUNE_LR="${FINETUNE_LR:-1e-4}"
+FINETUNE_ANCHOR_COEF="${FINETUNE_ANCHOR_COEF:-0.1}"
+FINETUNE_CLIP_COEF="${FINETUNE_CLIP_COEF:-0.1}"
+FINETUNE_TARGET_KL="${FINETUNE_TARGET_KL:-0.05}"
 
 best_ckpt() {
   local run_dir="$1"
@@ -94,6 +100,47 @@ run_stage() {
   "${cmd[@]}"
 }
 
+run_finetune_stage() {
+  local stage_name="$1"
+  local env_id="$2"
+  local robot_noise="$3"
+  local total_timesteps="$4"
+  local checkpoint="$5"
+  local exp_name="cardboard_3stage_seed${SEED}_${stage_name}"
+
+  local cmd=(
+    ${PYTHON_BIN}
+    ppo_dual_xarm7.py
+    --exp-name "${exp_name}"
+    --env-id "${env_id}"
+    --control-mode pd_joint_delta_pos
+    --robot-init-noise-scale "${robot_noise}"
+    --checkpoint "${checkpoint}"
+    --anchor-checkpoint "${checkpoint}"
+    --anchor-coef "${FINETUNE_ANCHOR_COEF}"
+    --learning-rate "${FINETUNE_LR}"
+    --clip-coef "${FINETUNE_CLIP_COEF}"
+    --target-kl "${FINETUNE_TARGET_KL}"
+    --num-envs "${NUM_ENVS}"
+    --num-steps 100
+    --num-eval-steps 100
+    --num-eval-envs "${NUM_EVAL_ENVS}"
+    --num-eval-video-envs "${NUM_EVAL_VIDEO_ENVS}"
+    --update-epochs 8
+    --num-minibatches 32
+    --total-timesteps "${total_timesteps}"
+    --eval-freq 5
+    --gamma 0.99
+    --seed "${SEED}"
+  )
+
+  echo
+  echo "### ${stage_name}"
+  printf '%q ' "${cmd[@]}"
+  echo
+  "${cmd[@]}"
+}
+
 stage1_ckpt="${CHECKPOINT_STAGE1}"
 if [[ -z "${stage1_ckpt}" ]]; then
   run_stage "stage1_fixed_delta060" \
@@ -101,13 +148,16 @@ if [[ -z "${stage1_ckpt}" ]]; then
   stage1_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage1_fixed_delta060")"
 fi
 
-run_stage "stage2_randomized_v1_delta060" \
-  MySingleCardboardCabinetRandomized-v1 0.05 "${STAGE2_TIMESTEPS}" "${stage1_ckpt}"
-stage2_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage2_randomized_v1_delta060")"
+stage2_ckpt="${CHECKPOINT_STAGE2}"
+if [[ -z "${stage2_ckpt}" ]]; then
+  run_finetune_stage "stage2_randomized_v1_delta060_lr1e4_anchor01" \
+    MySingleCardboardCabinetRandomized-v1 0.05 "${STAGE2_TIMESTEPS}" "${stage1_ckpt}"
+  stage2_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage2_randomized_v1_delta060_lr1e4_anchor01")"
+fi
 
-run_stage "stage3_randomized_v2_delta060" \
+run_finetune_stage "stage3_randomized_v2_delta060_lr1e4_anchor01" \
   MySingleCardboardCabinetRandomized-v2 0.05 "${STAGE3_TIMESTEPS}" "${stage2_ckpt}"
-stage3_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage3_randomized_v2_delta060")"
+stage3_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage3_randomized_v2_delta060_lr1e4_anchor01")"
 
 echo
 echo "Stage 1 best checkpoint: ${stage1_ckpt}"
