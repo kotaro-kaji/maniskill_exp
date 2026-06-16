@@ -186,13 +186,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self.table_scene.initialize(env_idx)
             if len(env_idx) == 0:
                 return
-            if not hasattr(self, "drawer_open_success_reached"):
-                self.drawer_open_success_reached = torch.zeros(
+            if not hasattr(self, "_drawer_open_success_ever"):
+                self._drawer_open_success_ever = torch.zeros(
                     self.num_envs,
                     dtype=torch.bool,
                     device=self.device,
                 )
-            self.drawer_open_success_reached[env_idx] = False
+            self._drawer_open_success_ever[env_idx] = False
 
             positions = self._initial_box_world_position().unsqueeze(0).repeat(
                 len(env_idx), 1
@@ -442,14 +442,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         return_arm_reward = self._return_to_target_arm_qpos_reward()
         return_to_target_qpos_reward = self._return_to_target_qpos_reward()
         drawer_open_success = open_enough & outer_box_stable_enough
-        if not hasattr(self, "drawer_open_success_reached"):
-            self.drawer_open_success_reached = torch.zeros(
+        if not hasattr(self, "_drawer_open_success_ever"):
+            self._drawer_open_success_ever = torch.zeros(
                 self.num_envs,
                 dtype=torch.bool,
                 device=self.device,
             )
-        self.drawer_open_success_reached = (
-            self.drawer_open_success_reached | drawer_open_success
+        self._drawer_open_success_ever = (
+            self._drawer_open_success_ever | drawer_open_success
         )
         return {
             "tcp_to_target_distance": self._tcp_to_target_distance(),
@@ -464,7 +464,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             "return_to_target_qpos_reward": return_to_target_qpos_reward,
             "return_arm_qpos_reward": return_arm_reward,
             "drawer_open_success": drawer_open_success,
-            "drawer_open_success_reached": self.drawer_open_success_reached,
+            "drawer_open_success_ever": self._drawer_open_success_ever,
         }
 
     def _get_obs_extra(self, info: Dict[str, Any]):
@@ -530,7 +530,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         #     self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
         # )
         # reward = reaching_reward + open_reward + gripper_reward
-        # stage_return_mask = info["drawer_open_success_reached"]
+        # stage_return_mask = info["drawer_open_success_ever"]
         
         reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
         return reward 

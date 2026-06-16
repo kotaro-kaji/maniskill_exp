@@ -58,6 +58,7 @@ def main():
         base_env = env.base_env.unwrapped
         target = base_env.RETURN_TARGET_QPOS.to(device=base_env.device)
         episode_rows = []
+        drawer_open_success_ever = False
 
         for step in range(args.num_steps):
             with torch.no_grad():
@@ -72,15 +73,17 @@ def main():
             arm_qpos = qpos[:, :7]
             arm_abs_error = torch.abs(arm_qpos - target.reshape(1, 7))
             arm_return_score = 1.0 - torch.tanh(arm_abs_error)
+            drawer_open_success_ever = (
+                drawer_open_success_ever
+                or bool(info["drawer_open_success"][0].item())
+            )
             row = {
                 "episode": episode,
                 "seed": seed,
                 "step": step,
                 "inner_box_open_amount": float(info["inner_box_open_amount"][0].item()),
                 "outer_box_shift": float(info["outer_box_shift"][0].item()),
-                "drawer_open_success_reached": bool(
-                    info["drawer_open_success_reached"][0].item()
-                ),
+                "drawer_open_success_ever": drawer_open_success_ever,
                 "return_arm_score": float(arm_return_score.mean(dim=-1)[0].item()),
                 "return_arm_mean_abs_error": float(arm_abs_error.mean(dim=-1)[0].item()),
                 "return_arm_max_abs_error": float(arm_abs_error.max(dim=-1)[0].item()),

@@ -7,6 +7,7 @@ set -euo pipefail
 # Stage 3: continue conservatively on randomized-v2.
 
 SEED="${SEED:-1}"
+RUN_PREFIX="${RUN_PREFIX:-cardboard_3stage}"
 NUM_ENVS="${NUM_ENVS:-1024}"
 NUM_EVAL_ENVS="${NUM_EVAL_ENVS:-64}"
 NUM_EVAL_VIDEO_ENVS="${NUM_EVAL_VIDEO_ENVS:-4}"
@@ -42,7 +43,7 @@ preferred = [
     "eval/drawer_open_success",
     "eval/success_at_end",
     "eval/success",
-    "eval/drawer_open_success_reached",
+    "eval/drawer_open_success_ever",
     "eval/return",
     "eval/reward",
     "eval/r",
@@ -68,7 +69,7 @@ run_stage() {
   local robot_noise="$3"
   local total_timesteps="$4"
   local checkpoint="$5"
-  local exp_name="cardboard_3stage_seed${SEED}_${stage_name}"
+  local exp_name="${RUN_PREFIX}_seed${SEED}_${stage_name}"
 
   local cmd=(
     ${PYTHON_BIN}
@@ -106,7 +107,7 @@ run_finetune_stage() {
   local robot_noise="$3"
   local total_timesteps="$4"
   local checkpoint="$5"
-  local exp_name="cardboard_3stage_seed${SEED}_${stage_name}"
+  local exp_name="${RUN_PREFIX}_seed${SEED}_${stage_name}"
 
   local cmd=(
     ${PYTHON_BIN}
@@ -145,19 +146,19 @@ stage1_ckpt="${CHECKPOINT_STAGE1}"
 if [[ -z "${stage1_ckpt}" ]]; then
   run_stage "stage1_fixed_delta060" \
     MyDualCardboardCabinet-v1 0.0 "${STAGE1_TIMESTEPS}" ""
-  stage1_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage1_fixed_delta060")"
+  stage1_ckpt="$(best_ckpt "runs/${RUN_PREFIX}_seed${SEED}_stage1_fixed_delta060")"
 fi
 
 stage2_ckpt="${CHECKPOINT_STAGE2}"
 if [[ -z "${stage2_ckpt}" ]]; then
   run_finetune_stage "stage2_randomized_v1_delta060_lr1e4_anchor01" \
     MySingleCardboardCabinetRandomized-v1 0.05 "${STAGE2_TIMESTEPS}" "${stage1_ckpt}"
-  stage2_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage2_randomized_v1_delta060_lr1e4_anchor01")"
+  stage2_ckpt="$(best_ckpt "runs/${RUN_PREFIX}_seed${SEED}_stage2_randomized_v1_delta060_lr1e4_anchor01")"
 fi
 
 run_finetune_stage "stage3_randomized_v2_delta060_lr1e4_anchor01" \
   MySingleCardboardCabinetRandomized-v2 0.05 "${STAGE3_TIMESTEPS}" "${stage2_ckpt}"
-stage3_ckpt="$(best_ckpt "runs/cardboard_3stage_seed${SEED}_stage3_randomized_v2_delta060_lr1e4_anchor01")"
+stage3_ckpt="$(best_ckpt "runs/${RUN_PREFIX}_seed${SEED}_stage3_randomized_v2_delta060_lr1e4_anchor01")"
 
 echo
 echo "Stage 1 best checkpoint: ${stage1_ckpt}"
