@@ -413,6 +413,14 @@ def run_rollout(args: RolloutArgs) -> None:
             token = token.strip()
             if token:
                 gripper_indices.append(int(token))
+    invalid_gripper_indices = [
+        idx for idx in gripper_indices if idx < 0 or idx >= action_dim
+    ]
+    if invalid_gripper_indices:
+        raise ValueError(
+            f"gripper_joint_indices out of range for action_dim={action_dim}: "
+            f"{invalid_gripper_indices}. For single-arm xArm7 use --gripper-joint-indices 7."
+        )
     gripper_idx_tensor = (
         torch.tensor(gripper_indices, dtype=torch.long, device=device) if gripper_indices else None
     )

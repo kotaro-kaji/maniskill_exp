@@ -119,4 +119,5 @@ uv run python ppo_rollout_dual_xarm7.py \
     --num-eval-envs 1 \
     --num-eval-steps 100 \
     --robot-init-noise-scale 0.05 \
+    --gripper-joint-indices 7 \
     --seed 1
