@@ -298,6 +298,8 @@ class RolloutArgs:
     """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 119.0 override)."""
     initial_box_xy: Optional[str] = None
     """Fixed initial cardboard box XY in the workspace-center frame as 'x,y'. If omitted, the environment default is used."""
+    robot_uid: Optional[str] = None
+    """Robot uid forwarded to the environment. If omitted, the environment default is used."""
 
 
 def _parse_initial_box_xy(value: Optional[str]) -> Optional[tuple[float, float]]:
@@ -320,6 +322,8 @@ def _build_env(args: RolloutArgs):
     )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
+    if args.robot_uid is not None:
+        env_kwargs["robot_uids"] = args.robot_uid
     initial_box_xy = _parse_initial_box_xy(args.initial_box_xy)
     if initial_box_xy is not None:
         env_kwargs["initial_box_xy"] = initial_box_xy
