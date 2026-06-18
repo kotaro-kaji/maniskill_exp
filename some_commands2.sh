@@ -113,11 +113,11 @@ uv run python ppo_dual_xarm7_low_freq.py \
 # delta=0.02 best checkpoint rollout: state/action log と TCP trace PNG を保存
 uv run python ppo_rollout_dual_xarm7.py \
     --checkpoint /path/to/ckpt_251.pt \
-    --env-id MySingleCardboardCabinetRandomized-v2 \
+    --env-id MyDualCardboardCabinetSmallDelta-v1 \
     --robot-uid my_xarm7_delta02 \
     --control-mode pd_joint_delta_pos \
     --num-eval-envs 1 \
     --num-eval-steps 100 \
-    --robot-init-noise-scale 0.05 \
+    --robot-init-noise-scale 0.0 \
     --gripper-joint-indices 7 \
     --seed 1
