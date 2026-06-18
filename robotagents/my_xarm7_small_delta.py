@@ -4,6 +4,12 @@ from .my_xarm7 import Xarm7
 
 
 @register_agent()
+class Xarm7Kinematics(Xarm7):
+    uid = "my_xarm7_kinematics"
+    urdf_path = "robotagents/assets/xarm7/xarm7_1305_gripper_realsense_sn_kinematics.urdf"
+
+
+@register_agent()
 class Xarm7SmallDelta(Xarm7):
     uid = "my_xarm7_delta003"
     arm_delta_pos_limit = 0.003

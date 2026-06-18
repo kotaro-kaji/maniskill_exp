@@ -43,7 +43,7 @@ from scenebuilders.xarm7_initial_randomization_scene_builder import (
 
 @register_env("MyDualCardboardCabinet-v1", max_episode_steps=100)
 class MyDualCardboardCabinetEnv(BaseEnv):
-    SUPPORTED_ROBOTS = ["my_xarm7"]
+    SUPPORTED_ROBOTS = ["my_xarm7", "my_xarm7_kinematics"]
     agent: Xarm7
 
     OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
@@ -757,6 +757,7 @@ class MyDualCardboardCabinetSmallDeltaEnv(MyDualCardboardCabinetEnv):
 class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
     SUPPORTED_ROBOTS = [
         "my_xarm7",
+        "my_xarm7_kinematics",
         "my_xarm7_delta001",
         "my_xarm7_delta01",
         "my_xarm7_delta015",
