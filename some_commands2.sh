@@ -109,3 +109,14 @@ uv run python ppo_dual_xarm7_low_freq.py \
  --num-steps 200 --num-eval-steps 200 --num-eval-envs 64 --num-eval-video-envs 4    \
   --update-epochs 8 --num-minibatches 32     --total-timesteps 25_000_000 --eval-freq 5 \
   --gamma 0.99 --checkpoint runs/MyDualCardboardCabinet-v1__ppo_dual_xarm7__1__1781171202/ckpt_36.pt
+
+# delta=0.02 best checkpoint rollout: state/action log と TCP trace PNG を保存
+uv run python ppo_rollout_dual_xarm7.py \
+    --checkpoint /path/to/ckpt_251.pt \
+    --env-id MySingleCardboardCabinetRandomized-v2 \
+    --robot-uid my_xarm7_delta02 \
+    --control-mode pd_joint_delta_pos \
+    --num-eval-envs 1 \
+    --num-eval-steps 100 \
+    --robot-init-noise-scale 0.05 \
+    --seed 1
