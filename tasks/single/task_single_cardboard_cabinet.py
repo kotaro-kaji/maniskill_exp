@@ -76,7 +76,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     GRIPPER_CLOSE_DISTANCE = 0.04
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
     GRIPPER_OPENING_REWARD_SCALE = 8.0
-    INNER_MARKER_PANEL_TCP_X_ALIGNMENT_MAX_DISTANCE = 0.30
+    INNER_MARKER_PANEL_TCP_Y_ALIGNMENT_MAX_DISTANCE = 0.05
     RETURN_TARGET_TCP_POSITION = torch.tensor(
         [-0.2891441583633423, 0.32909828424453735, 0.35221153497695923],
         dtype=torch.float32,
@@ -478,14 +478,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             rotation,
         ).squeeze(1)
 
-    def _inner_marker_panel_tcp_x_abs_error(self) -> torch.Tensor:
-        return torch.abs(self._inner_marker_panel_tcp_local_position()[:, 0])
+    def _inner_marker_panel_tcp_y_abs_error(self) -> torch.Tensor:
+        return torch.abs(self._inner_marker_panel_tcp_local_position()[:, 1])
 
-    def _inner_marker_panel_tcp_x_alignment_reward(self) -> torch.Tensor:
+    def _inner_marker_panel_tcp_y_alignment_reward(self) -> torch.Tensor:
         return torch.clamp(
             1.0
-            - self._inner_marker_panel_tcp_x_abs_error()
-            / self.INNER_MARKER_PANEL_TCP_X_ALIGNMENT_MAX_DISTANCE,
+            - self._inner_marker_panel_tcp_y_abs_error()
+            / self.INNER_MARKER_PANEL_TCP_Y_ALIGNMENT_MAX_DISTANCE,
             min=0.0,
             max=1.0,
         )
@@ -660,14 +660,14 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         drawer_open_success = open_enough & outer_box_stable_enough
         return {
             "tcp_to_target_distance": self._tcp_to_target_distance(),
-            "inner_marker_panel_tcp_local_x": (
-                self._inner_marker_panel_tcp_local_position()[:, 0]
+            "inner_marker_panel_tcp_local_y": (
+                self._inner_marker_panel_tcp_local_position()[:, 1]
             ),
-            "inner_marker_panel_tcp_x_abs_error": (
-                self._inner_marker_panel_tcp_x_abs_error()
+            "inner_marker_panel_tcp_y_abs_error": (
+                self._inner_marker_panel_tcp_y_abs_error()
             ),
-            "inner_marker_panel_tcp_x_alignment_reward": (
-                self._inner_marker_panel_tcp_x_alignment_reward()
+            "inner_marker_panel_tcp_y_alignment_reward": (
+                self._inner_marker_panel_tcp_y_alignment_reward()
             ),
             "inner_box_open_amount": self._inner_box_open_amount(),
             "inner_box_open_fraction": self._inner_box_open_fraction(),
@@ -752,7 +752,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         gripper_reward = (
             self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
         )
-        panel_x_alignment_reward = self._inner_marker_panel_tcp_x_alignment_reward()
+        panel_y_alignment_reward = self._inner_marker_panel_tcp_y_alignment_reward()
         reward = reaching_reward + open_reward + gripper_reward
         stage_return_mask = info["drawer_open_success"]
         stage_return_reward = (
@@ -764,7 +764,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             stage_return_reward,
             outer_box_stability * reward,
         )
-        reward = reward + panel_x_alignment_reward
+        reward = reward + panel_y_alignment_reward
         return reward / (9.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
 
 
