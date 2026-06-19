@@ -77,7 +77,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
     GRIPPER_OPENING_REWARD_SCALE = 8.0
     INNER_MARKER_PANEL_TCP_X_ALIGNMENT_MAX_DISTANCE = 0.30
-    INNER_MARKER_PANEL_TCP_X_ALIGNMENT_REWARD_WEIGHT = 3.0
     RETURN_TARGET_TCP_POSITION = torch.tensor(
         [-0.2891441583633423, 0.32909828424453735, 0.35221153497695923],
         dtype=torch.float32,
@@ -765,16 +764,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             stage_return_reward,
             outer_box_stability * reward,
         )
-        reward = (
-            reward
-            + self.INNER_MARKER_PANEL_TCP_X_ALIGNMENT_REWARD_WEIGHT
-            * panel_x_alignment_reward
-        )
-        return reward / (
-            8.0
-            + self.GRIPPER_OPENING_REWARD_WEIGHT
-            + self.INNER_MARKER_PANEL_TCP_X_ALIGNMENT_REWARD_WEIGHT
-        )
+        reward = reward + panel_x_alignment_reward
+        return reward / (9.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
 
 
 @register_env("MyDualCardboardCabinetSmallDelta-v1", max_episode_steps=200)
@@ -891,147 +882,3 @@ class MyDualCardboardCabinetLegacyRotation6DEnv(MyDualCardboardCabinetEnv):
         if matrix.ndim == 2:
             matrix = matrix.unsqueeze(0)
         return matrix[..., :, :2].reshape(matrix.shape[0], 6)
-
-
-@register_env("MyDualCardboardCabinet66de62b-v1", max_episode_steps=100)
-class MyDualCardboardCabinet66de62bEnv(MyDualCardboardCabinetLegacyRotation6DEnv):
-    RETURN_TARGET_QPOS_SUCCESS_SCORE = 0.80
-    RETURN_ARM_REWARD_WEIGHT = 0.75
-    RETURN_GRIPPER_REWARD_WEIGHT = 0.25
-    RETURN_TARGET_QPOS = torch.tensor(
-        [
-            -0.00001,
-            -0.5236051678657532,
-            0.00,
-            0.7853981852531433,
-            -0.00001,
-            1.30899178981781,
-            -0.000001,
-            0.7310,
-            0.7310,
-            0.7310,
-            0.7310,
-            0.7310,
-            0.7310,
-        ],
-        dtype=torch.float32,
-    )
-
-    def _return_to_target_qpos_reward(self) -> torch.Tensor:
-        arm_score, gripper_score = self._return_to_target_qpos_component_rewards()
-        return (
-            self.RETURN_ARM_REWARD_WEIGHT * arm_score
-            + self.RETURN_GRIPPER_REWARD_WEIGHT * gripper_score
-        )
-
-    def _return_to_target_qpos_component_rewards(self):
-        qpos = self.agent.robot.get_qpos()
-        if qpos.ndim == 1:
-            qpos = qpos.unsqueeze(0)
-        target = self.RETURN_TARGET_QPOS.to(device=self.device, dtype=torch.float32)
-        assert qpos.shape[-1] == target.numel(), (qpos.shape[-1], target.numel())
-        joint_scores = 1.0 - torch.tanh(torch.abs(qpos - target))
-        return joint_scores[:, :7].mean(dim=-1), joint_scores[:, 7:].mean(dim=-1)
-
-    def evaluate(self):
-        self._sync_target_sites()
-        self._sync_marker_frame_sites()
-        open_enough = self._inner_box_open_enough()
-        outer_box_stable_enough = self._outer_box_stable_enough()
-        return_arm_reward, return_gripper_reward = (
-            self._return_to_target_qpos_component_rewards()
-        )
-        return_to_target_qpos_reward = self._return_to_target_qpos_reward()
-        return_pose_enough = (
-            return_to_target_qpos_reward >= self.RETURN_TARGET_QPOS_SUCCESS_SCORE
-        )
-        drawer_open_success = open_enough & outer_box_stable_enough
-        return {
-            "tcp_to_target_distance": self._tcp_to_target_distance(),
-            "inner_marker_panel_tcp_local_x": (
-                self._inner_marker_panel_tcp_local_position()[:, 0]
-            ),
-            "inner_marker_panel_tcp_x_abs_error": (
-                self._inner_marker_panel_tcp_x_abs_error()
-            ),
-            "inner_marker_panel_tcp_x_alignment_reward": (
-                self._inner_marker_panel_tcp_x_alignment_reward()
-            ),
-            "inner_box_open_amount": self._inner_box_open_amount(),
-            "inner_box_open_fraction": self._inner_box_open_fraction(),
-            "open_enough": open_enough,
-            "outer_box_shift": self._outer_box_shift(),
-            "outer_box_shift_penalty": self._outer_box_shift_penalty(),
-            "outer_box_stable_enough": outer_box_stable_enough,
-            "gripper_drive_qpos": self._gripper_drive_qpos(),
-            "gripper_target_qpos": self._gripper_target_qpos(),
-            "return_to_target_qpos_reward": return_to_target_qpos_reward,
-            "return_arm_qpos_reward": return_arm_reward,
-            "return_gripper_qpos_reward": return_gripper_reward,
-            "return_pose_enough": return_pose_enough,
-            "drawer_open_success": drawer_open_success,
-            "success": (
-                drawer_open_success
-                & outer_box_stable_enough
-                & return_pose_enough
-            ),
-        }
-
-    def _get_obs_extra(self, info: Dict[str, Any]):
-        inner_marker_panel_position = self._actor_local_point_world(
-            self.cardboard_inner_box,
-            self._inner_marker_panel_local_position(),
-        )
-        outer_marker_panel_position = self._actor_local_point_world(
-            self.cardboard_cabinet,
-            self._outer_marker_panel_local_position(),
-        )
-        return {
-            "inner_marker_panel_position": inner_marker_panel_position,
-            "inner_marker_panel_rotation_6d": self._actor_rotation_6d(
-                self.cardboard_inner_box
-            ),
-            "outer_marker_panel_position": outer_marker_panel_position,
-            "outer_marker_panel_rotation_6d": self._actor_rotation_6d(
-                self.cardboard_cabinet
-            ),
-        }
-
-    def compute_normalized_dense_reward(self, obs, action, info):
-        reaching_reward = self._tcp_to_target_reward()
-        open_amount = self._inner_box_open_amount()
-        outer_box_stability = 1.0 - self._outer_box_shift_penalty()
-        stable_open_fraction = self._inner_box_open_fraction() * outer_box_stability
-        open_reward = 2.0 * stable_open_fraction
-
-        open_started = open_amount >= self.OPEN_STARTED_DISTANCE
-        reaching_reward = torch.where(
-            open_started,
-            torch.full_like(reaching_reward, 2.0),
-            reaching_reward,
-        )
-        open_reward = torch.where(
-            info["open_enough"],
-            torch.full_like(open_reward, 3.0),
-            open_reward,
-        )
-
-        gripper_reward = (
-            self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
-        )
-        panel_x_alignment_reward = self._inner_marker_panel_tcp_x_alignment_reward()
-        reward = reaching_reward + open_reward + gripper_reward
-        stage_return_mask = info["drawer_open_success"]
-        stage_return_reward = 4.0 + 4.0 * self._return_to_target_qpos_reward()
-        reward = torch.where(stage_return_mask, stage_return_reward, reward)
-        reward = outer_box_stability * reward
-        reward = (
-            reward
-            + self.INNER_MARKER_PANEL_TCP_X_ALIGNMENT_REWARD_WEIGHT
-            * panel_x_alignment_reward
-        )
-        return reward / (
-            8.0
-            + self.GRIPPER_OPENING_REWARD_WEIGHT
-            + self.INNER_MARKER_PANEL_TCP_X_ALIGNMENT_REWARD_WEIGHT
-        )
