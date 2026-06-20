@@ -65,7 +65,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         INNER_BOX_SPEC,
         notch_height_z=RAISED_INNER_PANEL_NOTCH_HEIGHT_Z,
     )
-    INNER_BOX_SPEC_VARIANTS = (INNER_BOX_SPEC, RAISED_INNER_PANEL_BOX_SPEC)
+    INNER_BOX_SPEC_VARIANTS = (INNER_BOX_SPEC,)
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.30
     INSERT_TARGET_RADIUS = 0.008
@@ -847,6 +847,10 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
     BOX_POSITION_NOISE_LOW = (-0.01, -0.02, 0.0)
     BOX_POSITION_NOISE_HIGH = (0.01, 0.02, 0.0)
     BOX_YAW_NOISE_DEG = 5.0
+    INNER_BOX_SPEC_VARIANTS = (
+        MyDualCardboardCabinetEnv.INNER_BOX_SPEC,
+        MyDualCardboardCabinetEnv.RAISED_INNER_PANEL_BOX_SPEC,
+    )
 
     def __init__(self, *args, robot_init_noise_scale: float = 0.25, **kwargs):
         super().__init__(
