@@ -13,6 +13,7 @@ from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.geometry.rotation_conversions import matrix_to_quaternion
 from mani_skill.utils.registration import register_env
+from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
 from robotagents.my_xarm7 import Xarm7
@@ -59,6 +60,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         static_friction=0.2,
         dynamic_friction=0.1,
     )
+    RAISED_INNER_PANEL_NOTCH_HEIGHT_Z = 0.0
+    RAISED_INNER_PANEL_BOX_SPEC = replace(
+        INNER_BOX_SPEC,
+        notch_height_z=RAISED_INNER_PANEL_NOTCH_HEIGHT_Z,
+    )
+    INNER_BOX_SPEC_VARIANTS = (INNER_BOX_SPEC, RAISED_INNER_PANEL_BOX_SPEC)
     INNER_BOX_WORLD_Y_OFFSET = 0.0035
     BOX_X_OFFSET_FROM_BASE = 0.30
     INSERT_TARGET_RADIUS = 0.008
@@ -235,11 +242,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             initial_pose=self._initial_cabinet_pose(),
             spec=self.CABINET_SPEC,
         )
-        self.cardboard_inner_box = build_cardboard_inner_box_actor(
-            self.scene,
-            initial_pose=self._initial_inner_box_pose(),
-            spec=self.INNER_BOX_SPEC,
-        )
+        self.cardboard_inner_box = self._build_cardboard_inner_box_actor()
         self.insert_target_site = actors.build_sphere(
             self.scene,
             radius=self.INSERT_TARGET_RADIUS,
@@ -255,6 +258,39 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         self.outer_marker_panel_frame_site = self._build_marker_frame_site(
             "outer_marker_panel_frame_site"
         )
+
+    def _build_cardboard_inner_box_actor(self):
+        self._inner_box_specs = [
+            self.INNER_BOX_SPEC_VARIANTS[i % len(self.INNER_BOX_SPEC_VARIANTS)]
+            for i in range(self.num_envs)
+        ]
+        marker_panel_positions = np.array(
+            [
+                cardboard_inner_box_panel_specs(spec)[INNER_MARKER_PANEL_INDEX][0].p
+                for spec in self._inner_box_specs
+            ],
+            dtype=np.float32,
+        )
+        self._inner_marker_panel_local_position_values = torch.tensor(
+            marker_panel_positions,
+            dtype=torch.float32,
+            device=self.device,
+        )
+
+        inner_box_actors = []
+        for i, spec in enumerate(self._inner_box_specs):
+            actor = build_cardboard_inner_box_actor(
+                self.scene,
+                initial_pose=self._initial_inner_box_pose(),
+                spec=replace(spec, name=f"{spec.name}_{i}"),
+                scene_idxs=[i],
+            )
+            self.remove_from_state_dict_registry(actor)
+            inner_box_actors.append(actor)
+
+        merged_actor = Actor.merge(inner_box_actors, name=self.INNER_BOX_SPEC.name)
+        self.add_to_state_dict_registry(merged_actor)
+        return merged_actor
 
     def _build_marker_frame_site(self, name: str):
         builder = self.scene.create_actor_builder()
@@ -402,7 +438,13 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         if position.ndim == 1:
             position = position.unsqueeze(0)
             matrix = matrix.unsqueeze(0)
-        local_point = local_point.unsqueeze(0).repeat(position.shape[0], 1)
+        if local_point.ndim == 1:
+            local_point = local_point.unsqueeze(0).repeat(position.shape[0], 1)
+        else:
+            assert local_point.shape == position.shape, (
+                local_point.shape,
+                position.shape,
+            )
         return torch.matmul(local_point.unsqueeze(1), matrix.transpose(-1, -2)).squeeze(
             1
         ) + position
@@ -416,11 +458,8 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _box_local_point_world(self, local_point: torch.Tensor) -> torch.Tensor:
         return self._actor_local_point_world(self.cardboard_inner_box, local_point)
 
-    def _inner_marker_panel_local_position(self) -> torch.Tensor:
-        panel_pose, _ = cardboard_inner_box_panel_specs(self.INNER_BOX_SPEC)[
-            INNER_MARKER_PANEL_INDEX
-        ]
-        return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
+    def _inner_marker_panel_local_positions(self) -> torch.Tensor:
+        return self._inner_marker_panel_local_position_values
 
     def _outer_marker_panel_local_position(self) -> torch.Tensor:
         panel_pose, _ = cardboard_cabinet_panel_specs(self.CABINET_SPEC)[
@@ -468,7 +507,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _inner_marker_panel_tcp_local_position(self) -> torch.Tensor:
         origin = self._actor_local_point_world(
             self.cardboard_inner_box,
-            self._inner_marker_panel_local_position(),
+            self._inner_marker_panel_local_positions(),
         )
         rotation = self.cardboard_inner_box.pose.to_transformation_matrix()[..., :3, :3]
         if rotation.ndim == 2:
@@ -630,7 +669,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _sync_marker_frame_sites(self, env_idx: Optional[torch.Tensor] = None):
         inner_pose = self._marker_panel_world_pose(
             self.cardboard_inner_box,
-            self._inner_marker_panel_local_position(),
+            self._inner_marker_panel_local_positions(),
         )
         outer_pose = self._marker_panel_world_pose(
             self.cardboard_cabinet,
@@ -691,7 +730,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _get_obs_extra(self, info: Dict[str, Any]):
         inner_marker_panel_position = self._actor_local_point_world(
             self.cardboard_inner_box,
-            self._inner_marker_panel_local_position(),
+            self._inner_marker_panel_local_positions(),
         )
         outer_marker_panel_position = self._actor_local_point_world(
             self.cardboard_cabinet,

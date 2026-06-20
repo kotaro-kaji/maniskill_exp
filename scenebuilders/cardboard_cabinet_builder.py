@@ -74,8 +74,11 @@ def build_cardboard_cabinet_actor(
     *,
     initial_pose: sapien.Pose,
     spec: CardboardCabinetSpec = DEFAULT_CARDBOARD_CABINET_SPEC,
+    scene_idxs: list[int] | None = None,
 ):
     builder = scene.create_actor_builder()
+    if scene_idxs is not None:
+        builder.set_scene_idxs(scene_idxs)
     material = sapien.physx.PhysxMaterial(
         static_friction=spec.static_friction,
         dynamic_friction=spec.dynamic_friction,
@@ -116,8 +119,11 @@ def build_cardboard_inner_box_actor(
     *,
     initial_pose: sapien.Pose,
     spec: CardboardInnerBoxSpec,
+    scene_idxs: list[int] | None = None,
 ):
     builder = scene.create_actor_builder()
+    if scene_idxs is not None:
+        builder.set_scene_idxs(scene_idxs)
     material = sapien.physx.PhysxMaterial(
         static_friction=spec.static_friction,
         dynamic_friction=spec.dynamic_friction,

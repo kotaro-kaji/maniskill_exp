@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 if (cwd / "ppo_dual_xarm7.py").exists():
     sys.path.insert(0, str(cwd))
 
-from mani_skill.utils import common, sapien_utils
+from mani_skill.utils import sapien_utils
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -86,7 +86,7 @@ def main():
     for env_idx in record_env_indices:
         assert 0 <= env_idx < args.num_envs, (env_idx, args.num_envs)
 
-    eval_render_mode = None if record_env_indices else "rgb_array"
+    eval_render_mode = "rgb_array"
     eval_env_kwargs = dict(
         num_envs=args.num_envs,
         obs_mode="state",
@@ -97,35 +97,16 @@ def main():
         robot_uids=args.robot_uid if args.robot_uid is not None else "my_xarm7",
         reconfiguration_freq=1,
     )
-    if not record_env_indices:
-        eval_env_kwargs["human_render_camera_configs"] = camera_config(
-            args.camera,
-            args.render_width,
-            args.render_height,
-        )
+    eval_env_kwargs["human_render_camera_configs"] = camera_config(
+        args.camera,
+        args.render_width,
+        args.render_height,
+    )
     env = gym.make(args.env_id, **eval_env_kwargs)
 
-    render_env = None
     writers = {}
     if record_env_indices:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        render_env = gym.make(
-            args.env_id,
-            num_envs=1,
-            obs_mode="state",
-            render_mode="rgb_array",
-            sim_backend=args.render_sim_backend,
-            control_mode=args.control_mode,
-            robot_init_noise_scale=args.robot_init_noise_scale,
-            robot_uids=args.robot_uid if args.robot_uid is not None else "my_xarm7",
-            reconfiguration_freq=1,
-            human_render_camera_configs=camera_config(
-                args.camera,
-                args.render_width,
-                args.render_height,
-            ),
-        )
-        render_env.reset(seed=[args.seed])
         for env_idx in record_env_indices:
             writers[env_idx] = imageio.get_writer(
                 str(Path(args.output_dir) / f"env_{env_idx}.mp4"),
@@ -165,20 +146,11 @@ def main():
     def record_selected_env_frame():
         if not record_env_indices:
             return
-        assert render_env is not None
-        state = env.base_env.get_state_dict()
+        images = env.base_env.render()
+        if isinstance(images, torch.Tensor):
+            images = images.detach().cpu().numpy()
         for env_idx in record_env_indices:
-            selected_state = common.index_dict_array(
-                state,
-                slice(env_idx, env_idx + 1),
-                inplace=False,
-            )
-            selected_state = common.to_numpy(selected_state)
-            render_env.unwrapped.set_state_dict(selected_state)
-            image = common.to_numpy(render_env.render())
-            if image.ndim != 3:
-                image = image[0]
-            writers[env_idx].append_data(image)
+            writers[env_idx].append_data(images[env_idx])
 
     record_selected_env_frame()
     episode_return = torch.zeros(args.num_envs, device=device)
@@ -210,8 +182,6 @@ def main():
         writer.close()
 
     env.close()
-    if render_env is not None:
-        render_env.close()
 
     print(f"num_envs {args.num_envs}")
     print(f"robot_uid {args.robot_uid if args.robot_uid is not None else 'my_xarm7'}")
