@@ -113,6 +113,8 @@ def main():
         device=device,
     )
     final_info = None
+    panel_y_alignment_reward_sum = torch.zeros(args.num_envs, device=device)
+    panel_y_abs_error_sum = torch.zeros(args.num_envs, device=device)
 
     for step in range(args.num_steps):
         with torch.no_grad():
@@ -122,6 +124,14 @@ def main():
         obs = obs.to(device)
         reward = reward.reshape(-1).to(device)
         episode_return += reward
+        panel_y_alignment_reward = info[
+            "inner_marker_panel_tcp_y_alignment_reward"
+        ].reshape(-1).to(device)
+        panel_y_abs_error = info["inner_marker_panel_tcp_y_abs_error"].reshape(
+            -1
+        ).to(device)
+        panel_y_alignment_reward_sum += panel_y_alignment_reward
+        panel_y_abs_error_sum += panel_y_abs_error
 
         open_amount = info["inner_box_open_amount"].reshape(-1).to(device)
         outer_shift = info["outer_box_shift"].reshape(-1).to(device)
@@ -146,6 +156,15 @@ def main():
     final_tcp_yaw_abs_error = final_info["return_tcp_yaw_abs_error"].reshape(
         -1
     ).to(device)
+    final_panel_y_alignment_reward = final_info[
+        "inner_marker_panel_tcp_y_alignment_reward"
+    ].reshape(-1).to(device)
+    final_panel_y_abs_error = final_info["inner_marker_panel_tcp_y_abs_error"].reshape(
+        -1
+    ).to(device)
+    panel_y_alignment_reward_mean = panel_y_alignment_reward_sum / args.num_steps
+    panel_y_abs_error_mean = panel_y_abs_error_sum / args.num_steps
+    panel_y_alignment_return_contribution = panel_y_alignment_reward_sum / 9.05
 
     reached_open_success = (max_open >= 0.12) & (max_shift <= 0.02)
     final_open_success = (final_open >= 0.12) & (final_shift <= 0.02)
@@ -155,13 +174,33 @@ def main():
         rows.append(
             {
                 "env_idx": env_idx,
-                "seed": args.seed + env_idx,
+                "base_seed": args.seed,
+                "seed_list_entry": args.seed + env_idx,
+                "replay_num_envs": args.num_envs,
                 "box_x_from_base_center": float(box_offset[env_idx, 0].item()),
                 "box_y_from_base_center": float(box_offset[env_idx, 1].item()),
                 "box_z_from_base_center": float(box_offset[env_idx, 2].item()),
                 "box_yaw_deg": float(box_yaw_deg[env_idx].item()),
                 "box_yaw_noise_deg": float(box_yaw_noise_deg[env_idx].item()),
                 "episode_return": float(episode_return[env_idx].item()),
+                "panel_y_alignment_reward_mean": float(
+                    panel_y_alignment_reward_mean[env_idx].item()
+                ),
+                "panel_y_alignment_reward_sum": float(
+                    panel_y_alignment_reward_sum[env_idx].item()
+                ),
+                "panel_y_alignment_return_contribution": float(
+                    panel_y_alignment_return_contribution[env_idx].item()
+                ),
+                "panel_y_abs_error_mean": float(
+                    panel_y_abs_error_mean[env_idx].item()
+                ),
+                "final_panel_y_alignment_reward": float(
+                    final_panel_y_alignment_reward[env_idx].item()
+                ),
+                "final_panel_y_abs_error": float(
+                    final_panel_y_abs_error[env_idx].item()
+                ),
                 "max_open": float(max_open[env_idx].item()),
                 "max_shift": float(max_shift[env_idx].item()),
                 "final_open": float(final_open[env_idx].item()),
@@ -202,6 +241,20 @@ def main():
     print("randomized_yaw_noise_range_deg [-5.000, 5.000]")
     print(f"eval_return_mean {episode_return.mean().item():.6f}")
     print(f"eval_return_std {episode_return.std(unbiased=False).item():.6f}")
+    print(
+        "panel_y_alignment_reward_mean "
+        f"{panel_y_alignment_reward_mean.mean().item():.6f}"
+    )
+    print(
+        "panel_y_alignment_return_contribution_mean "
+        f"{panel_y_alignment_return_contribution.mean().item():.6f}"
+    )
+    print(f"panel_y_abs_error_mean {panel_y_abs_error_mean.mean().item():.6f}")
+    print(
+        "final_panel_y_alignment_reward_mean "
+        f"{final_panel_y_alignment_reward.mean().item():.6f}"
+    )
+    print(f"final_panel_y_abs_error_mean {final_panel_y_abs_error.mean().item():.6f}")
     print(f"reached_open_success_mean {reached_open_success.float().mean().item():.6f}")
     print(f"final_open_success_mean {final_open_success.float().mean().item():.6f}")
     print(f"max_open_mean {max_open.mean().item():.6f}")

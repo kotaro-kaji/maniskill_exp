@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ckpt_256 vs ckpt_271 Randomized v2 Samples</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f7f9;
+      color: #1f2933;
+    }
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .meta {
+      margin: 0 0 18px;
+      color: #5b6675;
+      font-size: 14px;
+    }
+    .env {
+      background: #ffffff;
+      border: 1px solid #d9dee6;
+      border-radius: 8px;
+      padding: 14px;
+      margin: 0 0 18px;
+    }
+    .env h2 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+    .pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .clip {
+      min-width: 0;
+    }
+    .clip h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 3px 10px;
+      margin: 0 0 10px;
+      font-size: 13px;
+    }
+    dt {
+      color: #5b6675;
+    }
+    dd {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    video {
+      display: block;
+      width: 100%;
+      background: #000000;
+      border-radius: 6px;
+    }
+    @media (max-width: 760px) {
+      .pair {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ckpt_256.pt vs ckpt_271.pt Randomized v2 Samples</h1>
+    <p class="meta">160 env eval, base seed 1, robot my_xarm7_delta02, robot_init_noise_scale 0.05</p>
+    <div id="samples"></div>
+  </main>
+  <script>
+    const samples = [
+      {env: 0, r256: 48.802578, o256: 0.123922, r271: 48.223442, o271: 0.134893},
+      {env: 5, r256: 73.869965, o256: 0.129326, r271: 13.501889, o271: 0.126513},
+      {env: 9, r256: 74.144478, o256: 0.130788, r271: 61.346119, o271: 0.139822},
+      {env: 15, r256: 70.884552, o256: 0.127974, r271: 59.470306, o271: 0.130573},
+      {env: 22, r256: 70.282150, o256: 0.131706, r271: 5.687775, o271: 0.138953},
+      {env: 25, r256: 72.963470, o256: 0.141716, r271: 30.663977, o271: 0.113801},
+      {env: 29, r256: 55.528427, o256: 0.127060, r271: 25.176571, o271: 0.071198},
+      {env: 38, r256: 68.387520, o256: 0.128498, r271: 64.720078, o271: 0.133519},
+      {env: 51, r256: 66.780289, o256: 0.128888, r271: 11.905215, o271: 0.122603},
+      {env: 58, r256: 71.084389, o256: 0.136975, r271: 65.256142, o271: 0.128113},
+      {env: 69, r256: 61.938042, o256: 0.125500, r271: 9.040914, o271: 0.128464},
+      {env: 78, r256: 52.416389, o256: 0.132923, r271: 6.578141, o271: 0.137491},
+      {env: 89, r256: 67.868782, o256: 0.127288, r271: 7.887035, o271: 0.128491},
+      {env: 95, r256: 70.251472, o256: 0.127942, r271: 67.053352, o271: 0.136082},
+      {env: 100, r256: 68.962219, o256: 0.128383, r271: 3.424771, o271: 0.131918},
+      {env: 115, r256: 73.359253, o256: 0.129564, r271: 63.071552, o271: 0.134137},
+      {env: 136, r256: 62.561600, o256: 0.127097, r271: 59.118023, o271: 0.136513},
+      {env: 146, r256: 70.965820, o256: 0.133438, r271: 60.818275, o271: 0.134053},
+      {env: 155, r256: 60.037399, o256: 0.127496, r271: 5.785525, o271: 0.131037},
+      {env: 156, r256: 63.268990, o256: 0.132713, r271: 3.143462, o271: 0.134901},
+    ];
+
+    function metricHtml(returnValue, maxOpen) {
+      return `
+        <dl>
+          <dt>return</dt><dd>${returnValue.toFixed(6)}</dd>
+          <dt>max_open</dt><dd>${maxOpen.toFixed(6)}</dd>
+        </dl>
+      `;
+    }
+
+    document.getElementById("samples").innerHTML = samples.map((sample) => `
+      <section class="env">
+        <h2>env ${sample.env}</h2>
+        <div class="pair">
+          <div class="clip">
+            <h3>ckpt_256.pt</h3>
+            ${metricHtml(sample.r256, sample.o256)}
+            <video controls preload="metadata" src="videos/ckpt256_randomized_v2_160env_samples/env_${sample.env}.mp4"></video>
+          </div>
+          <div class="clip">
+            <h3>ckpt_271.pt</h3>
+            ${metricHtml(sample.r271, sample.o271)}
+            <video controls preload="metadata" src="videos/ckpt271_randomized_v2_160env_samples/env_${sample.env}.mp4"></video>
+          </div>
+        </div>
+      </section>
+    `).join("");
+  </script>
+</body>
+</html>

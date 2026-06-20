@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cardboard Randomized v2 Checkpoint Videos</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f7f9;
+      color: #1f2933;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1 {
+      margin: 0 0 18px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 18px;
+    }
+    section {
+      background: #ffffff;
+      border: 1px solid #d9dee6;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 4px 12px;
+      margin: 0 0 12px;
+      font-size: 13px;
+    }
+    dt {
+      color: #5b6675;
+    }
+    dd {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    video {
+      width: 100%;
+      background: #000000;
+      border-radius: 6px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cardboard Randomized v2 Checkpoint Videos</h1>
+    <div class="grid">
+      <section>
+        <h2>ckpt_256.pt</h2>
+        <dl>
+          <dt>eval</dt><dd>160 env, base seed 1, env_idx 116</dd>
+          <dt>return</dt><dd>67.940468</dd>
+          <dt>max_open</dt><dd>0.143798</dd>
+        </dl>
+        <video controls src="videos/ckpt256_randomized_v2_batch160_env116.mp4"></video>
+      </section>
+      <section>
+        <h2>ckpt_271.pt</h2>
+        <dl>
+          <dt>eval</dt><dd>160 env, base seed 1, env_idx 9</dd>
+          <dt>return</dt><dd>61.346119</dd>
+          <dt>max_open</dt><dd>0.139822</dd>
+        </dl>
+        <video controls src="videos/ckpt271_randomized_v2_batch160_env9.mp4"></video>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

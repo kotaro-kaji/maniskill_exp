@@ -380,7 +380,9 @@ def run_rollout(args: RolloutArgs) -> None:
     agent.load_state_dict(state_dict)
     agent.eval()
 
-    obs, _ = eval_envs.reset(seed=args.seed)
+    obs, _ = eval_envs.reset(
+        seed=[args.seed + i for i in range(args.num_eval_envs)]
+    )
     obs = obs.to(device)
 
     normalized_low = torch.from_numpy(eval_envs.single_action_space.low).to(device)
