@@ -735,7 +735,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         stable_open_target_reward = (
             self._inner_box_open_target_reward() * outer_box_stability
         )
-        open_reward = 2.0 * stable_open_target_reward
+        open_reward = stable_open_target_reward
 
         open_started = open_amount >= self.OPEN_STARTED_DISTANCE
         reaching_reward = torch.where(
@@ -743,11 +743,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             torch.full_like(reaching_reward, 2.0),
             reaching_reward,
         )  # min = 0.0, max = 2.0
-        open_reward = torch.where(
-            info["open_enough"],
-            3.0 * stable_open_target_reward,
-            open_reward,
-        )  # min = 0.0, max = 3.0
+        # min = 0.0, max = 1.0
 
         gripper_reward = (
             self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
