@@ -60,7 +60,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         static_friction=0.2,
         dynamic_friction=0.1,
     )
-    RAISED_INNER_PANEL_NOTCH_HEIGHT_Z = 0.0
+    RAISED_INNER_PANEL_NOTCH_HEIGHT_Z = 0.002
     RAISED_INNER_PANEL_BOX_SPEC = replace(
         INNER_BOX_SPEC,
         notch_height_z=RAISED_INNER_PANEL_NOTCH_HEIGHT_Z,
@@ -461,6 +461,12 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _inner_marker_panel_local_positions(self) -> torch.Tensor:
         return self._inner_marker_panel_local_position_values
 
+    def _canonical_inner_marker_panel_local_position(self) -> torch.Tensor:
+        panel_pose, _ = cardboard_inner_box_panel_specs(self.INNER_BOX_SPEC)[
+            INNER_MARKER_PANEL_INDEX
+        ]
+        return torch.tensor(panel_pose.p, dtype=torch.float32, device=self.device)
+
     def _outer_marker_panel_local_position(self) -> torch.Tensor:
         panel_pose, _ = cardboard_cabinet_panel_specs(self.CABINET_SPEC)[
             OUTER_MARKER_PANEL_INDEX
@@ -730,7 +736,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     def _get_obs_extra(self, info: Dict[str, Any]):
         inner_marker_panel_position = self._actor_local_point_world(
             self.cardboard_inner_box,
-            self._inner_marker_panel_local_positions(),
+            self._canonical_inner_marker_panel_local_position(),
         )
         outer_marker_panel_position = self._actor_local_point_world(
             self.cardboard_cabinet,
