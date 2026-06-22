@@ -73,9 +73,6 @@ ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
-    "eval/success",
-    "eval/drawer_open_success_reached",
-    "eval/drawer_open_success",
     "eval/return",
     "eval/reward",
     "eval/r",

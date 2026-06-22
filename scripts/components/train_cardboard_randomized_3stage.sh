@@ -13,7 +13,7 @@ NUM_EVAL_ENVS="${NUM_EVAL_ENVS:-64}"
 NUM_EVAL_VIDEO_ENVS="${NUM_EVAL_VIDEO_ENVS:-4}"
 STAGE1_TIMESTEPS="${STAGE1_TIMESTEPS:-25000000}"
 STAGE2_TIMESTEPS="${STAGE2_TIMESTEPS:-25000000}"
-STAGE3_TIMESTEPS="${STAGE3_TIMESTEPS:-15000000}"
+STAGE3_TIMESTEPS="${STAGE3_TIMESTEPS:-25000000}"
 CHECKPOINT_STAGE1="${CHECKPOINT_STAGE1:-}"
 CHECKPOINT_STAGE2="${CHECKPOINT_STAGE2:-}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
@@ -40,9 +40,6 @@ ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
-    "eval/drawer_open_success",
-    "eval/success_at_end",
-    "eval/success",
     "eval/return",
     "eval/reward",
     "eval/r",

@@ -22,8 +22,8 @@ PYTHON_BIN="${PYTHON_BIN:-python}"
 ENV_ID="${ENV_ID:-MySingleCardboardCabinetRandomized-v2}"
 ROBOT_INIT_NOISE_SCALE="${ROBOT_INIT_NOISE_SCALE:-0.05}"
 LEARNING_RATE="${LEARNING_RATE:-1e-4}"
-TOTAL_TIMESTEPS_DELTA03="${TOTAL_TIMESTEPS_DELTA03:-15000000}"
-TOTAL_TIMESTEPS_DELTA02="${TOTAL_TIMESTEPS_DELTA02:-15000000}"
+TOTAL_TIMESTEPS_DELTA03="${TOTAL_TIMESTEPS_DELTA03:-25000000}"
+TOTAL_TIMESTEPS_DELTA02="${TOTAL_TIMESTEPS_DELTA02:-25000000}"
 NUM_EVAL_ENVS="${NUM_EVAL_ENVS:-64}"
 NUM_EVAL_VIDEO_ENVS="${NUM_EVAL_VIDEO_ENVS:-4}"
 
@@ -46,9 +46,6 @@ ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
-    "eval/drawer_open_success",
-    "eval/success_at_end",
-    "eval/success",
     "eval/return",
     "eval/reward",
     "eval/r",
