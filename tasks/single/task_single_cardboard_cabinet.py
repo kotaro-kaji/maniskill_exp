@@ -84,6 +84,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     GRIPPER_OPENING_REWARD_WEIGHT = 0.05
     GRIPPER_OPENING_REWARD_SCALE = 8.0
     INNER_MARKER_PANEL_TCP_Y_ALIGNMENT_MAX_DISTANCE = 0.05
+    INNER_MARKER_PANEL_TCP_Y_ALIGNMENT_REWARD_WEIGHT = 3.0
     RETURN_TARGET_TCP_POSITION = torch.tensor(
         [-0.2891441583633423, 0.32909828424453735, 0.35221153497695923],
         dtype=torch.float32,
@@ -793,7 +794,10 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         gripper_reward = (
             self.GRIPPER_OPENING_REWARD_WEIGHT * self._gripper_opening_reward()
         )
-        panel_y_alignment_reward = self._inner_marker_panel_tcp_y_alignment_reward()
+        panel_y_alignment_reward = (
+            self.INNER_MARKER_PANEL_TCP_Y_ALIGNMENT_REWARD_WEIGHT
+            * self._inner_marker_panel_tcp_y_alignment_reward()
+        )
         reward = reaching_reward + open_reward + gripper_reward
         stage_return_mask = info["drawer_open_success"]
         stage_return_reward = (
@@ -806,7 +810,11 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             outer_box_stability * reward,
         )
         reward = reward + panel_y_alignment_reward
-        return reward / (9.0 + self.GRIPPER_OPENING_REWARD_WEIGHT)
+        return reward / (
+            8.0
+            + self.INNER_MARKER_PANEL_TCP_Y_ALIGNMENT_REWARD_WEIGHT
+            + self.GRIPPER_OPENING_REWARD_WEIGHT
+        )
 
 
 @register_env("MyDualCardboardCabinetSmallDelta-v1", max_episode_steps=200)
