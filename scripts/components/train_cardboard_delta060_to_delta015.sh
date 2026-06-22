@@ -24,7 +24,7 @@ fi
 INPUT_CKPT="$1"
 SEED="${SEED:-1}"
 RUN_PREFIX="${RUN_PREFIX:-cardboard_delta060_to_delta015}"
-PYTHON_BIN="${PYTHON_BIN:-uv run python}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
 ENV_ID="${ENV_ID:-MySingleCardboardCabinetRandomized-v2}"
 ROBOT_INIT_NOISE_SCALE="${ROBOT_INIT_NOISE_SCALE:-0.05}"
 LEARNING_RATE_DELTA03="${LEARNING_RATE_DELTA03:-1e-4}"
