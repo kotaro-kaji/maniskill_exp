@@ -83,3 +83,7 @@ RUN_PREFIX="${DELTA020_RUN_PREFIX}" \
 PYTHON_BIN="${PYTHON_BIN}" \
 SEED="${SEED}" \
 bash scripts/train_cardboard_delta060_to_delta020.sh "${stage3_ckpt}"
+
+echo
+echo "### full curriculum input checkpoint summary"
+echo "Delta 0.06 randomized-v2 best checkpoint: ${stage3_ckpt}"
