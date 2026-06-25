@@ -101,6 +101,7 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         ],
         dtype=torch.float32,
     )
+    PANEL_OBS_POSITION_STEP_NOISE_M = 0.0
 
     def __init__(
         self,
@@ -595,6 +596,15 @@ class MyDualCardboardCabinetEnv(BaseEnv):
         joint_scores = 1.0 - torch.tanh(torch.abs(qpos[:, :7] - target))
         return joint_scores.mean(dim=-1)
 
+    def _sample_panel_obs_position_step_noise(
+        self, reference_position: torch.Tensor
+    ) -> Optional[torch.Tensor]:
+        max_noise = float(self.PANEL_OBS_POSITION_STEP_NOISE_M)
+        if max_noise <= 0.0:
+            return None
+        assert reference_position.ndim == 2
+        return (torch.rand_like(reference_position) - 0.5) * (2.0 * max_noise)
+
     def _sync_target_sites(self, env_idx: Optional[torch.Tensor] = None):
         target_pos = self._current_insert_target_world()
         if env_idx is not None:
@@ -662,6 +672,16 @@ class MyDualCardboardCabinetEnv(BaseEnv):
             self.cardboard_cabinet,
             self._outer_marker_panel_local_position(),
         )
+        panel_position_noise = self._sample_panel_obs_position_step_noise(
+            inner_marker_panel_position
+        )
+        if panel_position_noise is not None:
+            inner_marker_panel_position = (
+                inner_marker_panel_position + panel_position_noise
+            )
+            outer_marker_panel_position = (
+                outer_marker_panel_position + panel_position_noise
+            )
         center = torch.tensor(
             self.workspace_center_pose.p,
             dtype=inner_marker_panel_position.dtype,
@@ -770,6 +790,7 @@ class MySingleCardboardCabinetRandomizedEnv(MyDualCardboardCabinetEnv):
     BOX_POSITION_NOISE_LOW = (-0.01, -0.02, 0.0)
     BOX_POSITION_NOISE_HIGH = (0.01, 0.02, 0.0)
     BOX_YAW_NOISE_DEG = 5.0
+    PANEL_OBS_POSITION_STEP_NOISE_M = 0.003
 
     def __init__(self, *args, robot_init_noise_scale: float = 0.25, **kwargs):
         super().__init__(
