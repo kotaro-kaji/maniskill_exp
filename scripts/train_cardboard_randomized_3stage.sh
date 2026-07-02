@@ -7,7 +7,7 @@ set -euo pipefail
 # Stage 3: continue conservatively on randomized-v2.
 
 SEED="${SEED:-1}"
-RUN_PREFIX="${RUN_PREFIX:-cardboard_3stage}"
+RUN_PREFIX="${RUN_PREFIX:-noised_cardboard_3stage}"
 NUM_ENVS="${NUM_ENVS:-1024}"
 NUM_EVAL_ENVS="${NUM_EVAL_ENVS:-64}"
 NUM_EVAL_VIDEO_ENVS="${NUM_EVAL_VIDEO_ENVS:-4}"
@@ -36,7 +36,8 @@ event_files = list(run_dir.glob("events.out.tfevents*"))
 if not event_files:
     raise SystemExit(f"no tensorboard event file found in {run_dir}")
 
-ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
+event_file = max(event_files, key=lambda path: (path.stat().st_mtime, path.name))
+ea = EventAccumulator(str(event_file), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
@@ -49,7 +50,7 @@ preferred = [
 ]
 tag = next((t for t in preferred if t in tags), None)
 if tag is None:
-    raise SystemExit(f"no usable eval scalar found in {run_dir}; tags={tags}")
+    raise SystemExit(f"no usable eval scalar found in {event_file}; tags={tags}")
 
 best = max(ea.Scalars(tag), key=lambda item: item.value)
 iteration = int(best.step // batch_size) + 1

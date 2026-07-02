@@ -10,15 +10,15 @@ set -euo pipefail
 #
 # Useful overrides:
 #   SEED=1 \
-#   THREE_STAGE_RUN_PREFIX=cardboard_3stage \
-#   DELTA020_RUN_PREFIX=cardboard_delta060_to_delta020 \
+#   THREE_STAGE_RUN_PREFIX=noised_cardboard_3stage \
+#   DELTA020_RUN_PREFIX=noised_cardboard_delta060_to_delta020 \
 #   PYTHON_BIN=python \
 #   bash scripts/train_cardboard_randomized_3stage_to_delta020.sh
 
 SEED="${SEED:-1}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
-THREE_STAGE_RUN_PREFIX="${THREE_STAGE_RUN_PREFIX:-cardboard_3stage}"
-DELTA020_RUN_PREFIX="${DELTA020_RUN_PREFIX:-cardboard_delta060_to_delta020}"
+THREE_STAGE_RUN_PREFIX="${THREE_STAGE_RUN_PREFIX:-noised_cardboard_3stage}"
+DELTA020_RUN_PREFIX="${DELTA020_RUN_PREFIX:-noised_cardboard_delta060_to_delta020}"
 THREE_STAGE_NUM_ENVS="${THREE_STAGE_NUM_ENVS:-${NUM_ENVS:-1024}}"
 
 best_ckpt() {
@@ -35,7 +35,8 @@ event_files = list(run_dir.glob("events.out.tfevents*"))
 if not event_files:
     raise SystemExit(f"no tensorboard event file found in {run_dir}")
 
-ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
+event_file = max(event_files, key=lambda path: (path.stat().st_mtime, path.name))
+ea = EventAccumulator(str(event_file), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
@@ -48,7 +49,7 @@ preferred = [
 ]
 tag = next((t for t in preferred if t in tags), None)
 if tag is None:
-    raise SystemExit(f"no usable eval scalar found in {run_dir}; tags={tags}")
+    raise SystemExit(f"no usable eval scalar found in {event_file}; tags={tags}")
 
 best = max(ea.Scalars(tag), key=lambda item: item.value)
 iteration = int(best.step // batch_size) + 1

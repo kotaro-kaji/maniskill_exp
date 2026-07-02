@@ -69,7 +69,8 @@ if not event_files:
     print(final_ckpt)
     raise SystemExit
 
-ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
+event_file = max(event_files, key=lambda path: (path.stat().st_mtime, path.name))
+ea = EventAccumulator(str(event_file), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
@@ -97,7 +98,7 @@ run_stage() {
   local robot_uid="$2"
   local timesteps="$3"
   local checkpoint="$4"
-  local exp_name="delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_${stage_name}"
+  local exp_name="noised_delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_${stage_name}"
 
   local cmd=(
     ${PYTHON_BIN}
@@ -120,13 +121,13 @@ run_stage() {
 
 stage1_checkpoint="${CHECKPOINT_STAGE0}"
 run_stage "stage1_delta03" "${ROBOT_DELTA03}" "${TOTAL_TIMESTEPS_STAGE1}" "${stage1_checkpoint}"
-stage1_best="$(best_ckpt "runs/delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_stage1_delta03")"
+stage1_best="$(best_ckpt "runs/noised_delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_stage1_delta03")"
 
 run_stage "stage2_delta003" "${ROBOT_DELTA003}" "${TOTAL_TIMESTEPS_STAGE2}" "${stage1_best}"
-stage2_best="$(best_ckpt "runs/delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_stage2_delta003")"
+stage2_best="$(best_ckpt "runs/noised_delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_stage2_delta003")"
 
 run_stage "stage3_delta001" "${ROBOT_DELTA001}" "${TOTAL_TIMESTEPS_STAGE3}" "${stage2_best}"
-stage3_best="$(best_ckpt "runs/delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_stage3_delta001")"
+stage3_best="$(best_ckpt "runs/noised_delta001_curriculum_${ROBOT_FAMILY}_seed${SEED}_stage3_delta001")"
 
 echo
 echo "Best final-stage checkpoint: ${stage3_best}"

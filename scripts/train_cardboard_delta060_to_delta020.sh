@@ -17,7 +17,7 @@ fi
 
 INPUT_CKPT="$1"
 SEED="${SEED:-1}"
-RUN_PREFIX="${RUN_PREFIX:-cardboard_delta060_to_delta020}"
+RUN_PREFIX="${RUN_PREFIX:-noised_cardboard_delta060_to_delta020}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 ENV_ID="${ENV_ID:-MySingleCardboardCabinetRandomized-v2}"
 ROBOT_INIT_NOISE_SCALE="${ROBOT_INIT_NOISE_SCALE:-0.05}"
@@ -42,7 +42,8 @@ event_files = list(run_dir.glob("events.out.tfevents*"))
 if not event_files:
     raise SystemExit(f"no tensorboard event file found in {run_dir}")
 
-ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
+event_file = max(event_files, key=lambda path: (path.stat().st_mtime, path.name))
+ea = EventAccumulator(str(event_file), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
@@ -55,7 +56,7 @@ preferred = [
 ]
 tag = next((t for t in preferred if t in tags), None)
 if tag is None:
-    raise SystemExit(f"no usable eval scalar found in {run_dir}; tags={tags}")
+    raise SystemExit(f"no usable eval scalar found in {event_file}; tags={tags}")
 
 best = max(ea.Scalars(tag), key=lambda item: item.value)
 iteration = int(best.step // batch_size) + 1
