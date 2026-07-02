@@ -69,7 +69,8 @@ if not event_files:
     print(final_ckpt)
     raise SystemExit
 
-ea = EventAccumulator(str(run_dir), size_guidance={"scalars": 0})
+event_file = max(event_files, key=lambda path: (path.stat().st_mtime, path.name))
+ea = EventAccumulator(str(event_file), size_guidance={"scalars": 0})
 ea.Reload()
 tags = ea.Tags().get("scalars", [])
 preferred = [
