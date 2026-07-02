@@ -17,7 +17,7 @@ import numpy as np
 import pytorch_kinematics as pk
 import torch
 import tyro
-from mani_skill.utils import gym_utils
+from mani_skill.utils import gym_utils, sapien_utils
 from mani_skill.utils.geometry.rotation_conversions import (
     matrix_to_euler_angles,
     quaternion_to_matrix,
@@ -51,6 +51,32 @@ CSV_LOG_FILENAME = "rollout_dual_log.csv"
 INFO_LOG_FILENAME = "rollout_dual_info.jsonl"
 TCP_TRACE_CSV_FILENAME = "rollout_tcp_trace.csv"
 TCP_TRACE_PNG_PREFIX = "rollout_tcp_trace"
+
+
+def _camera_config(camera_name: str, width: int, height: int):
+    if camera_name == "slot_open":
+        return {
+            "render_camera": {
+                "pose": sapien_utils.look_at(
+                    eye=[-0.44, 0.42, 0.15],
+                    target=[-0.315, 0.156, 0.105],
+                ),
+                "width": width,
+                "height": height,
+                "fov": 0.58,
+            }
+        }
+    if camera_name == "overview":
+        return {
+            "render_camera": {
+                "pose": sapien_utils.look_at([1.2, 1.0, 0.9], [0.0, 0.0, 0.22]),
+                "width": width,
+                "height": height,
+                "fov": 1.0,
+            }
+        }
+    assert camera_name == "default", camera_name
+    return {"render_camera": {"width": width, "height": height}}
 
 
 def _to_serializable(obj: Any):
@@ -95,7 +121,7 @@ def _get_physical_bounds(controller):
 
 
 class TcpTraceLogger:
-    def __init__(self, env, action_dim: int, device: torch.device):
+    def __init__(self, env, action_dim: int, device: torch.device, trace_frame: str):
         base_env = env.base_env
         agent = base_env.agent
         if not hasattr(agent, "urdf_path"):
@@ -108,7 +134,18 @@ class TcpTraceLogger:
         self.device = device
         self.action_dim = action_dim
         self.arm_dim = len(agent.arm_joint_names)
+        self.trace_frame = trace_frame
         assert action_dim >= self.arm_dim, (action_dim, self.arm_dim)
+        if trace_frame == "world":
+            self.trace_origin = torch.zeros((3,), dtype=torch.float32, device=device)
+        else:
+            assert trace_frame == "workspace_center", trace_frame
+            assert hasattr(base_env, "workspace_center_pose"), type(base_env)
+            self.trace_origin = torch.tensor(
+                base_env.workspace_center_pose.p,
+                dtype=torch.float32,
+                device=device,
+            )
 
         with open(agent.urdf_path, "rb") as f:
             urdf = f.read()
@@ -137,6 +174,7 @@ class TcpTraceLogger:
             root_rotation,
             local_position.unsqueeze(-1),
         ).squeeze(-1)
+        world_position = world_position - self.trace_origin
         world_rotation = torch.bmm(root_rotation, local_rotation)
         world_rpy = matrix_to_euler_angles(world_rotation, "XYZ")
         return world_position, world_rpy
@@ -240,6 +278,7 @@ class TcpTraceLogger:
             axes[1].set_xlabel("step")
             axes[1].grid(True, alpha=0.25)
             axes[1].legend(loc="upper right")
+            fig.suptitle(f"TCP trace frame: {self.trace_frame}")
             fig.tight_layout()
             output_path = f"{png_prefix_abs}_{suffix}.png"
             fig.savefig(output_path, dpi=160)
@@ -258,6 +297,8 @@ class RolloutArgs:
     """Environment id registered with ManiSkill."""
     control_mode: Optional[str] = "pd_joint_delta_pos"
     """Control mode forwarded to the environment."""
+    robot_uid: Optional[str] = None
+    """Robot uid forwarded to the environment."""
     sim_backend: str = "physx_cuda"
     """Simulation backend (e.g. physx_cuda or cpu)."""
     obs_mode: str = "state"
@@ -268,6 +309,8 @@ class RolloutArgs:
     """Width of rendered frames for video capture (default: high-res)."""
     render_height: int = 1280
     """Height of rendered frames for video capture (default: high-res)."""
+    camera: str = "default"
+    """Render camera name: default, slot_open, or overview."""
     robot_init_noise_scale: float = 0.05
     """Scale for robot initial joint randomization (normalized internally; 1.0 = training-level high randomness, ~10x legacy offsets)."""
     seed: int = 1
@@ -298,6 +341,8 @@ class RolloutArgs:
     """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 119.0 override)."""
     initial_box_xy: Optional[str] = None
     """Fixed initial cardboard box XY in the workspace-center frame as 'x,y'. If omitted, the environment default is used."""
+    tcp_trace_frame: str = "world"
+    """TCP trace coordinate frame: world or workspace_center."""
 
 
 def _parse_initial_box_xy(value: Optional[str]) -> Optional[tuple[float, float]]:
@@ -314,12 +359,16 @@ def _build_env(args: RolloutArgs):
         render_mode=args.render_mode,
         sim_backend=args.sim_backend,
         robot_init_noise_scale=args.robot_init_noise_scale,
-        human_render_camera_configs={
-            "render_camera": {"width": args.render_width, "height": args.render_height}
-        },
+        human_render_camera_configs=_camera_config(
+            args.camera,
+            args.render_width,
+            args.render_height,
+        ),
     )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
+    if args.robot_uid is not None:
+        env_kwargs["robot_uids"] = args.robot_uid
     initial_box_xy = _parse_initial_box_xy(args.initial_box_xy)
     if initial_box_xy is not None:
         env_kwargs["initial_box_xy"] = initial_box_xy
@@ -387,7 +436,12 @@ def run_rollout(args: RolloutArgs) -> None:
     physical_low, physical_high = _get_physical_bounds(eval_envs.base_env.agent.controller)
     physical_low = torch.as_tensor(physical_low, device=device, dtype=torch.float32)
     physical_high = torch.as_tensor(physical_high, device=device, dtype=torch.float32)
-    tcp_trace_logger = TcpTraceLogger(eval_envs, action_dim, device)
+    tcp_trace_logger = TcpTraceLogger(
+        eval_envs,
+        action_dim,
+        device,
+        args.tcp_trace_frame,
+    )
 
     csv_path = os.path.abspath(CSV_LOG_FILENAME)
     csv_file = open(csv_path, "w", newline="")
@@ -408,7 +462,9 @@ def run_rollout(args: RolloutArgs) -> None:
         for token in args.gripper_joint_indices.split(","):
             token = token.strip()
             if token:
-                gripper_indices.append(int(token))
+                idx = int(token)
+                if idx < action_dim:
+                    gripper_indices.append(idx)
     gripper_idx_tensor = (
         torch.tensor(gripper_indices, dtype=torch.long, device=device) if gripper_indices else None
     )
