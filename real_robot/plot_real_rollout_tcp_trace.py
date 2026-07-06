@@ -38,6 +38,8 @@ DEFAULT_URDF_PATH = (
     / "robotagents/assets/xarm7/xarm7_1305_left.urdf"
 )
 DEFAULT_EE_LINK = "link_tcp"
+LEFT_ARM_Y_OFFSET = 0.3291
+DEFAULT_ROOT_MINUS_TRACE_ORIGIN = torch.tensor([0.0, LEFT_ARM_Y_OFFSET, 0.0])
 
 
 def read_csv_rows(csv_path: Path) -> list[dict[str, float]]:
@@ -86,8 +88,8 @@ def fk_rows_from_real_state_action(
 
         current_matrix = chain.forward_kinematics(current_qpos).get_matrix()
         commanded_matrix = chain.forward_kinematics(commanded_qpos).get_matrix()
-        current_tcp = current_matrix[:, :3, 3]
-        commanded_tcp = commanded_matrix[:, :3, 3]
+        current_tcp = current_matrix[:, :3, 3] + DEFAULT_ROOT_MINUS_TRACE_ORIGIN
+        commanded_tcp = commanded_matrix[:, :3, 3] + DEFAULT_ROOT_MINUS_TRACE_ORIGIN
         delta_tcp = commanded_tcp - current_tcp
         current_rpy = matrix_to_euler_angles(current_matrix[:, :3, :3], "XYZ")
         commanded_rpy = matrix_to_euler_angles(commanded_matrix[:, :3, :3], "XYZ")
