@@ -41,7 +41,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_TOP_RADIUS = 0.218 / 2.0
     BIN_RIM_RADIUS = 0.224 / 2.0
     BIN_RIM_THICKNESS = 0.003
-    BIN_DENSITY = 120.0
+    BIN_DENSITY = 240.0
     BIN_X_OFFSET_FROM_BASE = 0.34
     BIN_INITIAL_Z = 0.105
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 45.0
@@ -103,8 +103,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             metallic=0.0,
         )
         physical_material = sapien.physx.PhysxMaterial(
-            static_friction=0.9,
-            dynamic_friction=0.75,
+            static_friction=2.0,
+            dynamic_friction=1.8,
             restitution=0.05,
         )
 
