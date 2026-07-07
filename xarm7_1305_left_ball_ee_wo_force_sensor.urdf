@@ -245,56 +245,6 @@
       <parent link="${prefix}link7" />
       <child link="${prefix}link_eef" />
     </joint> -->
-  <link name="link_virtual_ft_sensor_upper">
-    <inertial>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="0.05"/>
-      <inertia ixx="1.92e-05" ixy="0" ixz="0" iyy="1.92e-05" iyz="0" izz="2.89e-05"/>
-    </inertial>
-    <visual>
-      <geometry>
-        <cylinder length="0.0338" radius="0.035"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
-    </visual>
-    <collision>
-      <geometry>
-        <cylinder length="0.0338" radius="0.035"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision>
-  </link>
-  <joint name="joint_virtual_ft_sensor_upper" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0.0169"/>
-    <parent link="link7"/>
-    <child link="link_virtual_ft_sensor_upper"/>
-  </joint>
-  <link name="link_virtual_ft_sensor_lower">
-    <inertial>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="0.04"/>
-      <inertia ixx="1.11e-05" ixy="0" ixz="0" iyy="1.11e-05" iyz="0" izz="1.8e-05"/>
-    </inertial>
-    <visual>
-      <geometry>
-        <cylinder length="0.025" radius="0.035"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <material name="Silver"/>
-    </visual>
-    <collision>
-      <geometry>
-        <cylinder length="0.025" radius="0.035"/>
-      </geometry>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision>
-  </link>
-  <joint name="joint_virtual_ft_sensor_lower" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0.0294"/>
-    <parent link="link_virtual_ft_sensor_upper"/>
-    <child link="link_virtual_ft_sensor_lower"/>
-  </joint>
   <transmission name="tran1">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint1">
@@ -435,8 +385,8 @@
     <origin rpy="-1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0"/>
   </joint>
   <joint name="joint_eef" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0.0125"/>
-    <parent link="link_virtual_ft_sensor_lower"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <parent link="link7"/>
     <child link="link_eef"/>
   </joint>
   <joint name="gripper_fix" type="fixed">

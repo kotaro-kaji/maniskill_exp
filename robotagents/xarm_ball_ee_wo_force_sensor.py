@@ -10,9 +10,9 @@ from mani_skill.utils import sapien_utils
 
 
 @register_agent()
-class Xarm7BallEE(BaseAgent):
-    uid = "xarm7_ball_ee"
-    urdf_path = "xarm7_1305_left_ball_ee.urdf"
+class Xarm7BallEEWoForceSensor(BaseAgent):
+    uid = "xarm7_ball_ee_wo_force_sensor"
+    urdf_path = "xarm7_1305_left_ball_ee_wo_force_sensor.urdf"
     # Use the ball link we added in the URDF as the TCP
     ee_link_name = "link_tcp_ball"
     urdf_config = dict(
@@ -83,8 +83,6 @@ class Xarm7BallEE(BaseAgent):
             "link5",
             "link6",
             "link7",
-            "link_virtual_ft_sensor_upper",
-            "link_virtual_ft_sensor_lower",
             "link_eef", #realsenseカメラのリンク
             "xarm_gripper_base_link",
             "left_finger",
@@ -122,11 +120,7 @@ class Xarm7BallEE(BaseAgent):
             roughness=0.2,
         )
         self._set_link_roughness(
-            link_names=[
-                "link_virtual_ft_sensor_lower",
-                "link_virtual_ft_sensor_upper",
-                "link7",
-            ],
+            link_names=["link7"],
             roughness=0.3,
         )
 
