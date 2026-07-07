@@ -44,6 +44,12 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 45.0
     BIN_LOCAL_X_RANDOMIZATION_DEG = 15.0
     FACE_MARK_THICKNESS = 0.003
+    FRAME_AXIS_LENGTH = 0.06
+    FRAME_AXIS_RADIUS = 0.003
+    FRAME_LOCAL_ORIGIN = [0.0, 0.0, 0.0]
+    WORLD_FRAME_AXIS_LENGTH = 0.10
+    WORLD_FRAME_AXIS_RADIUS = 0.004
+    WORLD_FRAME_OFFSET_FROM_BIN = [0.0, 0.18, 0.06]
 
     def __init__(
         self,
@@ -120,6 +126,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         self._add_small_face_mark_visual(builder)
         builder.initial_pose = self._initial_bin_pose()
         self.trash_bin = builder.build(name="trash_bin")
+        self._build_trash_bin_frame_sites()
+        self._build_world_frame_sites()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -143,6 +151,12 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             orientations = self._randomized_bin_orientations(batch_size)
             positions[:, 2] = self._initial_bin_z()
             self.trash_bin.set_pose(Pose.create_from_pq(positions, orientations))
+            self._update_trash_bin_frame_sites()
+            self._update_world_frame_sites()
+
+    def _after_control_step(self):
+        self._update_trash_bin_frame_sites()
+        self._update_world_frame_sites()
 
     def _initial_bin_pose(self) -> sapien.Pose:
         p = self._bimanual_center_point_to_world(
@@ -217,16 +231,110 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         )
         z = self.BIN_HEIGHT / 2.0 + self.FACE_MARK_THICKNESS / 2.0
         half_thickness = self.FACE_MARK_THICKNESS / 2.0
+        head_angle = math.radians(45.0)
         builder.add_box_visual(
-            pose=sapien.Pose(p=[-0.010, 0.0, z]),
-            half_size=[0.042, 0.006, half_thickness],
+            pose=sapien.Pose(p=[0.005, 0.0, z]),
+            half_size=[0.050, 0.006, half_thickness],
             material=material,
         )
         builder.add_box_visual(
-            pose=sapien.Pose(p=[0.030, 0.0, z]),
-            half_size=[0.006, 0.032, half_thickness],
+            pose=sapien.Pose(
+                p=[-0.040, 0.014, z],
+                q=[math.cos(head_angle / 2.0), 0.0, 0.0, math.sin(head_angle / 2.0)],
+            ),
+            half_size=[0.028, 0.006, half_thickness],
             material=material,
         )
+        builder.add_box_visual(
+            pose=sapien.Pose(
+                p=[-0.040, -0.014, z],
+                q=[math.cos(-head_angle / 2.0), 0.0, 0.0, math.sin(-head_angle / 2.0)],
+            ),
+            half_size=[0.028, 0.006, half_thickness],
+            material=material,
+        )
+
+    def _build_trash_bin_frame_sites(self):
+        axis_specs = self._frame_axis_specs(self.FRAME_AXIS_LENGTH, self.FRAME_AXIS_RADIUS)
+        self.trash_bin_frame_sites = self._build_frame_site_set(
+            "trash_bin_local_frame", axis_specs
+        )
+
+    def _build_world_frame_sites(self):
+        axis_specs = self._frame_axis_specs(
+            self.WORLD_FRAME_AXIS_LENGTH,
+            self.WORLD_FRAME_AXIS_RADIUS,
+        )
+        self.world_frame_sites = self._build_frame_site_set("world_frame", axis_specs)
+
+    def _frame_axis_specs(self, length: float, radius: float):
+        return {
+            "x": (
+                [length / 2.0, radius, radius],
+                [1.0, 0.05, 0.05, 1.0],
+            ),
+            "y": (
+                [radius, length / 2.0, radius],
+                [0.05, 0.85, 0.05, 1.0],
+            ),
+            "z": (
+                [radius, radius, length / 2.0],
+                [0.05, 0.20, 1.0, 1.0],
+            ),
+        }
+
+    def _build_frame_site_set(self, name_prefix: str, axis_specs):
+        frame_sites = {}
+        for axis_name, (half_size, color) in axis_specs.items():
+            builder = self.scene.create_actor_builder()
+            builder.add_box_visual(
+                half_size=half_size,
+                material=sapien.render.RenderMaterial(base_color=color),
+            )
+            builder.initial_pose = sapien.Pose()
+            frame_sites[axis_name] = builder.build_kinematic(
+                name=f"{name_prefix}_{axis_name}"
+            )
+        return frame_sites
+
+    def _update_trash_bin_frame_sites(self):
+        if not hasattr(self, "trash_bin_frame_sites"):
+            return
+        axis_offset = self.FRAME_AXIS_LENGTH / 2.0
+        origin = self.FRAME_LOCAL_ORIGIN
+        local_poses = {
+            "x": sapien.Pose(p=[origin[0] + axis_offset, origin[1], origin[2]]),
+            "y": sapien.Pose(p=[origin[0], origin[1] + axis_offset, origin[2]]),
+            "z": sapien.Pose(p=[origin[0], origin[1], origin[2] + axis_offset]),
+        }
+        trash_bin_pose = Pose.create(self.trash_bin.pose)
+        for axis_name, local_pose in local_poses.items():
+            self.trash_bin_frame_sites[axis_name].set_pose(
+                trash_bin_pose * Pose.create(local_pose, device=self.device)
+            )
+
+    def _update_world_frame_sites(self):
+        if not hasattr(self, "world_frame_sites"):
+            return
+        origin = self._world_frame_origin()
+        axis_offset = self.WORLD_FRAME_AXIS_LENGTH / 2.0
+        world_poses = {
+            "x": sapien.Pose(p=[origin[0] + axis_offset, origin[1], origin[2]]),
+            "y": sapien.Pose(p=[origin[0], origin[1] + axis_offset, origin[2]]),
+            "z": sapien.Pose(p=[origin[0], origin[1], origin[2] + axis_offset]),
+        }
+        for axis_name, world_pose in world_poses.items():
+            self.world_frame_sites[axis_name].set_pose(
+                Pose.create(world_pose, device=self.device)
+            )
+
+    def _world_frame_origin(self):
+        bin_pose = self._initial_bin_pose()
+        return [
+            bin_pose.p[0] + self.WORLD_FRAME_OFFSET_FROM_BIN[0],
+            bin_pose.p[1] + self.WORLD_FRAME_OFFSET_FROM_BIN[1],
+            bin_pose.p[2] + self.WORLD_FRAME_OFFSET_FROM_BIN[2],
+        ]
 
     def _clear(self):
         super()._clear()
@@ -286,8 +394,25 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         filtered_entry.pop("qvel", None)
         return filtered_entry
 
+    def _bin_axis_scalars(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        q = self.trash_bin.pose.q
+        q = q / torch.linalg.norm(q, dim=1, keepdim=True).clamp_min(1e-6)
+        w, x, y, z = q.unbind(dim=1)
+
+        # IMPORTANT: RecordEpisode tiles 8-env videos column-major with 2 rows:
+        # left-top env0, left-bottom env1, second-column-top env2, second-column-bottom env3, ...
+        # Keep this order in mind when comparing these per-env scalars with recorded videos.
+        local_z_world_x = 2.0 * (x * z + w * y)
+        minus_local_x_world_z = -2.0 * (x * z - w * y)
+        return local_z_world_x, minus_local_x_world_z
+
     def evaluate(self):
-        return {"success": torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)}
+        local_z_world_x, minus_local_x_world_z = self._bin_axis_scalars()
+        return {
+            "success": torch.zeros(self.num_envs, dtype=torch.bool, device=self.device),
+            "trash_bin_local_z_world_x": local_z_world_x,
+            "trash_bin_minus_local_x_world_z": minus_local_x_world_z,
+        }
 
     def compute_dense_reward(self, obs, action, info):
         return torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
