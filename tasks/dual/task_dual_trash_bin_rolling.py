@@ -50,6 +50,9 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     WORLD_FRAME_AXIS_LENGTH = 0.10
     WORLD_FRAME_AXIS_RADIUS = 0.004
     WORLD_FRAME_OFFSET_FROM_BIN = [0.0, 0.18, 0.06]
+    TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
+    TCP_REACH_DISTANCE_SCALE = 10.0
+    TCP_REACH_REWARD_MAX = 0.01
 
     def __init__(
         self,
@@ -414,8 +417,30 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             "trash_bin_minus_local_x_world_z": minus_local_x_world_z,
         }
 
+    def _farthest_tcp_to_bin_origin_dist(self) -> torch.Tensor:
+        left_tcp_pos = Pose.create(self.agent.agents[0].tcp_pose, device=self.device).p
+        right_tcp_pos = Pose.create(self.agent.agents[1].tcp_pose, device=self.device).p
+        bin_origin = self.trash_bin.pose.p
+        assert left_tcp_pos.shape == right_tcp_pos.shape == bin_origin.shape
+
+        left_dist = torch.linalg.norm(left_tcp_pos - bin_origin, dim=1)
+        right_dist = torch.linalg.norm(right_tcp_pos - bin_origin, dim=1)
+        return torch.maximum(left_dist, right_dist)
+
+    def _tcp_reaching_reward(self) -> torch.Tensor:
+        farthest_dist = self._farthest_tcp_to_bin_origin_dist()
+        outside_target = torch.clamp(
+            farthest_dist - self.TCP_REACH_TARGET_DISTANCE,
+            min=0.0,
+        )
+        return self.TCP_REACH_REWARD_MAX * (
+            1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * outside_target)
+        )
+
     def compute_dense_reward(self, obs, action, info):
-        return torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+        _, minus_local_x_world_z = self._bin_axis_scalars()
+        orientation_reward = minus_local_x_world_z + 1.0
+        return orientation_reward + self._tcp_reaching_reward()
 
     def compute_normalized_dense_reward(self, obs, action, info):
         return self.compute_dense_reward(obs, action, info)
