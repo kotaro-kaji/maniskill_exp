@@ -55,6 +55,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
     TCP_REACH_DISTANCE_SCALE = 10.0
     TCP_REACH_REWARD_MAX = 0.5
+    FINE_ORIENTATION_REWARD_MAX = 1.0
+    FINE_ORIENTATION_DISTANCE_SCALE = 50.0
     SUCCESS_MINUS_LOCAL_X_WORLD_Z = 0.995
 
     def __init__(
@@ -444,10 +446,27 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * outside_target)
         )
 
+    def _fine_orientation_reward(self) -> torch.Tensor:
+        _, minus_local_x_world_z = self._bin_axis_scalars()
+        orientation_error = torch.clamp(
+            1.0 - minus_local_x_world_z,
+            min=0.0,
+        )
+        return self.FINE_ORIENTATION_REWARD_MAX * (
+            1.0
+            - torch.tanh(
+                self.FINE_ORIENTATION_DISTANCE_SCALE * orientation_error
+            )
+        )
+
     def compute_dense_reward(self, obs, action, info):
         _, minus_local_x_world_z = self._bin_axis_scalars()
         orientation_reward = minus_local_x_world_z + 1.0
-        return orientation_reward + self._tcp_reaching_reward()
+        return (
+            orientation_reward
+            + self._fine_orientation_reward()
+            + self._tcp_reaching_reward()
+        )
 
     def compute_normalized_dense_reward(self, obs, action, info):
         return self.compute_dense_reward(obs, action, info)
