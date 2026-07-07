@@ -307,3 +307,9 @@ class Xarm7BallEE(BaseAgent):
             return contacts
         else:
             raise ValueError("Scene is not GPU enabled")
+
+
+@register_agent()
+class Xarm7BallEEWoForceSensor(Xarm7BallEE):
+    uid = "xarm7_ball_ee_wo_force_sensor"
+    urdf_path = "xarm7_1305_left_ball_ee_wo_force_sensor.urdf"
