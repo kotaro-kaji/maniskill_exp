@@ -1,5 +1,5 @@
 import argparse
-from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
 import sys
 
@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import task_pushcube_beatiful  # noqa: F401
 import tasks.dual.task_dual_box_rotation  # noqa: F401
+import tasks.dual.task_dual_trash_bin_rolling  # noqa: F401
 import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 import tasks.dual.task_dual_simple  # noqa: F401
 import tasks.single_arm.pick_cube  # noqa: F401
@@ -52,8 +53,8 @@ def main():
     while True:
         action = env.action_space.sample()
         if not args.random_action:
-            if isinstance(action, OrderedDict):
-                action = OrderedDict((k, np.zeros_like(v)) for k, v in action.items())
+            if isinstance(action, Mapping):
+                action = {k: np.zeros_like(v) for k, v in action.items()}
             else:
                 action = np.zeros_like(action)
         obs, reward, terminated, truncated, info = env.step(action)
