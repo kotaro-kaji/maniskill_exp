@@ -477,8 +477,11 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         )
 
     def compute_dense_reward(self, obs, action, info):
-        _, minus_local_x_world_z = self._bin_axis_scalars()
-        orientation_reward = minus_local_x_world_z + 1.0
+        local_z_world_x, minus_local_x_world_z = self._bin_axis_scalars()
+        orientation_reward = (
+            minus_local_x_world_z + 1.0
+            + local_z_world_x + 1.0
+        )
         return (
             orientation_reward
             + self._fine_orientation_reward()
