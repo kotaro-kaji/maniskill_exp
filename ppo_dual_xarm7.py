@@ -37,6 +37,7 @@ from tasks.single.task_single_cardboard_cabinet_just_return import MyDualCardboa
 from tasks.dual.task_dual_box_rotation import MyDualBoxRotationEnv
 from tasks.dual.task_dual_box_rotation_regrasp import MyDualBoxRotationRegraspEnv
 from tasks.dual.task_dual_box_rotation_sandwitch import MyDualBoxRotationSandwitchEnv
+from tasks.dual.task_dual_trash_bin_rolling import MyDualTrashBinRollingEnv
 
 
 #デフォルトはSIM_FREQUENCY_HZ=100, CONTROL_FREQUENCY_HZ=20

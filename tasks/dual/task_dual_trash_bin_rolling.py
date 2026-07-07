@@ -40,9 +40,10 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_RIM_THICKNESS = 0.003
     BIN_DENSITY = 120.0
     BIN_X_OFFSET_FROM_BASE = 0.34
-    FRAME_AXIS_LENGTH = 0.32
-    FRAME_AXIS_RADIUS = 0.012
-    FRAME_LOCAL_ORIGIN = [0.0, 0.0, 0.0]
+    BIN_INITIAL_Z = 0.105
+    BIN_LOCAL_Z_RANDOMIZATION_DEG = 45.0
+    BIN_LOCAL_X_RANDOMIZATION_DEG = 15.0
+    FACE_MARK_THICKNESS = 0.003
 
     def __init__(
         self,
@@ -116,9 +117,9 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             half_length=self.BIN_RIM_THICKNESS / 2.0,
             material=rim_material,
         )
+        self._add_small_face_mark_visual(builder)
         builder.initial_pose = self._initial_bin_pose()
         self.trash_bin = builder.build(name="trash_bin")
-        self._build_trash_bin_frame_sites()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -133,29 +134,60 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             if batch_size == 0:
                 return
 
-            pose = self._initial_bin_pose()
+            initial_pose = self._initial_bin_pose()
             positions = torch.as_tensor(
-                np.array([pose.p], dtype=np.float32),
+                np.array([initial_pose.p], dtype=np.float32),
                 dtype=torch.float32,
                 device=self.device,
             ).repeat(batch_size, 1)
-            orientations = torch.as_tensor(
-                np.array([pose.q], dtype=np.float32),
-                dtype=torch.float32,
-                device=self.device,
-            ).repeat(batch_size, 1)
+            orientations = self._randomized_bin_orientations(batch_size)
+            positions[:, 2] = self._initial_bin_z()
             self.trash_bin.set_pose(Pose.create_from_pq(positions, orientations))
-            self._update_trash_bin_frame_sites()
-
-    def _after_control_step(self):
-        self._update_trash_bin_frame_sites()
 
     def _initial_bin_pose(self) -> sapien.Pose:
-        center_z = self.BIN_TOP_RADIUS
         p = self._bimanual_center_point_to_world(
-            [self.BIN_X_OFFSET_FROM_BASE, 0.0, center_z]
+            [self.BIN_X_OFFSET_FROM_BASE, 0.0, self._initial_bin_z() - PEDESTAL_HEIGHT]
         )
         return sapien.Pose(p=p, q=[math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0])
+
+    def _initial_bin_z(self) -> float:
+        return self.BIN_INITIAL_Z
+
+    def _randomized_bin_orientations(self, batch_size: int) -> torch.Tensor:
+        base_q = torch.tensor(
+            [math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0],
+            dtype=torch.float32,
+            device=self.device,
+        ).repeat(batch_size, 1)
+        local_z = self._sample_angle(batch_size, self.BIN_LOCAL_Z_RANDOMIZATION_DEG)
+        local_x = self._sample_angle(batch_size, self.BIN_LOCAL_X_RANDOMIZATION_DEG)
+        local_z_q = self._axis_angle_quat(torch.tensor([0.0, 0.0, 1.0], device=self.device), local_z)
+        local_x_q = self._axis_angle_quat(torch.tensor([1.0, 0.0, 0.0], device=self.device), local_x)
+        return self._quat_mul(self._quat_mul(base_q, local_z_q), local_x_q)
+
+    def _sample_angle(self, batch_size: int, half_range_deg: float) -> torch.Tensor:
+        half_range = math.radians(half_range_deg)
+        return (torch.rand(batch_size, dtype=torch.float32, device=self.device) * 2.0 - 1.0) * half_range
+
+    def _axis_angle_quat(self, axis: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
+        half_angle = angle / 2.0
+        quat = torch.zeros((angle.shape[0], 4), dtype=torch.float32, device=self.device)
+        quat[:, 0] = torch.cos(half_angle)
+        quat[:, 1:] = axis * torch.sin(half_angle).unsqueeze(1)
+        return quat
+
+    def _quat_mul(self, q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+        w1, x1, y1, z1 = q1.unbind(dim=1)
+        w2, x2, y2, z2 = q2.unbind(dim=1)
+        return torch.stack(
+            [
+                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+            ],
+            dim=1,
+        )
 
     def _compute_bimanual_center_pose(self) -> sapien.Pose:
         base_left = torch.tensor(
@@ -177,48 +209,24 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             center[2] + point[2],
         ]
 
-    def _build_trash_bin_frame_sites(self):
-        axis_specs = {
-            "x": (
-                [self.FRAME_AXIS_LENGTH / 2.0, self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_RADIUS],
-                [1.0, 0.05, 0.05, 1.0],
-            ),
-            "y": (
-                [self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_LENGTH / 2.0, self.FRAME_AXIS_RADIUS],
-                [0.05, 0.85, 0.05, 1.0],
-            ),
-            "z": (
-                [self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_LENGTH / 2.0],
-                [0.05, 0.20, 1.0, 1.0],
-            ),
-        }
-        self.trash_bin_frame_sites = {}
-        for axis_name, (half_size, color) in axis_specs.items():
-            builder = self.scene.create_actor_builder()
-            builder.add_box_visual(
-                half_size=half_size,
-                material=sapien.render.RenderMaterial(base_color=color),
-            )
-            builder.initial_pose = sapien.Pose()
-            self.trash_bin_frame_sites[axis_name] = builder.build_kinematic(
-                name=f"trash_bin_local_frame_{axis_name}"
-            )
-
-    def _update_trash_bin_frame_sites(self):
-        if not hasattr(self, "trash_bin_frame_sites"):
-            return
-        axis_offset = self.FRAME_AXIS_LENGTH / 2.0
-        origin = self.FRAME_LOCAL_ORIGIN
-        local_poses = {
-            "x": sapien.Pose(p=[origin[0] + axis_offset, origin[1], origin[2]]),
-            "y": sapien.Pose(p=[origin[0], origin[1] + axis_offset, origin[2]]),
-            "z": sapien.Pose(p=[origin[0], origin[1], origin[2] + axis_offset]),
-        }
-        trash_bin_pose = Pose.create(self.trash_bin.pose)
-        for axis_name, local_pose in local_poses.items():
-            self.trash_bin_frame_sites[axis_name].set_pose(
-                trash_bin_pose * Pose.create(local_pose, device=self.device)
-            )
+    def _add_small_face_mark_visual(self, builder):
+        material = sapien.render.RenderMaterial(
+            base_color=[0.0, 0.0, 0.0, 1.0],
+            roughness=0.45,
+            metallic=0.0,
+        )
+        z = self.BIN_HEIGHT / 2.0 + self.FACE_MARK_THICKNESS / 2.0
+        half_thickness = self.FACE_MARK_THICKNESS / 2.0
+        builder.add_box_visual(
+            pose=sapien.Pose(p=[-0.010, 0.0, z]),
+            half_size=[0.042, 0.006, half_thickness],
+            material=material,
+        )
+        builder.add_box_visual(
+            pose=sapien.Pose(p=[0.030, 0.0, z]),
+            half_size=[0.006, 0.032, half_thickness],
+            material=material,
+        )
 
     def _clear(self):
         super()._clear()
