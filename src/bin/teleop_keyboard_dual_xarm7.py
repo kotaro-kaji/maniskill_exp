@@ -23,16 +23,38 @@ import tasks.dual.task_dual_box_rotation_regrasp  # noqa: F401
 import tasks.dual.task_dual_box_rotation_sandwitch  # noqa: F401
 import tasks.dual.task_dual_box_uprighting_task  # noqa: F401
 import tasks.dual.task_dual_simple  # noqa: F401
+import tasks.dual.task_dual_trash_bin_rolling  # noqa: F401
 import tasks.single.task_single_cardboard_cabinet  # noqa: F401
 import tasks.single_arm.pick_cube  # noqa: F401
 import tasks.single_arm.push_cube  # noqa: F401
 
 
-KEY_NAMES = ("w", "s", "a", "d", "q", "e", "i", "k", "j", "l", "u", "o", "z", "x")
+KEY_NAMES = (
+    "w",
+    "s",
+    "a",
+    "d",
+    "q",
+    "e",
+    "i",
+    "k",
+    "j",
+    "l",
+    "u",
+    "o",
+    "t",
+    "g",
+    "z",
+    "x",
+)
+
+
+def is_joint_delta_control(control_mode: str) -> bool:
+    return control_mode == "pd_joint_delta_pos"
 
 
 class KeyboardInputWindow:
-    def __init__(self):
+    def __init__(self, control_mode: str):
         self.keys = {key: False for key in KEY_NAMES}
         self.reset_requested = False
         self.switch_requested = False
@@ -43,13 +65,22 @@ class KeyboardInputWindow:
         self.root.geometry("420x220")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
-        text = (
-            "Focus this window for teleop input\n\n"
-            "W/S: +/-X    A/D: +/-Y    Q/E: +/-Z\n"
-            "J/L: roll    I/K: pitch   U/O: yaw\n"
-            "Z: close gripper    X: open gripper\n"
-            "TAB: switch arm    R: reset    ESC: quit"
-        )
+        if is_joint_delta_control(control_mode):
+            text = (
+                "Focus this window for teleop input\n\n"
+                "W/S: joint1    A/D: joint2    Q/E: joint3\n"
+                "J/L: joint4    I/K: joint5    U/O: joint6\n"
+                "T/G: joint7    Z: close gripper    X: open gripper\n"
+                "TAB: switch arm    R: reset    ESC: quit"
+            )
+        else:
+            text = (
+                "Focus this window for teleop input\n\n"
+                "W/S: +/-X    A/D: +/-Y    Q/E: +/-Z\n"
+                "J/L: roll    I/K: pitch   U/O: yaw\n"
+                "Z: close gripper    X: open gripper\n"
+                "TAB: switch arm    R: reset    ESC: quit"
+            )
         label = tk.Label(self.root, text=text, justify="left", padx=16, pady=16)
         label.pack(fill="both", expand=True)
 
@@ -112,6 +143,7 @@ def parse_args():
     parser.add_argument("--control-mode", default="pd_ee_delta_pose")
     parser.add_argument("--position-action", type=float, default=1.0)
     parser.add_argument("--rotation-action", type=float, default=1.0)
+    parser.add_argument("--joint-action", type=float, default=0.4)
     parser.add_argument("--yaw-multiplier", type=float, default=2.0)
     parser.add_argument("--gripper-action", type=float, default=0.4)
     parser.add_argument("--control-hz", type=float, default=60.0)
@@ -158,7 +190,35 @@ def render_human(env):
     return env.unwrapped.render_human()
 
 
-def keyboard_to_action(keys, shape, args) -> np.ndarray:
+def keyboard_to_joint_delta_action(keys, shape, args) -> np.ndarray:
+    assert len(shape) == 1, shape
+    action = np.zeros(shape, dtype=np.float32)
+    assert action.shape[0] == 8, action.shape
+
+    key_pairs = (
+        ("w", "s", 0),
+        ("a", "d", 1),
+        ("q", "e", 2),
+        ("j", "l", 3),
+        ("i", "k", 4),
+        ("u", "o", 5),
+        ("t", "g", 6),
+    )
+    for positive_key, negative_key, joint_idx in key_pairs:
+        if keys[positive_key]:
+            action[joint_idx] += args.joint_action
+        if keys[negative_key]:
+            action[joint_idx] -= args.joint_action
+
+    if keys["z"] and not keys["x"]:
+        action[7] = args.gripper_action
+    elif keys["x"] and not keys["z"]:
+        action[7] = -args.gripper_action
+
+    return np.clip(action, -1.0, 1.0)
+
+
+def keyboard_to_ee_delta_action(keys, shape, args) -> np.ndarray:
     assert len(shape) == 1, shape
     action = np.zeros(shape, dtype=np.float32)
     assert action.shape[0] in (7, 8), action.shape
@@ -197,6 +257,12 @@ def keyboard_to_action(keys, shape, args) -> np.ndarray:
     return np.clip(action, -1.0, 1.0)
 
 
+def keyboard_to_action(keys, shape, args) -> np.ndarray:
+    if is_joint_delta_control(args.control_mode):
+        return keyboard_to_joint_delta_action(keys, shape, args)
+    return keyboard_to_ee_delta_action(keys, shape, args)
+
+
 def tensor_row(tensor):
     return tensor.detach().cpu().numpy().reshape(-1).tolist()
 
@@ -205,14 +271,14 @@ def pose_row(pose):
     return tensor_row(pose.raw_pose)
 
 
-def action_log_row(action):
+def action_log_row(action, action_dim):
     row = action.tolist()
-    if len(row) == 8:
-        row = row[:6] + [row[6]]
+    while len(row) < action_dim:
+        row.append("")
     return row
 
 
-def open_log_files(log_dir: str, env_id: str):
+def open_log_files(log_dir: str, env_id: str, action_dim: int):
     run_name = time.strftime("%Y%m%d_%H%M%S")
     run_dir = os.path.join(log_dir, f"{env_id}_keyboard_{run_name}")
     os.makedirs(run_dir, exist_ok=True)
@@ -231,13 +297,7 @@ def open_log_files(log_dir: str, env_id: str):
             "uid",
             "active",
             *[f"key_{key}" for key in KEY_NAMES],
-            "action_x",
-            "action_y",
-            "action_z",
-            "action_roll",
-            "action_pitch",
-            "action_yaw",
-            "action_gripper",
+            *[f"action_{i}" for i in range(action_dim)],
         ]
     )
     state_writer.writerow(
@@ -258,13 +318,14 @@ def log_step(
     keys,
     command_writer,
     state_writer,
+    action_dim,
 ):
     key_values = [int(keys[key]) for key in KEY_NAMES]
     for uid, sub_agent in zip(uids, sub_agents):
         command_writer.writerow(
             [step_idx, elapsed, uid, int(uid == active_uid)]
             + key_values
-            + action_log_row(action[uid])
+            + action_log_row(action[uid], action_dim)
         )
         state_writer.writerow(
             [step_idx, elapsed, uid]
@@ -273,11 +334,15 @@ def log_step(
         )
 
 
-def print_controls(uids, active_arm):
+def print_controls(uids, active_arm, control_mode):
     print("Keyboard teleop started.")
     print("Focus the small 'teleop keyboard input' window, not the Sapien viewer.")
-    print("W/S: +/-X | A/D: +/-Y | Q/E: +/-Z")
-    print("J/L: roll | I/K: pitch | U/O: yaw")
+    if is_joint_delta_control(control_mode):
+        print("W/S: joint1 | A/D: joint2 | Q/E: joint3")
+        print("J/L: joint4 | I/K: joint5 | U/O: joint6 | T/G: joint7")
+    else:
+        print("W/S: +/-X | A/D: +/-Y | Q/E: +/-Z")
+        print("J/L: roll | I/K: pitch | U/O: yaw")
     print("Z: close gripper | X: open gripper")
     print("TAB: switch active arm | r: reset | escape: quit")
     print(f"active arm: {uids[active_arm]}")
@@ -299,11 +364,12 @@ def main():
     active_arm = 0
     env.reset(seed=args.seed)
     viewer = render_human(env)
-    keyboard = KeyboardInputWindow()
-    print_controls(uids, active_arm)
+    keyboard = KeyboardInputWindow(args.control_mode)
+    print_controls(uids, active_arm, args.control_mode)
 
+    action_dim = max(action_shape(env, uid)[0] for uid in uids)
     run_dir, command_file, state_file, command_writer, state_writer = open_log_files(
-        args.log_dir, args.env_id
+        args.log_dir, args.env_id, action_dim
     )
     print(f"logging to: {run_dir}")
 
@@ -343,6 +409,7 @@ def main():
                 keys,
                 command_writer,
                 state_writer,
+                action_dim,
             )
             command_file.flush()
             state_file.flush()

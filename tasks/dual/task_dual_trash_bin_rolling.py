@@ -40,6 +40,9 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_RIM_THICKNESS = 0.003
     BIN_DENSITY = 120.0
     BIN_X_OFFSET_FROM_BASE = 0.34
+    FRAME_AXIS_LENGTH = 0.32
+    FRAME_AXIS_RADIUS = 0.012
+    FRAME_LOCAL_ORIGIN = [0.0, 0.0, 0.0]
 
     def __init__(
         self,
@@ -115,6 +118,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         )
         builder.initial_pose = self._initial_bin_pose()
         self.trash_bin = builder.build(name="trash_bin")
+        self._build_trash_bin_frame_sites()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -141,6 +145,10 @@ class MyDualTrashBinRollingEnv(BaseEnv):
                 device=self.device,
             ).repeat(batch_size, 1)
             self.trash_bin.set_pose(Pose.create_from_pq(positions, orientations))
+            self._update_trash_bin_frame_sites()
+
+    def _after_control_step(self):
+        self._update_trash_bin_frame_sites()
 
     def _initial_bin_pose(self) -> sapien.Pose:
         center_z = self.BIN_TOP_RADIUS
@@ -168,6 +176,49 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             center[1] + point[1],
             center[2] + point[2],
         ]
+
+    def _build_trash_bin_frame_sites(self):
+        axis_specs = {
+            "x": (
+                [self.FRAME_AXIS_LENGTH / 2.0, self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_RADIUS],
+                [1.0, 0.05, 0.05, 1.0],
+            ),
+            "y": (
+                [self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_LENGTH / 2.0, self.FRAME_AXIS_RADIUS],
+                [0.05, 0.85, 0.05, 1.0],
+            ),
+            "z": (
+                [self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_RADIUS, self.FRAME_AXIS_LENGTH / 2.0],
+                [0.05, 0.20, 1.0, 1.0],
+            ),
+        }
+        self.trash_bin_frame_sites = {}
+        for axis_name, (half_size, color) in axis_specs.items():
+            builder = self.scene.create_actor_builder()
+            builder.add_box_visual(
+                half_size=half_size,
+                material=sapien.render.RenderMaterial(base_color=color),
+            )
+            builder.initial_pose = sapien.Pose()
+            self.trash_bin_frame_sites[axis_name] = builder.build_kinematic(
+                name=f"trash_bin_local_frame_{axis_name}"
+            )
+
+    def _update_trash_bin_frame_sites(self):
+        if not hasattr(self, "trash_bin_frame_sites"):
+            return
+        axis_offset = self.FRAME_AXIS_LENGTH / 2.0
+        origin = self.FRAME_LOCAL_ORIGIN
+        local_poses = {
+            "x": sapien.Pose(p=[origin[0] + axis_offset, origin[1], origin[2]]),
+            "y": sapien.Pose(p=[origin[0], origin[1] + axis_offset, origin[2]]),
+            "z": sapien.Pose(p=[origin[0], origin[1], origin[2] + axis_offset]),
+        }
+        trash_bin_pose = Pose.create(self.trash_bin.pose)
+        for axis_name, local_pose in local_poses.items():
+            self.trash_bin_frame_sites[axis_name].set_pose(
+                trash_bin_pose * Pose.create(local_pose, device=self.device)
+            )
 
     def _clear(self):
         super()._clear()
