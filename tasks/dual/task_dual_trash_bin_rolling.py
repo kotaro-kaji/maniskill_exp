@@ -10,6 +10,7 @@ from mani_skill.agents.utils import get_active_joint_indices
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 
@@ -401,6 +402,22 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             filtered_entry["qpos"] = obs_entry["qpos"].index_select(obs_entry["qpos"].dim() - 1, idx)
         filtered_entry.pop("qvel", None)
         return filtered_entry
+
+    def _get_obs_extra(self, info: Dict[str, Any]):
+        bin_pose = Pose.create(self.trash_bin.pose, device=self.device)
+        bin_position = bin_pose.p
+        bin_quat = bin_pose.q
+        bin_quat = bin_quat / torch.linalg.norm(bin_quat, dim=1, keepdim=True).clamp_min(1e-6)
+        bin_rotation = quaternion_to_matrix(bin_quat).reshape(bin_quat.shape[0], 9)
+        center = torch.tensor(
+            self.bimanual_center_pose.p,
+            dtype=bin_position.dtype,
+            device=self.device,
+        )
+        return {
+            "trash_bin_position_from_bimanual_center": bin_position - center,
+            "trash_bin_rotation_matrix": bin_rotation,
+        }
 
     def _bin_axis_scalars(self) -> Tuple[torch.Tensor, torch.Tensor]:
         q = self.trash_bin.pose.q
