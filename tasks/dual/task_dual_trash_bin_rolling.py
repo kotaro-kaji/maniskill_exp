@@ -25,9 +25,11 @@ from scenebuilders.xarm7_table_scene_builder import (
     ROBOT_BASE_X_OFFSET,
 )
 
+TRASH_BIN_ROLLING_MAX_EPISODE_STEPS = 120
 
-@register_env("MyDualTrashBinRolling-v0", max_episode_steps=120)
+@register_env("MyDualTrashBinRolling-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingEnv(BaseEnv):
+    MAX_EPISODE_STEPS = TRASH_BIN_ROLLING_MAX_EPISODE_STEPS
     SUPPORTED_ROBOTS = [
         ("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
     ]
@@ -53,6 +55,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
     TCP_REACH_DISTANCE_SCALE = 10.0
     TCP_REACH_REWARD_MAX = 0.5
+    SUCCESS_MINUS_LOCAL_X_WORLD_Z = 0.995
 
     def __init__(
         self,
@@ -411,8 +414,12 @@ class MyDualTrashBinRollingEnv(BaseEnv):
 
     def evaluate(self):
         local_z_world_x, minus_local_x_world_z = self._bin_axis_scalars()
+        final_step = self.elapsed_steps >= self.MAX_EPISODE_STEPS
+        success = final_step & (
+            minus_local_x_world_z >= self.SUCCESS_MINUS_LOCAL_X_WORLD_Z
+        )
         return {
-            "success": torch.zeros(self.num_envs, dtype=torch.bool, device=self.device),
+            "success": success,
             "trash_bin_local_z_world_x": local_z_world_x,
             "trash_bin_minus_local_x_world_z": minus_local_x_world_z,
         }
