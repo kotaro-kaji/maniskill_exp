@@ -12,39 +12,39 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
     The remaining mimic joints stay aligned with the drive joint.
     """
 
-    #これがRMBでの初期姿勢です。以下のコードでは、初期姿勢は強化学習しやすい初期姿勢になっています。このコメントアウトされた姿勢は参考のために残し続けてください。
-#       [
-#       -0.00001,
-#       -0.5236051678657532,
-#       0.00,
-#       0.7853981852531433,
-#       -0.00001,
-#       1.30899178981781,
-#       -0.000001,
-#       0.7310,
-#       0.7310,
-#       0.7310,
-#       0.7310,
-#       0.7310,
-#       0.7310,
-#   ]
+    # 強化学習しやすい初期姿勢です。現在はRMBでの初期姿勢を使うため、参考として残します。
+    # [
+    #     -0.332,
+    #     0.143,
+    #     0.623,
+    #     0.491,
+    #     -1.038,
+    #     0.992,
+    #     1.182,
+    #     0.44,
+    #     0.44,
+    #     0.44,
+    #     0.44,
+    #     0.44,
+    #     0.44,
+    # ]
 
-    # Desired joint configuration (arm joints 1-7, gripper drive + mimics)
+    # RMBでの初期姿勢です。arm joints 1-7, gripper drive + mimics。
     _RESET_STATE_OF_ROBOMANIPBASELINES = torch.tensor(
         [
-            -0.332,
-            0.143,
-            0.623,
-            0.491,
-            -1.038,
-            0.992,
-            1.182,
-            0.44,
-            0.44,
-            0.44,
-            0.44,
-            0.44,
-            0.44,
+            -0.00001,
+            -0.5236051678657532,
+            0.00,
+            0.7853981852531433,
+            -0.00001,
+            1.30899178981781,
+            -0.000001,
+            0.7310,
+            0.7310,
+            0.7310,
+            0.7310,
+            0.7310,
+            0.7310,
         ],
         dtype=torch.float32,
     )
@@ -52,13 +52,13 @@ class Xarm7InitialRandomizationSceneBuilder(Xarm7TableSceneBuilder):
     # Desired joint configuration (arm joints 1-7 only)
     _JOINT_ONLY_RESET_STATE_OF_ROBOMANIPBASELINES_ = torch.tensor(
         [
-            -0.332,
-            0.143,
-            0.623,
-            0.491,
-            -1.038,
-            0.992,
-            1.182,
+            -0.00001,
+            -0.5236051678657532,
+            0.00,
+            0.7853981852531433,
+            -0.00001,
+            1.30899178981781,
+            -0.000001,
         ],
         dtype=torch.float32,
     )

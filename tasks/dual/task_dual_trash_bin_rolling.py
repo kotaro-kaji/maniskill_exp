@@ -52,7 +52,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     WORLD_FRAME_OFFSET_FROM_BIN = [0.0, 0.18, 0.06]
     TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
     TCP_REACH_DISTANCE_SCALE = 10.0
-    TCP_REACH_REWARD_MAX = 0.01
+    TCP_REACH_REWARD_MAX = 0.5
 
     def __init__(
         self,
