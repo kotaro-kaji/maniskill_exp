@@ -57,7 +57,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     TCP_REACH_REWARD_MAX = 0.5
     FINE_ORIENTATION_REWARD_MAX = 1.0
     FINE_ORIENTATION_DISTANCE_SCALE = 50.0
-    SUCCESS_MINUS_LOCAL_X_WORLD_Z = 0.995
+    SUCCESS_LOCAL_Y_WORLD_Y = 0.995
 
     def __init__(
         self,
@@ -453,19 +453,19 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         # left-top env0, left-bottom env1, second-column-top env2, second-column-bottom env3, ...
         # Keep this order in mind when comparing these per-env scalars with recorded videos.
         local_z_world_x = 2.0 * (x * z + w * y)
-        minus_local_x_world_z = -2.0 * (x * z - w * y)
-        return local_z_world_x, minus_local_x_world_z
+        local_y_world_y = 1.0 - 2.0 * (x * x + z * z)
+        return local_z_world_x, local_y_world_y
 
     def evaluate(self):
-        local_z_world_x, minus_local_x_world_z = self._bin_axis_scalars()
+        local_z_world_x, local_y_world_y = self._bin_axis_scalars()
         final_step = self.elapsed_steps >= self.MAX_EPISODE_STEPS
         success = final_step & (
-            minus_local_x_world_z >= self.SUCCESS_MINUS_LOCAL_X_WORLD_Z
+            local_y_world_y >= self.SUCCESS_LOCAL_Y_WORLD_Y
         )
         return {
             "success": success,
             "trash_bin_local_z_world_x": local_z_world_x,
-            "trash_bin_minus_local_x_world_z": minus_local_x_world_z,
+            "trash_bin_local_y_world_y": local_y_world_y,
         }
 
     def _farthest_tcp_to_bin_origin_dist(self) -> torch.Tensor:
@@ -488,10 +488,10 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * outside_target)
         )
 
-    def _fine_orientation_reward(self) -> torch.Tensor:
-        _, minus_local_x_world_z = self._bin_axis_scalars()
+    def _fine_local_y_world_y_reward(self) -> torch.Tensor:
+        _, local_y_world_y = self._bin_axis_scalars()
         orientation_error = torch.clamp(
-            1.0 - minus_local_x_world_z,
+            1.0 - local_y_world_y,
             min=0.0,
         )
         return self.FINE_ORIENTATION_REWARD_MAX * (
@@ -501,7 +501,22 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             )
         )
 
-    def _fine_local_z_reward(self) -> torch.Tensor:
+    def compute_dense_reward(self, obs, action, info):
+        _, local_y_world_y = self._bin_axis_scalars()
+        orientation_reward = local_y_world_y + 1.0
+        return (
+            orientation_reward
+            + self._fine_local_y_world_y_reward()
+            + self._tcp_reaching_reward()
+        )
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        return self.compute_dense_reward(obs, action, info)
+
+
+@register_env("MyDualTrashBinRollingStage2-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
+class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
+    def _fine_local_z_world_x_reward(self) -> torch.Tensor:
         local_z_world_x, _ = self._bin_axis_scalars()
         local_z_error = torch.clamp(
             1.0 - local_z_world_x,
@@ -512,17 +527,14 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         )
 
     def compute_dense_reward(self, obs, action, info):
-        local_z_world_x, minus_local_x_world_z = self._bin_axis_scalars()
+        local_z_world_x, local_y_world_y = self._bin_axis_scalars()
         orientation_reward = (
-            minus_local_x_world_z + 1.0
+            local_y_world_y + 1.0
             + local_z_world_x + 1.0
         )
         return (
             orientation_reward
-            + self._fine_orientation_reward()
-            + self._fine_local_z_reward()
+            + self._fine_local_y_world_y_reward()
+            + self._fine_local_z_world_x_reward()
             + self._tcp_reaching_reward()
         )
-
-    def compute_normalized_dense_reward(self, obs, action, info):
-        return self.compute_dense_reward(obs, action, info)
