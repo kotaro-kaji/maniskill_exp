@@ -44,15 +44,14 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_DENSITY = 240.0
     BIN_X_OFFSET_FROM_BASE = 0.34
     BIN_INITIAL_Z = 0.105
+    BIN_X_RANDOMIZATION_BACKWARD = 0.05
+    BIN_X_RANDOMIZATION_FORWARD = 0.10
+    BIN_Y_RANDOMIZATION = 0.10
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 45.0
     BIN_LOCAL_X_RANDOMIZATION_DEG = 15.0
     FACE_MARK_THICKNESS = 0.003
     FRAME_AXIS_LENGTH = 0.06
     FRAME_AXIS_RADIUS = 0.003
-    FRAME_LOCAL_ORIGIN = [0.0, 0.0, 0.0]
-    WORLD_FRAME_AXIS_LENGTH = 0.10
-    WORLD_FRAME_AXIS_RADIUS = 0.004
-    WORLD_FRAME_OFFSET_FROM_BIN = [0.0, 0.18, 0.06]
     TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
     TCP_REACH_DISTANCE_SCALE = 10.0
     TCP_REACH_REWARD_MAX = 0.5
@@ -69,6 +68,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     ):
         self.robot_init_noise_scale = robot_init_noise_scale
         self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
+        self._episode_bin_initial_xy: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -136,7 +136,6 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         builder.initial_pose = self._initial_bin_pose()
         self.trash_bin = builder.build(name="trash_bin")
         self._build_trash_bin_frame_sites()
-        self._build_world_frame_sites()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
         with torch.device(self.device):
@@ -158,14 +157,15 @@ class MyDualTrashBinRollingEnv(BaseEnv):
                 device=self.device,
             ).repeat(batch_size, 1)
             orientations = self._randomized_bin_orientations(batch_size)
+            positions[:, 0] += self._sample_bin_x_offset(batch_size)
+            positions[:, 1] += self._sample_bin_y_offset(batch_size)
             positions[:, 2] = self._initial_bin_z()
+            self._reset_episode_bin_initial_xy(env_idx, positions)
             self.trash_bin.set_pose(Pose.create_from_pq(positions, orientations))
             self._update_trash_bin_frame_sites()
-            self._update_world_frame_sites()
 
     def _after_control_step(self):
         self._update_trash_bin_frame_sites()
-        self._update_world_frame_sites()
 
     def _initial_bin_pose(self) -> sapien.Pose:
         p = self._bimanual_center_point_to_world(
@@ -175,6 +175,36 @@ class MyDualTrashBinRollingEnv(BaseEnv):
 
     def _initial_bin_z(self) -> float:
         return self.BIN_INITIAL_Z
+
+    def _sample_bin_x_offset(self, batch_size: int) -> torch.Tensor:
+        random_range = self.BIN_X_RANDOMIZATION_BACKWARD + self.BIN_X_RANDOMIZATION_FORWARD
+        return (
+            torch.rand(batch_size, dtype=torch.float32, device=self.device) * random_range
+            - self.BIN_X_RANDOMIZATION_BACKWARD
+        )
+
+    def _sample_bin_y_offset(self, batch_size: int) -> torch.Tensor:
+        return (
+            torch.rand(batch_size, dtype=torch.float32, device=self.device) * 2.0 - 1.0
+        ) * self.BIN_Y_RANDOMIZATION
+
+    def _ensure_episode_bin_initial_xy(self):
+        if (
+            self._episode_bin_initial_xy is not None
+            and self._episode_bin_initial_xy.shape == (self.num_envs, 2)
+        ):
+            return
+
+        initial_xy = torch.tensor(
+            self._initial_bin_pose().p[:2],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        self._episode_bin_initial_xy = initial_xy.repeat(self.num_envs, 1)
+
+    def _reset_episode_bin_initial_xy(self, env_idx: torch.Tensor, positions: torch.Tensor):
+        self._ensure_episode_bin_initial_xy()
+        self._episode_bin_initial_xy[env_idx.long()] = positions[:, :2]
 
     def _randomized_bin_orientations(self, batch_size: int) -> torch.Tensor:
         base_q = torch.tensor(
@@ -269,13 +299,6 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             "trash_bin_local_frame", axis_specs
         )
 
-    def _build_world_frame_sites(self):
-        axis_specs = self._frame_axis_specs(
-            self.WORLD_FRAME_AXIS_LENGTH,
-            self.WORLD_FRAME_AXIS_RADIUS,
-        )
-        self.world_frame_sites = self._build_frame_site_set("world_frame", axis_specs)
-
     def _frame_axis_specs(self, length: float, radius: float):
         return {
             "x": (
@@ -310,7 +333,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         if not hasattr(self, "trash_bin_frame_sites"):
             return
         axis_offset = self.FRAME_AXIS_LENGTH / 2.0
-        origin = self.FRAME_LOCAL_ORIGIN
+        origin = self._trash_bin_obs_frame_local_origin()
         local_poses = {
             "x": sapien.Pose(p=[origin[0] + axis_offset, origin[1], origin[2]]),
             "y": sapien.Pose(p=[origin[0], origin[1] + axis_offset, origin[2]]),
@@ -322,28 +345,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
                 trash_bin_pose * Pose.create(local_pose, device=self.device)
             )
 
-    def _update_world_frame_sites(self):
-        if not hasattr(self, "world_frame_sites"):
-            return
-        origin = self._world_frame_origin()
-        axis_offset = self.WORLD_FRAME_AXIS_LENGTH / 2.0
-        world_poses = {
-            "x": sapien.Pose(p=[origin[0] + axis_offset, origin[1], origin[2]]),
-            "y": sapien.Pose(p=[origin[0], origin[1] + axis_offset, origin[2]]),
-            "z": sapien.Pose(p=[origin[0], origin[1], origin[2] + axis_offset]),
-        }
-        for axis_name, world_pose in world_poses.items():
-            self.world_frame_sites[axis_name].set_pose(
-                Pose.create(world_pose, device=self.device)
-            )
-
-    def _world_frame_origin(self):
-        bin_pose = self._initial_bin_pose()
-        return [
-            bin_pose.p[0] + self.WORLD_FRAME_OFFSET_FROM_BIN[0],
-            bin_pose.p[1] + self.WORLD_FRAME_OFFSET_FROM_BIN[1],
-            bin_pose.p[2] + self.WORLD_FRAME_OFFSET_FROM_BIN[2],
-        ]
+    def _trash_bin_obs_frame_local_origin(self):
+        return [0.0, 0.0, self.BIN_HEIGHT / 2.0]
 
     def _clear(self):
         super()._clear()
@@ -405,10 +408,18 @@ class MyDualTrashBinRollingEnv(BaseEnv):
 
     def _get_obs_extra(self, info: Dict[str, Any]):
         bin_pose = Pose.create(self.trash_bin.pose, device=self.device)
-        bin_position = bin_pose.p
         bin_quat = bin_pose.q
         bin_quat = bin_quat / torch.linalg.norm(bin_quat, dim=1, keepdim=True).clamp_min(1e-6)
         bin_rotation = quaternion_to_matrix(bin_quat).reshape(bin_quat.shape[0], 9)
+        frame_origin = torch.tensor(
+            self._trash_bin_obs_frame_local_origin(),
+            dtype=bin_rotation.dtype,
+            device=self.device,
+        )
+        bin_position = bin_pose.p + torch.bmm(
+            bin_rotation.reshape(bin_quat.shape[0], 3, 3),
+            frame_origin.reshape(1, 3, 1).repeat(bin_quat.shape[0], 1, 1),
+        ).squeeze(-1)
         center = torch.tensor(
             self.bimanual_center_pose.p,
             dtype=bin_position.dtype,

@@ -13,7 +13,7 @@ from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
-from robotagents.xarm_ball_ee import Xarm7BallEE
+from robotagents.xarm_ball_ee_wo_force_sensor import Xarm7BallEEWoForceSensor
 
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
@@ -29,8 +29,11 @@ from scenebuilders.xarm7_table_scene_builder import (
 
 @register_env("MyDualSimple-v0", max_episode_steps=200)
 class MyDualSimpleEnv(BaseEnv):
-    SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
-    agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
+    SUPPORTED_ROBOTS = [
+        ("xarm7_ball_ee", "xarm7_ball_ee"),
+        ("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
+    ]
+    agent: MultiAgent[Tuple[Xarm7BallEEWoForceSensor, Xarm7BallEEWoForceSensor]]
 
     BOX_HALF_SIZE = (0.18, 0.12, 0.12)
     BOX_DENSITY = 200.0
@@ -44,7 +47,14 @@ class MyDualSimpleEnv(BaseEnv):
     LEFT_TARGET_COLOR = (0.1, 0.8, 0.2, 1.0) #緑色
     RIGHT_TARGET_COLOR = (0.2, 0.4, 1.0, 1.0) #青色
 
-    def __init__(self, *args, robot_uids=("xarm7_ball_ee", "xarm7_ball_ee"), robot_init_qpos_noise=0.02, robot_init_noise_scale: float = 1.0, **kwargs):
+    def __init__(
+        self,
+        *args,
+        robot_uids=("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
+        robot_init_qpos_noise=0.02,
+        robot_init_noise_scale: float = 1.0,
+        **kwargs,
+    ):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.robot_init_noise_scale = robot_init_noise_scale
         self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
@@ -268,9 +278,10 @@ class MyDualSimpleEnv(BaseEnv):
             filtered_entry["qpos"] = self._index_select_joint_tensor(
                 obs_entry["qpos"], indices
             )
-        # Drop velocities entirely from observations for simplicity.
-        if "qvel" in filtered_entry:
-            filtered_entry.pop("qvel", None)
+        if "qvel" in obs_entry and obs_entry["qvel"] is not None:
+            filtered_entry["qvel"] = self._index_select_joint_tensor(
+                obs_entry["qvel"], indices
+            )
         return filtered_entry
 
     def _index_select_joint_tensor(
