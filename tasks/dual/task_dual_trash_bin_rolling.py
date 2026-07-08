@@ -401,33 +401,47 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             return obs_entry
         filtered_entry = dict(obs_entry)
         if "qpos" in obs_entry and obs_entry["qpos"] is not None:
-            idx = indices.to(device=obs_entry["qpos"].device, dtype=torch.long)
-            filtered_entry["qpos"] = obs_entry["qpos"].index_select(obs_entry["qpos"].dim() - 1, idx)
-        filtered_entry.pop("qvel", None)
+            filtered_entry["qpos"] = self._index_select_joint_tensor(
+                obs_entry["qpos"], indices
+            )
+        if "qvel" in obs_entry and obs_entry["qvel"] is not None:
+            filtered_entry["qvel"] = self._index_select_joint_tensor(
+                obs_entry["qvel"], indices
+            )
         return filtered_entry
+
+    def _index_select_joint_tensor(
+        self, tensor: torch.Tensor, indices: torch.Tensor
+    ) -> torch.Tensor:
+        idx = indices.to(device=tensor.device, dtype=torch.long)
+        return tensor.index_select(tensor.dim() - 1, idx)
 
     def _get_obs_extra(self, info: Dict[str, Any]):
         bin_pose = Pose.create(self.trash_bin.pose, device=self.device)
         bin_quat = bin_pose.q
         bin_quat = bin_quat / torch.linalg.norm(bin_quat, dim=1, keepdim=True).clamp_min(1e-6)
-        bin_rotation = quaternion_to_matrix(bin_quat).reshape(bin_quat.shape[0], 9)
+        bin_rotation = quaternion_to_matrix(bin_quat)
         frame_origin = torch.tensor(
             self._trash_bin_obs_frame_local_origin(),
             dtype=bin_rotation.dtype,
             device=self.device,
         )
         bin_position = bin_pose.p + torch.bmm(
-            bin_rotation.reshape(bin_quat.shape[0], 3, 3),
+            bin_rotation,
             frame_origin.reshape(1, 3, 1).repeat(bin_quat.shape[0], 1, 1),
         ).squeeze(-1)
+        bin_rotation_6d = torch.cat(
+            [bin_rotation[..., :, 0], bin_rotation[..., :, 1]],
+            dim=-1,
+        )
         center = torch.tensor(
             self.bimanual_center_pose.p,
             dtype=bin_position.dtype,
             device=self.device,
         )
         return {
-            "trash_bin_position_from_bimanual_center": bin_position - center,
-            "trash_bin_rotation_matrix": bin_rotation,
+            "trash_bin_position": bin_position - center,
+            "trash_bin_rotation_6d": bin_rotation_6d,
         }
 
     def _bin_axis_scalars(self) -> Tuple[torch.Tensor, torch.Tensor]:
