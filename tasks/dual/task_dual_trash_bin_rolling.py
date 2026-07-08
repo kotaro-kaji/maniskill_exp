@@ -487,6 +487,16 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             )
         )
 
+    def _fine_local_z_reward(self) -> torch.Tensor:
+        local_z_world_x, _ = self._bin_axis_scalars()
+        local_z_error = torch.clamp(
+            1.0 - local_z_world_x,
+            min=0.0,
+        )
+        return 1.0 - torch.tanh(
+            self.FINE_ORIENTATION_DISTANCE_SCALE * local_z_error
+        )
+
     def compute_dense_reward(self, obs, action, info):
         local_z_world_x, minus_local_x_world_z = self._bin_axis_scalars()
         orientation_reward = (
@@ -496,6 +506,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         return (
             orientation_reward
             + self._fine_orientation_reward()
+            + self._fine_local_z_reward()
             + self._tcp_reaching_reward()
         )
 
