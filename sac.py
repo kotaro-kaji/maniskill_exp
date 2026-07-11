@@ -144,6 +144,8 @@ class Args:
     """frequency to save training videos in terms of iterations"""
     control_mode: Optional[str] = "pd_joint_delta_pos"
     """the control mode to use for the environment"""
+    robot_uid: Optional[str] = None
+    """the robot uid to use for the environment"""
     robot_init_noise_scale: float = 1.0
     """Scale factor for robot initial joint randomization (1.0 = default training noise, 0.0 = fixed)."""
 
@@ -412,6 +414,11 @@ if __name__ == "__main__":
     )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
+    if args.robot_uid is not None:
+        if args.env_id.startswith("MyDual"):
+            env_kwargs["robot_uids"] = (args.robot_uid, args.robot_uid)
+        else:
+            env_kwargs["robot_uids"] = args.robot_uid
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, human_render_camera_configs=dict(shader_pack="default"), **env_kwargs)
     eval_video_envs = None

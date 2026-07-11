@@ -23,6 +23,7 @@ from mani_skill.utils.structs import Actor, Link
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.common import flatten_dict_keys, flatten_state_dict, to_tensor
 from robotagents.xarm_ball_ee import Xarm7BallEE
+from robotagents.xarm_ball_ee_wo_force_sensor import Xarm7BallEEWoForceSensor
 
 
 from scenebuilders.dual_xarm7_table_scene_builder import (
@@ -59,8 +60,16 @@ def smoothstep(x: torch.Tensor) -> torch.Tensor:
 
 @register_env("MyDualBoxRotation-v0", max_episode_steps=120)
 class MyDualBoxRotationEnv(BaseEnv):
-    SUPPORTED_ROBOTS = [("xarm7_ball_ee", "xarm7_ball_ee")]
-    agent: MultiAgent[Tuple[Xarm7BallEE, Xarm7BallEE]]
+    SUPPORTED_ROBOTS = [
+        ("xarm7_ball_ee", "xarm7_ball_ee"),
+        ("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
+    ]
+    agent: MultiAgent[
+        Tuple[
+            Xarm7BallEE | Xarm7BallEEWoForceSensor,
+            Xarm7BallEE | Xarm7BallEEWoForceSensor,
+        ]
+    ]
     _obs_extra_fn = staticmethod(get_obs_extra_full)
 
     CONTACT_FORCE_THRESHOLD = 0.001  # N
