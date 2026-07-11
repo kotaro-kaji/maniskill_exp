@@ -43,7 +43,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_RIM_THICKNESS = 0.003
     BIN_DENSITY = 240.0
     BIN_X_OFFSET_FROM_BASE = 0.34
-    BIN_INITIAL_Z = 0.105
+    BIN_INITIAL_Z = 0.113
     BIN_X_RANDOMIZATION_BACKWARD = 0.05
     BIN_X_RANDOMIZATION_FORWARD = 0.10
     BIN_Y_RANDOMIZATION = 0.10
@@ -64,9 +64,11 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         *args,
         robot_uids=("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
         robot_init_noise_scale: float = 1.0,
+        initial_bin_xy: Optional[tuple[float, float]] = None,
         **kwargs,
     ):
         self.robot_init_noise_scale = robot_init_noise_scale
+        self.initial_bin_xy = initial_bin_xy
         self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
         self._episode_bin_initial_xy: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
@@ -156,9 +158,20 @@ class MyDualTrashBinRollingEnv(BaseEnv):
                 dtype=torch.float32,
                 device=self.device,
             ).repeat(batch_size, 1)
-            orientations = self._randomized_bin_orientations(batch_size)
-            positions[:, 0] += self._sample_bin_x_offset(batch_size)
-            positions[:, 1] += self._sample_bin_y_offset(batch_size)
+            if self.initial_bin_xy is None:
+                orientations = self._randomized_bin_orientations(batch_size)
+                positions[:, 0] += self._sample_bin_x_offset(batch_size)
+                positions[:, 1] += self._sample_bin_y_offset(batch_size)
+            else:
+                assert len(self.initial_bin_xy) == 2, self.initial_bin_xy
+                center = torch.tensor(
+                    self.bimanual_center_pose.p,
+                    dtype=positions.dtype,
+                    device=positions.device,
+                )
+                positions[:, 0] = center[0] + float(self.initial_bin_xy[0])
+                positions[:, 1] = center[1] + float(self.initial_bin_xy[1])
+                orientations = self._fixed_initial_bin_orientations(batch_size)
             positions[:, 2] = self._initial_bin_z()
             self._reset_episode_bin_initial_xy(env_idx, positions)
             self.trash_bin.set_pose(Pose.create_from_pq(positions, orientations))
@@ -207,16 +220,19 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         self._episode_bin_initial_xy[env_idx.long()] = positions[:, :2]
 
     def _randomized_bin_orientations(self, batch_size: int) -> torch.Tensor:
-        base_q = torch.tensor(
-            [math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0],
-            dtype=torch.float32,
-            device=self.device,
-        ).repeat(batch_size, 1)
+        base_q = self._fixed_initial_bin_orientations(batch_size)
         local_z = self._sample_angle(batch_size, self.BIN_LOCAL_Z_RANDOMIZATION_DEG)
         local_x = self._sample_angle(batch_size, self.BIN_LOCAL_X_RANDOMIZATION_DEG)
         local_z_q = self._axis_angle_quat(torch.tensor([0.0, 0.0, 1.0], device=self.device), local_z)
         local_x_q = self._axis_angle_quat(torch.tensor([1.0, 0.0, 0.0], device=self.device), local_x)
         return self._quat_mul(self._quat_mul(base_q, local_z_q), local_x_q)
+
+    def _fixed_initial_bin_orientations(self, batch_size: int) -> torch.Tensor:
+        return torch.tensor(
+            [math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0],
+            dtype=torch.float32,
+            device=self.device,
+        ).repeat(batch_size, 1)
 
     def _sample_angle(self, batch_size: int, half_range_deg: float) -> torch.Tensor:
         half_range = math.radians(half_range_deg)

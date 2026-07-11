@@ -38,6 +38,7 @@ from tasks.single.task_single_cardboard_cabinet_just_return import (  # noqa: F4
     MyDualCardboardCabinetEnv as MySingleCardboardCabinetJustReturnEnv,
 )
 from tasks.dual.task_dual_simple import MyDualSimpleEnv  # noqa: F401
+from tasks.dual.task_dual_trash_bin_rolling import MyDualTrashBinRollingEnv  # noqa: F401
 
 from ppo_dual_xarm7 import Agent, InfoDirectoryLogger
 
@@ -109,6 +110,8 @@ def _get_physical_bounds(controller):
         highs = []
         for sub_controller in controller.controllers.values():
             low, high = _get_physical_bounds(sub_controller)
+            if low is None or high is None:
+                return None, None
             lows.append(torch.as_tensor(low))
             highs.append(torch.as_tensor(high))
         return torch.cat(lows, dim=-1), torch.cat(highs, dim=-1)
@@ -116,7 +119,8 @@ def _get_physical_bounds(controller):
     space = getattr(controller, "_original_single_action_space", None)
     if space is None:
         space = getattr(controller, "single_action_space", None)
-    assert isinstance(space, gym.spaces.Box), type(space)
+    if not isinstance(space, gym.spaces.Box):
+        return None, None
     return torch.as_tensor(space.low), torch.as_tensor(space.high)
 
 
@@ -124,7 +128,9 @@ class TcpTraceLogger:
     def __init__(self, env, action_dim: int, device: torch.device, trace_frame: str):
         base_env = env.base_env
         agent = base_env.agent
-        if not hasattr(agent, "urdf_path"):
+        if hasattr(agent, "agents"):
+            agent = agent.agents[0]
+        elif not hasattr(agent, "urdf_path"):
             agent = agent.agents[0]
         assert hasattr(agent, "urdf_path"), type(agent)
         assert hasattr(agent, "ee_link_name"), type(agent)
@@ -289,6 +295,79 @@ class TcpTraceLogger:
             print(f"Saved TCP trace PNG to {output_path}")
 
 
+class RealTrajectoryCsvLogger:
+    def __init__(self, csv_path: str, obs_dim: int, action_dim: int):
+        self.csv_path = os.path.abspath(csv_path)
+        parent = os.path.dirname(self.csv_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        self.file = open(self.csv_path, "w", newline="")
+        self.writer = csv.DictWriter(
+            self.file,
+            fieldnames=(
+                ["episode_idx", "rollout_step", "time"]
+                + [f"state_{idx}" for idx in range(obs_dim)]
+                + [f"action_command_joint_pos_{idx}" for idx in range(action_dim)]
+            ),
+        )
+        self.writer.writeheader()
+
+    def log(
+        self,
+        episode_idx: int,
+        rollout_step: int,
+        time_sec: float,
+        state: torch.Tensor,
+        action_command_joint_pos: torch.Tensor,
+    ):
+        state_values = state.detach().cpu().tolist()
+        command_values = action_command_joint_pos.detach().cpu().tolist()
+        row = {
+            "episode_idx": episode_idx,
+            "rollout_step": rollout_step,
+            "time": time_sec,
+        }
+        row.update({f"state_{idx}": value for idx, value in enumerate(state_values)})
+        row.update(
+            {
+                f"action_command_joint_pos_{idx}": value
+                for idx, value in enumerate(command_values)
+            }
+        )
+        self.writer.writerow(row)
+
+    def close(self):
+        self.file.close()
+        print(f"Saved real trajectory style CSV to {self.csv_path}")
+
+
+def _select_qpos(qpos: torch.Tensor, indices: Optional[torch.Tensor], device: torch.device):
+    qpos = qpos.to(device=device, dtype=torch.float32)
+    if qpos.ndim == 1:
+        qpos = qpos.unsqueeze(0)
+    if indices is None:
+        return qpos
+    idx = indices.to(device=device, dtype=torch.long)
+    return qpos.index_select(qpos.dim() - 1, idx)
+
+
+def _agent_command_qpos(base_env, action_dim: int, device: torch.device) -> torch.Tensor:
+    agent = base_env.agent
+    if hasattr(agent, "agents"):
+        index_map = getattr(base_env, "_agent_obs_joint_indices", {})
+        parts = []
+        for idx, sub_agent in enumerate(agent.agents):
+            indices = index_map.get(f"{sub_agent.uid}-{idx}")
+            qpos = _select_qpos(sub_agent.robot.get_qpos(), indices, device)
+            parts.append(qpos)
+        command_qpos = torch.cat(parts, dim=-1)
+    else:
+        indices = getattr(base_env, "_obs_qpos_joint_indices", None)
+        command_qpos = _select_qpos(agent.robot.get_qpos(), indices, device)
+    assert command_qpos.shape[-1] == action_dim, (command_qpos.shape, action_dim)
+    return command_qpos
+
+
 @dataclass
 class RolloutArgs:
     checkpoint: str
@@ -341,8 +420,12 @@ class RolloutArgs:
     """Comma-separated joint indices that correspond to grippers (use gripper delta limit and 119.0 override)."""
     initial_box_xy: Optional[str] = None
     """Fixed initial cardboard box XY in the workspace-center frame as 'x,y'. If omitted, the environment default is used."""
+    initial_bin_xy: Optional[str] = None
+    """Fixed initial trash-bin XY in the bimanual-center frame as 'x,y'. If omitted, the environment default is used."""
     tcp_trace_frame: str = "world"
     """TCP trace coordinate frame: world or workspace_center."""
+    real_trajectory_csv: Optional[str] = None
+    """Optional CSV path for real-robot-style state/action_command_joint_pos rollout export."""
 
 
 def _parse_initial_box_xy(value: Optional[str]) -> Optional[tuple[float, float]]:
@@ -372,6 +455,9 @@ def _build_env(args: RolloutArgs):
     initial_box_xy = _parse_initial_box_xy(args.initial_box_xy)
     if initial_box_xy is not None:
         env_kwargs["initial_box_xy"] = initial_box_xy
+    initial_bin_xy = _parse_initial_box_xy(args.initial_bin_xy)
+    if initial_bin_xy is not None:
+        env_kwargs["initial_bin_xy"] = initial_bin_xy
 
     eval_envs = gym.make(
         args.env_id,
@@ -434,8 +520,6 @@ def run_rollout(args: RolloutArgs) -> None:
     control_timestep = float(eval_envs.base_env.control_timestep)
     obs_dim = int(obs.shape[-1])
     physical_low, physical_high = _get_physical_bounds(eval_envs.base_env.agent.controller)
-    physical_low = torch.as_tensor(physical_low, device=device, dtype=torch.float32)
-    physical_high = torch.as_tensor(physical_high, device=device, dtype=torch.float32)
     tcp_trace_logger = TcpTraceLogger(
         eval_envs,
         action_dim,
@@ -476,6 +560,21 @@ def run_rollout(args: RolloutArgs) -> None:
         delta_limit[gripper_idx_tensor] = _DEFAULT_GRIPPER_JOINT_DELTA_LIMIT
     action_delta_low = -delta_limit
     action_delta_high = delta_limit
+    normalized_span = _NORMALIZED_ACTION_HIGH - _NORMALIZED_ACTION_LOW
+    if physical_low is None or physical_high is None:
+        physical_low = action_delta_low
+        physical_high = action_delta_high
+    else:
+        physical_low = torch.as_tensor(physical_low, device=device, dtype=torch.float32)
+        physical_high = torch.as_tensor(physical_high, device=device, dtype=torch.float32)
+
+    real_trajectory_logger = None
+    if args.real_trajectory_csv is not None:
+        real_trajectory_logger = RealTrajectoryCsvLogger(
+            args.real_trajectory_csv,
+            obs_dim,
+            action_dim,
+        )
 
     info_logger = None
     if info_output_root is not None:
@@ -497,6 +596,19 @@ def run_rollout(args: RolloutArgs) -> None:
             physical_high,
         )
         qpos_before = tcp_trace_logger.agent.robot.get_qpos().detach()
+        command_qpos_before = _agent_command_qpos(
+            eval_envs.base_env,
+            action_dim,
+            device,
+        )
+        delta_scale = (clipped_action - _NORMALIZED_ACTION_LOW) / normalized_span
+        denorm_delta = action_delta_low + delta_scale * (
+            action_delta_high - action_delta_low
+        )
+        direct_joint_command = command_qpos_before + denorm_delta
+        if gripper_idx_tensor is not None and gripper_idx_tensor.numel() > 0:
+            direct_joint_command = direct_joint_command.clone()
+            direct_joint_command[:, gripper_idx_tensor] = 119.0
         obs_cpu = obs.detach().cpu()
 
         action_cpu = action.detach().cpu()
@@ -536,8 +648,17 @@ def run_rollout(args: RolloutArgs) -> None:
             csv_writer.writerow(
                 row
             )
+            if real_trajectory_logger is not None:
+                real_trajectory_logger.log(
+                    episode_idx=env_index,
+                    rollout_step=step,
+                    time_sec=time_sec,
+                    state=obs[env_index],
+                    action_command_joint_pos=direct_joint_command[env_index],
+                )
         obs, reward, terminations, truncations, info = eval_envs.step(clipped_action)
         obs = obs.to(device)
+        info["direct_joint_command"] = direct_joint_command.detach().cpu()
 
         if info_logger is not None:
             info_logger.log({"actions": action}, step)
@@ -551,22 +672,7 @@ def run_rollout(args: RolloutArgs) -> None:
                 step,
             )
             info_logger.log(info, step)
-
-            # direct joint command: convert NN action -> delta -> add to measured_q -> clip
-            if "mesured_q" in info:
-                measured_q = torch.as_tensor(info["mesured_q"], device=device, dtype=torch.float32)
-                # ensure shape [num_envs, action_dim]
-                if measured_q.ndim == 1:
-                    measured_q = measured_q.unsqueeze(0)
-                normalized_span = _NORMALIZED_ACTION_HIGH - _NORMALIZED_ACTION_LOW
-                delta_scale = (clipped_action - _NORMALIZED_ACTION_LOW) / normalized_span
-                denorm_delta = action_delta_low + delta_scale * (action_delta_high - action_delta_low)
-                direct_joint_command = measured_q + denorm_delta
-                if gripper_idx_tensor is not None and gripper_idx_tensor.numel() > 0:
-                    direct_joint_command = direct_joint_command.clone()
-                    direct_joint_command[:, gripper_idx_tensor] = 119.0
-                info["direct_joint_command"] = direct_joint_command.detach().cpu()
-                info_logger.log({"direct_joint_command": direct_joint_command}, step)
+            info_logger.log({"direct_joint_command": direct_joint_command}, step)
 
         payload = {"step": step, "info": _to_serializable(info)}
         info_file.write(json.dumps(payload) + "\n")
@@ -579,6 +685,8 @@ def run_rollout(args: RolloutArgs) -> None:
     eval_envs.close()
     if info_logger is not None:
         info_logger.close()
+    if real_trajectory_logger is not None:
+        real_trajectory_logger.close()
     csv_file.close()
     info_file.close()
     tcp_trace_logger.save(TCP_TRACE_CSV_FILENAME, TCP_TRACE_PNG_PREFIX)
