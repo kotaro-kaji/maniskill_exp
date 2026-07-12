@@ -44,7 +44,7 @@ common_args=(
 echo
 echo "### stage1: MyDualTrashBinRollingRotationOnly-v0"
 echo "run: runs/${STAGE1_RUN_NAME}"
-uv run python ppo_dual_xarm7.py \
+python ppo_dual_xarm7.py \
   --exp-name "${STAGE1_RUN_NAME}" \
   --env-id MyDualTrashBinRollingRotationOnly-v0 \
   --total-timesteps "${STAGE1_TOTAL_TIMESTEPS}" \
@@ -60,7 +60,7 @@ echo
 echo "### stage2: MyDualTrashBinRollingStage2-v0"
 echo "checkpoint: ${stage1_ckpt}"
 echo "run: runs/${STAGE2_RUN_NAME}"
-uv run python ppo_dual_xarm7.py \
+python ppo_dual_xarm7.py \
   --exp-name "${STAGE2_RUN_NAME}" \
   --checkpoint "${stage1_ckpt}" \
   --env-id MyDualTrashBinRollingStage2-v0 \

@@ -12,7 +12,7 @@ from mani_skill.utils.building.ground import build_ground
 from mani_skill.utils.scene_builder.table.scene_builder import TableSceneBuilder
 
 
-PEDESTAL_HEIGHT = 0.0880
+PEDESTAL_HEIGHT = 0.08567
 PEDESTAL_HALF_EXTENT_X = 0.075
 PEDESTAL_HALF_EXTENT_X_NO_RGB = 0.095
 PEDESTAL_LENGTH_Y = 0.83645  # xArmの土台の金属部分のみの左右方向の長さ
