@@ -456,7 +456,7 @@ def _build_env(args: RolloutArgs):
     if initial_box_xy is not None:
         env_kwargs["initial_box_xy"] = initial_box_xy
     initial_bin_xy = _parse_initial_box_xy(args.initial_bin_xy)
-    if initial_bin_xy is not None:
+    if initial_bin_xy is not None and "TrashBin" in args.env_id:
         env_kwargs["initial_bin_xy"] = initial_bin_xy
 
     eval_envs = gym.make(

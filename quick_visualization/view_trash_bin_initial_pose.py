@@ -29,7 +29,7 @@ def zero_action(env):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--initial-bin-xy", type=parse_xy, default=(0.34, 0.0))
+    parser.add_argument("--initial-bin-xy", type=parse_xy, default=(0.31425, 0.0))
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--settle-steps", type=int, default=0)
     parser.add_argument("--play", action="store_true")
