@@ -253,7 +253,9 @@ def main() -> None:
     parser.add_argument(
         "--urdf-path",
         type=Path,
-        default=Path("xarm7_1305_left_ball_ee_wo_force_sensor.urdf"),
+        default=Path(
+            "robotagents/assets/xarm7/xarm7_1305_left_ball_ee_wo_force_sensor_kinematics.urdf"
+        ),
     )
     parser.add_argument("--ee-link", default="link_tcp_ball")
     args = parser.parse_args()

@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument(
         "--robot-uid",
         type=str,
-        default="xarm7_ball_ee_kinematics",
+        default="xarm7_ball_ee_kinematics_left",
     )
     parser.add_argument("--agent-index", type=int, default=0)
     parser.add_argument(

@@ -14,6 +14,10 @@ from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 
+from robotagents.xarm_ball_ee_kinematics import (
+    Xarm7BallEEKinematicsLeft,
+    Xarm7BallEEKinematicsRight,
+)
 from robotagents.xarm_ball_ee_wo_force_sensor import Xarm7BallEEWoForceSensor
 from scenebuilders.dual_xarm7_table_scene_builder import (
     DualXarm7TableSceneBuilder,
@@ -32,9 +36,15 @@ TRASH_BIN_ROLLING_MAX_EPISODE_STEPS = 120
 class MyDualTrashBinRollingEnv(BaseEnv):
     MAX_EPISODE_STEPS = TRASH_BIN_ROLLING_MAX_EPISODE_STEPS
     SUPPORTED_ROBOTS = [
+        ("xarm7_ball_ee_kinematics_left", "xarm7_ball_ee_kinematics_right"),
         ("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
     ]
-    agent: MultiAgent[Tuple[Xarm7BallEEWoForceSensor, Xarm7BallEEWoForceSensor]]
+    agent: MultiAgent[
+        Tuple[
+            Xarm7BallEEKinematicsLeft | Xarm7BallEEWoForceSensor,
+            Xarm7BallEEKinematicsRight | Xarm7BallEEWoForceSensor,
+        ]
+    ]
 
     BIN_HEIGHT = 0.2727
     BIN_BOTTOM_RADIUS = 0.184 / 2.0
@@ -63,7 +73,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     def __init__(
         self,
         *args,
-        robot_uids=("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
+        robot_uids=("xarm7_ball_ee_kinematics_left", "xarm7_ball_ee_kinematics_right"),
         robot_init_noise_scale: float = 1.0,
         initial_bin_xy: Optional[tuple[float, float]] = None,
         **kwargs,

@@ -23,7 +23,7 @@ from mani_skill.utils.structs import Actor, Link
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.common import flatten_dict_keys, flatten_state_dict, to_tensor
 from robotagents.xarm_ball_ee import Xarm7BallEE
-from robotagents.xarm_ball_ee_kinematics import Xarm7BallEEKinematics
+from robotagents.xarm_ball_ee_kinematics import Xarm7BallEEKinematicsLeft
 from robotagents.xarm_ball_ee_wo_force_sensor import Xarm7BallEEWoForceSensor
 
 
@@ -63,13 +63,13 @@ def smoothstep(x: torch.Tensor) -> torch.Tensor:
 class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [
         ("xarm7_ball_ee", "xarm7_ball_ee"),
-        ("xarm7_ball_ee_kinematics", "xarm7_ball_ee_kinematics"),
+        ("xarm7_ball_ee_kinematics_left", "xarm7_ball_ee_kinematics_left"),
         ("xarm7_ball_ee_wo_force_sensor", "xarm7_ball_ee_wo_force_sensor"),
     ]
     agent: MultiAgent[
         Tuple[
-            Xarm7BallEE | Xarm7BallEEKinematics | Xarm7BallEEWoForceSensor,
-            Xarm7BallEE | Xarm7BallEEKinematics | Xarm7BallEEWoForceSensor,
+            Xarm7BallEE | Xarm7BallEEKinematicsLeft | Xarm7BallEEWoForceSensor,
+            Xarm7BallEE | Xarm7BallEEKinematicsLeft | Xarm7BallEEWoForceSensor,
         ]
     ]
     _obs_extra_fn = staticmethod(get_obs_extra_full)

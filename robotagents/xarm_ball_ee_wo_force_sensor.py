@@ -12,7 +12,7 @@ from mani_skill.utils import sapien_utils
 @register_agent()
 class Xarm7BallEEWoForceSensor(BaseAgent):
     uid = "xarm7_ball_ee_wo_force_sensor"
-    urdf_path = "xarm7_1305_left_ball_ee_wo_force_sensor.urdf"
+    urdf_path = "robotagents/assets/xarm7/xarm7_1305_left_ball_ee_wo_force_sensor_kinematics.urdf"
     # Use the ball link we added in the URDF as the TCP
     ee_link_name = "link_tcp_ball"
     urdf_config = dict(
