@@ -47,6 +47,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_X_RANDOMIZATION_BACKWARD = 0.05
     BIN_X_RANDOMIZATION_FORWARD = 0.10
     BIN_Y_RANDOMIZATION = 0.10
+    RANDOMIZE_BIN_TRANSLATION = True
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 45.0
     BIN_LOCAL_X_RANDOMIZATION_DEG = 15.0
     FACE_MARK_THICKNESS = 0.003
@@ -160,8 +161,9 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             ).repeat(batch_size, 1)
             if self.initial_bin_xy is None:
                 orientations = self._randomized_bin_orientations(batch_size)
-                positions[:, 0] += self._sample_bin_x_offset(batch_size)
-                positions[:, 1] += self._sample_bin_y_offset(batch_size)
+                if self.RANDOMIZE_BIN_TRANSLATION:
+                    positions[:, 0] += self._sample_bin_x_offset(batch_size)
+                    positions[:, 1] += self._sample_bin_y_offset(batch_size)
             else:
                 assert len(self.initial_bin_xy) == 2, self.initial_bin_xy
                 center = torch.tensor(
@@ -530,27 +532,11 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         return self.compute_dense_reward(obs, action, info)
 
 
+@register_env("MyDualTrashBinRollingRotationOnly-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
+class MyDualTrashBinRollingRotationOnlyEnv(MyDualTrashBinRollingEnv):
+    RANDOMIZE_BIN_TRANSLATION = False
+
+
 @register_env("MyDualTrashBinRollingStage2-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
-    def _fine_local_z_world_x_reward(self) -> torch.Tensor:
-        local_z_world_x, _ = self._bin_axis_scalars()
-        local_z_error = torch.clamp(
-            1.0 - local_z_world_x,
-            min=0.0,
-        )
-        return 1.0 - torch.tanh(
-            self.FINE_ORIENTATION_DISTANCE_SCALE * local_z_error
-        )
-
-    def compute_dense_reward(self, obs, action, info):
-        local_z_world_x, local_y_world_y = self._bin_axis_scalars()
-        orientation_reward = (
-            local_y_world_y + 1.0
-            + local_z_world_x + 1.0
-        )
-        return (
-            orientation_reward
-            + self._fine_local_y_world_y_reward()
-            + self._fine_local_z_world_x_reward()
-            + self._tcp_reaching_reward()
-        )
+    pass
