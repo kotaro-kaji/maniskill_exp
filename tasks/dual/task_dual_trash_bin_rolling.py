@@ -24,7 +24,7 @@ from scenebuilders.dual_xarm7_table_scene_builder import (
     LEFT_ARM_Y_OFFSET,
     RIGHT_ARM_Y_OFFSET,
 )
-from scenebuilders.trash_bin_mesh import ensure_trash_bin_frustum_mesh
+from scenebuilders.trash_bin_mesh import ensure_trash_bin_frustum_section_mesh
 from scenebuilders.xarm7_table_scene_builder import (
     PEDESTAL_HEIGHT,
     ROBOT_BASE_X_OFFSET,
@@ -52,12 +52,11 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_RIM_RADIUS = 0.224 / 2.0
     BIN_RIM_THICKNESS = 0.003
     BIN_DENSITY = 240.0
-    BIN_STATIC_FRICTION = 0.0
-    BIN_DYNAMIC_FRICTION = 0.0
+    BIN_MESH_STATIC_FRICTION = 0.0
+    BIN_MESH_DYNAMIC_FRICTION = 0.0
+    BIN_CONTACT_STATIC_FRICTION = 2.0
+    BIN_CONTACT_DYNAMIC_FRICTION = 1.8
     BIN_RESTITUTION = 0.05
-    TABLE_STATIC_FRICTION = 3.2
-    TABLE_DYNAMIC_FRICTION = 2.8
-    TABLE_RESTITUTION = 0.1
     TCP_BALL_STATIC_FRICTION = 0.0
     TCP_BALL_DYNAMIC_FRICTION = 0.0
     TCP_BALL_RESTITUTION = 0.1
@@ -128,23 +127,33 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     def _load_scene(self, options: Dict[str, Any]):
         self.table_scene = DualXarm7TableSceneBuilder(env=self)
         self.table_scene.build()
-        self._set_actor_collision_material(
-            self.table_scene.table,
-            sapien.physx.PhysxMaterial(
-                static_friction=self.TABLE_STATIC_FRICTION,
-                dynamic_friction=self.TABLE_DYNAMIC_FRICTION,
-                restitution=self.TABLE_RESTITUTION,
-            ),
-        )
         self.bimanual_center_pose = self._compute_bimanual_center_pose()
 
-        mesh_path = ensure_trash_bin_frustum_mesh(
+        half_h = self.BIN_HEIGHT / 2.0
+        small_end_start_z = half_h - 0.05
+        main_mesh_path = ensure_trash_bin_frustum_section_mesh(
             height=self.BIN_HEIGHT,
             bottom_radius=self.BIN_BOTTOM_RADIUS,
             top_radius=self.BIN_TOP_RADIUS,
+            z_min=-half_h,
+            z_max=small_end_start_z,
+            name="trash_bin_frustum_main",
+        )
+        small_end_mesh_path = ensure_trash_bin_frustum_section_mesh(
+            height=self.BIN_HEIGHT,
+            bottom_radius=self.BIN_BOTTOM_RADIUS,
+            top_radius=self.BIN_TOP_RADIUS,
+            z_min=small_end_start_z,
+            z_max=half_h,
+            name="trash_bin_frustum_small_end_5cm",
         )
         material = sapien.render.RenderMaterial(
             base_color=[0.85, 0.85, 0.88, 1.0],
+            roughness=0.45,
+            metallic=0.0,
+        )
+        small_end_material = sapien.render.RenderMaterial(
+            base_color=[1.0, 0.92, 0.55, 1.0],
             roughness=0.45,
             metallic=0.0,
         )
@@ -153,19 +162,35 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             roughness=0.45,
             metallic=0.0,
         )
-        physical_material = sapien.physx.PhysxMaterial(
-            static_friction=self.BIN_STATIC_FRICTION,
-            dynamic_friction=self.BIN_DYNAMIC_FRICTION,
+        mesh_physical_material = sapien.physx.PhysxMaterial(
+            static_friction=self.BIN_MESH_STATIC_FRICTION,
+            dynamic_friction=self.BIN_MESH_DYNAMIC_FRICTION,
+            restitution=self.BIN_RESTITUTION,
+        )
+        small_end_physical_material = sapien.physx.PhysxMaterial(
+            static_friction=self.BIN_CONTACT_STATIC_FRICTION,
+            dynamic_friction=self.BIN_CONTACT_DYNAMIC_FRICTION,
+            restitution=self.BIN_RESTITUTION,
+        )
+        rim_physical_material = sapien.physx.PhysxMaterial(
+            static_friction=self.BIN_CONTACT_STATIC_FRICTION,
+            dynamic_friction=self.BIN_CONTACT_DYNAMIC_FRICTION,
             restitution=self.BIN_RESTITUTION,
         )
 
         builder = self.scene.create_actor_builder()
         builder.add_convex_collision_from_file(
-            filename=str(mesh_path),
-            material=physical_material,
+            filename=str(main_mesh_path),
+            material=mesh_physical_material,
             density=self.BIN_DENSITY,
         )
-        builder.add_visual_from_file(filename=str(mesh_path), material=material)
+        builder.add_visual_from_file(filename=str(main_mesh_path), material=material)
+        builder.add_convex_collision_from_file(
+            filename=str(small_end_mesh_path),
+            material=small_end_physical_material,
+            density=self.BIN_DENSITY,
+        )
+        builder.add_visual_from_file(filename=str(small_end_mesh_path), material=small_end_material)
         rim_pose = sapien.Pose(
             p=[0.0, 0.0, -self.BIN_HEIGHT / 2.0 - self.BIN_RIM_THICKNESS / 2.0],
             q=[math.sqrt(0.5), 0.0, -math.sqrt(0.5), 0.0],
@@ -174,7 +199,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             pose=rim_pose,
             radius=self.BIN_RIM_RADIUS,
             half_length=self.BIN_RIM_THICKNESS / 2.0,
-            material=physical_material,
+            material=rim_physical_material,
             density=self.BIN_DENSITY,
         )
         builder.add_cylinder_visual(
