@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import tasks.single.task_single_cardboard_cabinet  # noqa: F401
+import tasks.dual.task_dual_trash_bin_rolling  # noqa: F401
 import tasks.single_arm.pick_cube  # noqa: F401
 
 
@@ -27,17 +28,27 @@ def parse_args():
         description="SpaceMouse teleop for dual xArm7 ManiSkill tasks"
     )
     parser.add_argument("--env-id", default="MyDualCardboardCabinet-v1")
+    parser.add_argument("--control-mode", default="pd_ee_delta_pose")
     parser.add_argument("--left-device-path", default="")
     parser.add_argument("--right-device-path", default="")
     parser.add_argument("--left-device-index", type=int, default=0)
     parser.add_argument("--right-device-index", type=int, default=1)
     parser.add_argument("--deadzone", type=float, default=0.0)
+    parser.add_argument("--joint-action-scale", type=float, default=0.4)
     parser.add_argument("--gripper-action", type=float, default=0.4)
     parser.add_argument("--control-hz", type=float, default=60.0)
     parser.add_argument("--sim-backend", default="physx_cuda")
     parser.add_argument("--log-dir", default="teleop_logs")
     parser.add_argument("--print-devices", action="store_true")
     return parser.parse_args()
+
+
+def is_joint_delta_control(control_mode: str) -> bool:
+    return control_mode == "pd_joint_delta_pos"
+
+
+def is_trash_bin_env(env_id: str) -> bool:
+    return "TrashBinRolling" in env_id
 
 
 def open_spacemouse(path: str, device_index: int):
@@ -60,7 +71,7 @@ def apply_deadzone(value: float, deadzone: float) -> float:
     return float(value)
 
 
-def spacemouse_to_action(
+def spacemouse_to_ee_delta_action(
     state, action_shape, deadzone: float, gripper_action: float
 ) -> np.ndarray:
     assert len(action_shape) == 1, action_shape
@@ -91,6 +102,55 @@ def spacemouse_to_action(
         action[6:] = -gripper_action
 
     return np.clip(action, -1.0, 1.0)
+
+
+def spacemouse_to_joint_delta_action(
+    state,
+    action_shape,
+    deadzone: float,
+    joint_action_scale: float,
+    gripper_action: float,
+) -> np.ndarray:
+    assert len(action_shape) == 1, action_shape
+    action = np.zeros(action_shape, dtype=np.float32)
+    assert action.shape[0] == 8, action.shape
+
+    # Joint jogging mode for agents that do not expose an EE delta controller.
+    action[:6] = joint_action_scale * np.array(
+        [
+            -apply_deadzone(state.y, deadzone),
+            apply_deadzone(state.x, deadzone),
+            apply_deadzone(state.z, deadzone),
+            apply_deadzone(state.roll, deadzone),
+            apply_deadzone(state.pitch, deadzone),
+            apply_deadzone(state.yaw, deadzone),
+        ],
+        dtype=np.float32,
+    )
+
+    if len(state.buttons) > 0 and state.buttons[0] > 0 and state.buttons[-1] <= 0:
+        action[7] = gripper_action
+    elif len(state.buttons) > 0 and state.buttons[-1] > 0 and state.buttons[0] <= 0:
+        action[7] = -gripper_action
+
+    return np.clip(action, -1.0, 1.0)
+
+
+def spacemouse_to_action(state, action_shape, args) -> np.ndarray:
+    if is_joint_delta_control(args.control_mode):
+        return spacemouse_to_joint_delta_action(
+            state,
+            action_shape,
+            args.deadzone,
+            args.joint_action_scale,
+            args.gripper_action,
+        )
+    return spacemouse_to_ee_delta_action(
+        state,
+        action_shape,
+        args.deadzone,
+        args.gripper_action,
+    )
 
 
 def zero_action(env) -> OrderedDict:
@@ -156,13 +216,10 @@ def pose_row(pose):
 
 
 def action_log_row(action):
-    row = action.tolist()
-    if len(row) == 8:
-        row = row[:6] + [row[6]]
-    return row
+    return action.tolist()
 
 
-def open_log_files(log_dir: str, env_id: str):
+def open_log_files(log_dir: str, env_id: str, action_dim: int):
     run_name = time.strftime("%Y%m%d_%H%M%S")
     run_dir = os.path.join(log_dir, f"{env_id}_{run_name}")
     os.makedirs(run_dir, exist_ok=True)
@@ -189,13 +246,7 @@ def open_log_files(log_dir: str, env_id: str):
             "spacemouse_pitch",
             "spacemouse_yaw",
             "buttons",
-            "action_x",
-            "action_y",
-            "action_z",
-            "action_roll",
-            "action_pitch",
-            "action_yaw",
-            "action_gripper",
+            *[f"action_{idx}" for idx in range(action_dim)],
         ]
     )
     state_writer.writerow(
@@ -216,14 +267,18 @@ def log_step(
     sources_by_uid,
     command_writer,
     state_writer,
+    action_dim,
 ):
     for uid, sub_agent in zip(uids, sub_agents):
         source = sources_by_uid[uid]
         state = states_by_uid[uid]
+        action_row = action_log_row(action[uid])
+        while len(action_row) < action_dim:
+            action_row.append("")
         command_writer.writerow(
             [step_idx, elapsed, uid, source, int(source != "none")]
             + state_values(state)
-            + action_log_row(action[uid])
+            + action_row
         )
         state_writer.writerow(
             [step_idx, elapsed, uid]
@@ -234,6 +289,13 @@ def log_step(
 
 def main():
     args = parse_args()
+    if is_trash_bin_env(args.env_id) and is_joint_delta_control(args.control_mode):
+        print(
+            "Trash-bin teleop uses pd_ee_delta_pose so SpaceMouse axes match cardboard."
+        )
+        print("Overriding --control-mode pd_joint_delta_pos -> pd_ee_delta_pose")
+        args.control_mode = "pd_ee_delta_pose"
+
     if args.print_devices:
         print(pyspacemouse.get_connected_devices())
         return
@@ -241,7 +303,7 @@ def main():
     env = gym.make(
         args.env_id,
         obs_mode="state",
-        control_mode="pd_ee_delta_pose",
+        control_mode=args.control_mode,
         render_mode="human",
         sim_backend=args.sim_backend,
     )
@@ -270,14 +332,19 @@ def main():
     print("SpaceMouse teleop started.")
     print("TAB: switch active arm when using one SpaceMouse | r: reset | escape: quit")
     print("button 0: close gripper | last button: open gripper")
+    if is_joint_delta_control(args.control_mode):
+        print("joint mode: SpaceMouse axes control joint1-6; joint7 stays zero")
+    else:
+        print("EE mode: SpaceMouse axes control xyz/rpy delta pose")
     print(f"left device: {left_device.describe_connection()}")
     if right_device is not None:
         print(f"right device: {right_device.describe_connection()}")
     else:
         print(f"one-device mode: controlling {uids[active_arm]}")
 
+    action_dim = max(action_shape(env, uid)[0] for uid in uids)
     run_dir, command_file, state_file, command_writer, state_writer = open_log_files(
-        args.log_dir, args.env_id
+        args.log_dir, args.env_id, action_dim
     )
     print(f"logging to: {run_dir}")
 
@@ -306,8 +373,7 @@ def main():
                 action[uids[active_arm]] = spacemouse_to_action(
                     left_state,
                     action_shape(env, uids[active_arm]),
-                    args.deadzone,
-                    args.gripper_action,
+                    args,
                 )
                 states_by_uid[uids[active_arm]] = left_state
                 sources_by_uid[uids[active_arm]] = "left"
@@ -316,14 +382,12 @@ def main():
                 action[uids[0]] = spacemouse_to_action(
                     left_state,
                     action_shape(env, uids[0]),
-                    args.deadzone,
-                    args.gripper_action,
+                    args,
                 )
                 action[uids[1]] = spacemouse_to_action(
                     right_state,
                     action_shape(env, uids[1]),
-                    args.deadzone,
-                    args.gripper_action,
+                    args,
                 )
                 states_by_uid[uids[0]] = left_state
                 states_by_uid[uids[1]] = right_state
@@ -342,6 +406,7 @@ def main():
                 sources_by_uid,
                 command_writer,
                 state_writer,
+                action_dim,
             )
             command_file.flush()
             state_file.flush()

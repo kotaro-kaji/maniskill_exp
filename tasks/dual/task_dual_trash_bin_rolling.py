@@ -484,8 +484,21 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         local_y_world_y = 1.0 - 2.0 * (x * x + z * z)
         return local_z_world_x, local_y_world_y
 
+    def _tcp_ball_trash_bin_force_norms(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        force_norms = []
+        for sub_agent in self.agent.agents:
+            ball_link = sub_agent.robot.links_map.get("link_tcp_ball")
+            assert ball_link is not None, sub_agent.robot.links_map.keys()
+            force = self.scene.get_pairwise_contact_forces(ball_link, self.trash_bin).to(
+                self.device
+            )
+            force_norms.append(torch.linalg.norm(force, dim=-1))
+        assert len(force_norms) == 2, len(force_norms)
+        return force_norms[0], force_norms[1]
+
     def evaluate(self):
         local_z_world_x, local_y_world_y = self._bin_axis_scalars()
+        left_force_norm, right_force_norm = self._tcp_ball_trash_bin_force_norms()
         final_step = self.elapsed_steps >= self.MAX_EPISODE_STEPS
         success = final_step & (
             local_y_world_y >= self.SUCCESS_LOCAL_Y_WORLD_Y
@@ -494,6 +507,12 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             "success": success,
             "trash_bin_local_z_world_x": local_z_world_x,
             "trash_bin_local_y_world_y": local_y_world_y,
+            "contact/left_tcp_ball_trash_bin_force_norm": left_force_norm,
+            "contact/right_tcp_ball_trash_bin_force_norm": right_force_norm,
+            "contact/max_tcp_ball_trash_bin_force_norm": torch.maximum(
+                left_force_norm,
+                right_force_norm,
+            ),
         }
 
     def _farthest_tcp_to_bin_origin_dist(self) -> torch.Tensor:

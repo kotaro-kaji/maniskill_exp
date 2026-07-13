@@ -228,6 +228,18 @@ class Xarm7BallEEWoForceSensor(BaseAgent):
             force_limit = self.arm_force_limit,
             use_delta=True,
         )
+        arm_pd_ee_delta_pose = PDEEPoseControllerConfig(
+            joint_names=self.arm_joint_names,
+            pos_lower=-1e-2,
+            pos_upper=1e-2,
+            rot_lower=-1.5e-2,
+            rot_upper=1.5e-2,
+            stiffness=self.arm_stiffness,
+            damping=self.arm_damping,
+            force_limit=self.arm_force_limit,
+            ee_link=self.ee_link_name,
+            urdf_path=self.urdf_path,
+        )
 
         # 1-DOF gripper via mimic controller
         gripper_mimic_map = {
@@ -267,6 +279,11 @@ class Xarm7BallEEWoForceSensor(BaseAgent):
             ),
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
+                gripper=gripper_pd_joint_delta_pos_mimic,
+                #balance_passive_force=False
+            ),
+            pd_ee_delta_pose=dict(
+                arm=arm_pd_ee_delta_pose,
                 gripper=gripper_pd_joint_delta_pos_mimic,
                 #balance_passive_force=False
             ),
