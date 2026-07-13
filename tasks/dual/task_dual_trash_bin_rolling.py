@@ -647,6 +647,70 @@ class MyDualTrashBinRollingRotationOnlyEnv(MyDualTrashBinRollingEnv):
     RANDOMIZE_BIN_TRANSLATION = False
 
 
+@register_env("MyDualTrashBinRollingStage0-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
+class MyDualTrashBinRollingStage0Env(MyDualTrashBinRollingEnv):
+    TCP_TARGET_ROTATION_DEG = 35.0
+    TCP_ROTATION_REWARD_ZERO_ERROR_DEG = 75.0
+
+    def _target_tcp_rotations(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        angle = math.radians(self.TCP_TARGET_ROTATION_DEG)
+        c = math.cos(angle)
+        s = math.sin(angle)
+        left = torch.tensor(
+            [
+                [0.0, 0.0, 1.0],
+                [-c, -s, 0.0],
+                [s, -c, 0.0],
+            ],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        right = torch.tensor(
+            [
+                [0.0, 0.0, 1.0],
+                [-c, s, 0.0],
+                [-s, -c, 0.0],
+            ],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        return left, right
+
+    def _tcp_rotation_matrix(self, agent_index: int) -> torch.Tensor:
+        tcp_pose = Pose.create(self.agent.agents[agent_index].tcp_pose, device=self.device)
+        q = tcp_pose.q
+        q = q / torch.linalg.norm(q, dim=1, keepdim=True).clamp_min(1e-6)
+        return quaternion_to_matrix(q)
+
+    def _tcp_rotation_angle_error(self, current: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        target = target.unsqueeze(0).expand(current.shape[0], -1, -1)
+        relative = torch.bmm(target, current.transpose(1, 2))
+        cos_angle = (relative[:, 0, 0] + relative[:, 1, 1] + relative[:, 2, 2] - 1.0) / 2.0
+        cos_angle = torch.clamp(cos_angle, -1.0, 1.0)
+        return torch.acos(cos_angle)
+
+    def compute_dense_reward(self, obs, action, info):
+        target_left, target_right = self._target_tcp_rotations()
+        left_error = self._tcp_rotation_angle_error(
+            self._tcp_rotation_matrix(0),
+            target_left,
+        )
+        right_error = self._tcp_rotation_angle_error(
+            self._tcp_rotation_matrix(1),
+            target_right,
+        )
+        mean_error = 0.5 * (left_error + right_error)
+        zero_reward_error = math.radians(self.TCP_ROTATION_REWARD_ZERO_ERROR_DEG)
+        reward = torch.clamp(1.0 - mean_error / zero_reward_error, min=0.0, max=1.0)
+        info["tcp_rotation_error_left_deg"] = torch.rad2deg(left_error).detach().cpu()
+        info["tcp_rotation_error_right_deg"] = torch.rad2deg(right_error).detach().cpu()
+        info["reward_tcp_rotation_stage0"] = reward.detach().cpu()
+        return reward
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        return self.compute_dense_reward(obs, action, info)
+
+
 @register_env("MyDualTrashBinRollingStage2-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
     pass
