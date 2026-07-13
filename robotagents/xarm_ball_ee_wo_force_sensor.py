@@ -17,7 +17,7 @@ class Xarm7BallEEWoForceSensor(BaseAgent):
     ee_link_name = "link_tcp_ball"
     urdf_config = dict(
         _materials=dict(
-            ball_contact=dict(static_friction=3.0, dynamic_friction=2.0, restitution=0.0)
+            ball_contact=dict(static_friction=0.01, dynamic_friction=0.005, restitution=0.1)
         ),
         link=dict(
             link_tcp_ball=dict(

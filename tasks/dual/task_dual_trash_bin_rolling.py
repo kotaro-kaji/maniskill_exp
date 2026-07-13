@@ -66,6 +66,9 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
     TCP_REACH_DISTANCE_SCALE = 10.0
     TCP_REACH_REWARD_MAX = 0.5
+    TCP_LOW_START_Z = 0.40
+    TCP_LOW_TARGET_Z = 0.102
+    TCP_LOW_REWARD_MAX = 1.0
     FINE_ORIENTATION_REWARD_MAX = 1.0
     FINE_ORIENTATION_DISTANCE_SCALE = 50.0
     SUCCESS_LOCAL_Y_WORLD_Y = 0.995
@@ -535,6 +538,23 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * outside_target)
         )
 
+    def _tcp_low_reward(self) -> torch.Tensor:
+        left_tcp_z = Pose.create(self.agent.agents[0].tcp_pose, device=self.device).p[:, 2]
+        right_tcp_z = Pose.create(self.agent.agents[1].tcp_pose, device=self.device).p[:, 2]
+        span = self.TCP_LOW_START_Z - self.TCP_LOW_TARGET_Z
+        assert span > 0.0, span
+        left_reward = torch.clamp(
+            (self.TCP_LOW_START_Z - left_tcp_z) / span,
+            min=0.0,
+            max=1.0,
+        )
+        right_reward = torch.clamp(
+            (self.TCP_LOW_START_Z - right_tcp_z) / span,
+            min=0.0,
+            max=1.0,
+        )
+        return self.TCP_LOW_REWARD_MAX * 0.5 * (left_reward + right_reward)
+
     def _fine_local_y_world_y_reward(self) -> torch.Tensor:
         _, local_y_world_y = self._bin_axis_scalars()
         orientation_error = torch.clamp(
@@ -555,6 +575,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             orientation_reward
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
+            + self._tcp_low_reward()
         )
 
     def compute_normalized_dense_reward(self, obs, action, info):
