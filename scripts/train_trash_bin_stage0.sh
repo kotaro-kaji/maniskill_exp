@@ -28,7 +28,7 @@ echo
 echo "### stage0: MyDualTrashBinRollingStage0-v0"
 echo "run: runs/${RUN_NAME}"
 
-uv run python ppo_dual_xarm7.py \
+python ppo_dual_xarm7.py \
   --exp-name "${RUN_NAME}" \
   --env-id MyDualTrashBinRollingStage0-v0 \
   --control-mode pd_joint_delta_pos \

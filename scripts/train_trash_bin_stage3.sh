@@ -40,7 +40,7 @@ echo "### stage3: MyDualTrashBinRollingStage3-v0"
 echo "checkpoint: ${INPUT_CHECKPOINT}"
 echo "run: runs/${RUN_NAME}"
 
-uv run python ppo_dual_xarm7.py \
+python ppo_dual_xarm7.py \
   --exp-name "${RUN_NAME}" \
   --checkpoint "${INPUT_CHECKPOINT}" \
   --env-id MyDualTrashBinRollingStage3-v0 \
