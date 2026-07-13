@@ -132,7 +132,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         self.bimanual_center_pose = self._compute_bimanual_center_pose()
 
         half_h = self.BIN_HEIGHT / 2.0
-        small_end_start_z = half_h - 0.05
+        small_end_start_z = half_h - 0.02
         main_mesh_path = ensure_trash_bin_frustum_section_mesh(
             height=self.BIN_HEIGHT,
             bottom_radius=self.BIN_BOTTOM_RADIUS,
@@ -147,7 +147,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             top_radius=self.BIN_TOP_RADIUS,
             z_min=small_end_start_z,
             z_max=half_h,
-            name="trash_bin_frustum_small_end_5cm",
+            name="trash_bin_frustum_small_end_2cm",
         )
         material = sapien.render.RenderMaterial(
             base_color=[0.85, 0.85, 0.88, 1.0],
@@ -580,7 +580,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             ),
         }
 
-    def _farthest_tcp_to_bin_origin_dist(self) -> torch.Tensor:
+    def _mean_tcp_to_bin_origin_dist(self) -> torch.Tensor:
         left_tcp_pos = Pose.create(self.agent.agents[0].tcp_pose, device=self.device).p
         right_tcp_pos = Pose.create(self.agent.agents[1].tcp_pose, device=self.device).p
         bin_origin = self.trash_bin.pose.p
@@ -588,16 +588,13 @@ class MyDualTrashBinRollingEnv(BaseEnv):
 
         left_dist = torch.linalg.norm(left_tcp_pos - bin_origin, dim=1)
         right_dist = torch.linalg.norm(right_tcp_pos - bin_origin, dim=1)
-        return torch.maximum(left_dist, right_dist)
+        return 0.5 * (left_dist + right_dist)
 
     def _tcp_reaching_reward(self) -> torch.Tensor:
-        farthest_dist = self._farthest_tcp_to_bin_origin_dist()
-        outside_target = torch.clamp(
-            farthest_dist - self.TCP_REACH_TARGET_DISTANCE,
-            min=0.0,
-        )
+        mean_dist = self._mean_tcp_to_bin_origin_dist()
+        distance_error = torch.abs(mean_dist - self.TCP_REACH_TARGET_DISTANCE)
         return self.TCP_REACH_REWARD_MAX * (
-            1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * outside_target)
+            1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * distance_error)
         )
 
     def _tcp_low_reward(self) -> torch.Tensor:
