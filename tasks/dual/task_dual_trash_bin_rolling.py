@@ -52,6 +52,15 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_RIM_RADIUS = 0.224 / 2.0
     BIN_RIM_THICKNESS = 0.003
     BIN_DENSITY = 240.0
+    BIN_STATIC_FRICTION = 0.0
+    BIN_DYNAMIC_FRICTION = 0.0
+    BIN_RESTITUTION = 0.05
+    TABLE_STATIC_FRICTION = 3.2
+    TABLE_DYNAMIC_FRICTION = 2.8
+    TABLE_RESTITUTION = 0.1
+    TCP_BALL_STATIC_FRICTION = 0.0
+    TCP_BALL_DYNAMIC_FRICTION = 0.0
+    TCP_BALL_RESTITUTION = 0.1
     BIN_X_OFFSET_FROM_BASE = 0.31425
     BIN_INITIAL_Z = 0.113
     BIN_X_RANDOMIZATION_BACKWARD = 0.05
@@ -90,6 +99,24 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     def _load_agent(self, options: Dict[str, Any]):
         super()._load_agent(options, [sapien.Pose(p=[0, 1, 0]), sapien.Pose(p=[0, -1, 0])])
         self._configure_observed_joint_indices()
+        self._set_tcp_ball_material()
+
+    def _set_actor_collision_material(self, actor, material: sapien.physx.PhysxMaterial):
+        assert hasattr(actor, "_bodies"), type(actor)
+        for body in actor._bodies:
+            for shape in body.collision_shapes:
+                shape.set_physical_material(material)
+
+    def _set_tcp_ball_material(self):
+        material = sapien.physx.PhysxMaterial(
+            static_friction=self.TCP_BALL_STATIC_FRICTION,
+            dynamic_friction=self.TCP_BALL_DYNAMIC_FRICTION,
+            restitution=self.TCP_BALL_RESTITUTION,
+        )
+        for sub_agent in self.agent.agents:
+            ball_link = sub_agent.robot.links_map.get("link_tcp_ball")
+            assert ball_link is not None, sub_agent.robot.links_map.keys()
+            self._set_actor_collision_material(ball_link, material)
 
     @property
     def _default_human_render_camera_configs(self):
@@ -101,6 +128,14 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     def _load_scene(self, options: Dict[str, Any]):
         self.table_scene = DualXarm7TableSceneBuilder(env=self)
         self.table_scene.build()
+        self._set_actor_collision_material(
+            self.table_scene.table,
+            sapien.physx.PhysxMaterial(
+                static_friction=self.TABLE_STATIC_FRICTION,
+                dynamic_friction=self.TABLE_DYNAMIC_FRICTION,
+                restitution=self.TABLE_RESTITUTION,
+            ),
+        )
         self.bimanual_center_pose = self._compute_bimanual_center_pose()
 
         mesh_path = ensure_trash_bin_frustum_mesh(
@@ -119,9 +154,9 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             metallic=0.0,
         )
         physical_material = sapien.physx.PhysxMaterial(
-            static_friction=2.0,
-            dynamic_friction=1.8,
-            restitution=0.05,
+            static_friction=self.BIN_STATIC_FRICTION,
+            dynamic_friction=self.BIN_DYNAMIC_FRICTION,
+            restitution=self.BIN_RESTITUTION,
         )
 
         builder = self.scene.create_actor_builder()
