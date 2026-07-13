@@ -1736,6 +1736,45 @@ class MyDualBoxRotationEnv(BaseEnv):
         return reward.to(self.device)
 
 
+@register_env("MyDualBoxRotationJustReturn-v0", max_episode_steps=120)
+class MyDualBoxRotationJustReturnEnv(MyDualBoxRotationEnv):
+    """Only train both arms to return to the fixed reset joint pose."""
+
+    RETURN_SUCCESS_SCORE = 0.98
+
+    def compute_normalized_dense_reward(self, obs, action, info):
+        if not isinstance(self.agent, MultiAgent):
+            return torch.zeros(self.num_envs, device=self.device)
+
+        self._log_observation_to_info(info)
+
+        return_qpos_score = self.compute_closeness_score_to_reset_state()
+        reward = 4.75 + return_qpos_score
+        success = return_qpos_score >= self.RETURN_SUCCESS_SCORE
+
+        info["reward_closeness_to_reset_state"] = return_qpos_score.detach().cpu()
+        info["return_qpos_score"] = return_qpos_score.detach().cpu()
+        info["success_once"] = success.detach().cpu()
+        info["rewards_t"] = reward.detach().cpu()
+
+        try:
+            left_qpos = self.agent.agents[0].robot.get_qpos()
+            right_qpos = self.agent.agents[1].robot.get_qpos()
+            left_idx = self._agent_obs_joint_indices.get(f"{self.agent.agents[0].uid}-0")
+            right_idx = self._agent_obs_joint_indices.get(f"{self.agent.agents[1].uid}-1")
+            if left_idx is not None:
+                left_qpos = self._index_select_joint_tensor(left_qpos, left_idx)
+            if right_idx is not None:
+                right_qpos = self._index_select_joint_tensor(right_qpos, right_idx)
+            info["mesured_q"] = torch.cat([left_qpos, right_qpos], dim=-1).detach().cpu()
+        except Exception:
+            pass
+
+        if reward.ndim == 0:
+            reward = reward.unsqueeze(0)
+        return reward.to(self.device)
+
+
 @register_env("MyDualBoxRotationAblated-v0", max_episode_steps=200)
 class MyDualBoxRotationAblatedEnv(MyDualBoxRotationEnv):
     """Variant with reduced observation (no TCP or pushpoint features)."""
