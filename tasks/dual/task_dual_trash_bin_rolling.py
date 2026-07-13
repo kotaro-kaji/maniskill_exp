@@ -650,3 +650,31 @@ class MyDualTrashBinRollingRotationOnlyEnv(MyDualTrashBinRollingEnv):
 @register_env("MyDualTrashBinRollingStage2-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
     pass
+
+
+@register_env("MyDualTrashBinRollingStage3-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
+class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
+    CONTACT_PENALTY_START_FORCE = 0.3
+    CONTACT_PENALTY_FULL_FORCE = 50.0
+
+    def _contact_force_penalty(self, info) -> torch.Tensor:
+        force = info["contact/max_tcp_ball_trash_bin_force_norm"].to(self.device)
+        span = self.CONTACT_PENALTY_FULL_FORCE - self.CONTACT_PENALTY_START_FORCE
+        assert span > 0.0, span
+        return torch.clamp(
+            (force - self.CONTACT_PENALTY_START_FORCE) / span,
+            min=0.0,
+            max=1.0,
+        )
+
+    def compute_dense_reward(self, obs, action, info):
+        _, local_y_world_y = self._bin_axis_scalars()
+        orientation_reward = local_y_world_y + 1.0
+        penalty = self._contact_force_penalty(info)
+        info["contact/force_penalty"] = penalty.detach().cpu()
+        return (1.0 - penalty) * (
+            orientation_reward
+            + self._fine_local_y_world_y_reward()
+            + self._tcp_reaching_reward()
+            + self._tcp_low_reward()
+        )
