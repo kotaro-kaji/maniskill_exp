@@ -26,6 +26,12 @@ NUM_MINIBATCHES="${NUM_MINIBATCHES:-32}"
 EVAL_FREQ="${EVAL_FREQ:-5}"
 GAMMA="${GAMMA:-0.99}"
 ROBOT_INIT_NOISE_SCALE="${ROBOT_INIT_NOISE_SCALE:-1.0}"
+STAGE1_CHECKPOINT="${1:-${STAGE1_CHECKPOINT:-}}"
+
+if [[ -n "${STAGE1_CHECKPOINT}" && ! -f "${STAGE1_CHECKPOINT}" ]]; then
+  echo "stage1 input checkpoint does not exist: ${STAGE1_CHECKPOINT}" >&2
+  exit 1
+fi
 
 common_args=(
   --control-mode pd_joint_delta_pos
@@ -43,12 +49,21 @@ common_args=(
 
 echo
 echo "### stage1: MyDualTrashBinRollingRotationOnly-v0"
+if [[ -n "${STAGE1_CHECKPOINT}" ]]; then
+  echo "checkpoint: ${STAGE1_CHECKPOINT}"
+fi
 echo "run: runs/${STAGE1_RUN_NAME}"
-python ppo_dual_xarm7.py \
-  --exp-name "${STAGE1_RUN_NAME}" \
-  --env-id MyDualTrashBinRollingRotationOnly-v0 \
-  --total-timesteps "${STAGE1_TOTAL_TIMESTEPS}" \
+stage1_cmd=(
+  python ppo_dual_xarm7.py
+  --exp-name "${STAGE1_RUN_NAME}"
+  --env-id MyDualTrashBinRollingRotationOnly-v0
+  --total-timesteps "${STAGE1_TOTAL_TIMESTEPS}"
   "${common_args[@]}"
+)
+if [[ -n "${STAGE1_CHECKPOINT}" ]]; then
+  stage1_cmd+=(--checkpoint "${STAGE1_CHECKPOINT}")
+fi
+"${stage1_cmd[@]}"
 
 stage1_ckpt="runs/${STAGE1_RUN_NAME}/final_ckpt.pt"
 if [[ ! -f "${stage1_ckpt}" ]]; then

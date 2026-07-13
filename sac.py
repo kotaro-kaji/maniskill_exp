@@ -148,6 +148,8 @@ class Args:
     """the robot uid to use for the environment"""
     robot_init_noise_scale: float = 1.0
     """Scale factor for robot initial joint randomization (1.0 = default training noise, 0.0 = fixed)."""
+    use_large_gpu_memory_config: bool = True
+    """Use the large PhysX GPU contact memory config used for high-num-env runs."""
 
     # Algorithm specific arguments
     total_timesteps: int = 1_000_000
@@ -403,15 +405,16 @@ if __name__ == "__main__":
         render_mode="rgb_array",
         sim_backend="gpu",
         robot_init_noise_scale=args.robot_init_noise_scale,
-        sim_config=dict(
+    )
+    if args.use_large_gpu_memory_config:
+        env_kwargs["sim_config"] = dict(
             gpu_memory_config=dict(
                 # default in ManiSkill GPUMemoryConfig: max_rigid_contact_count=2**19
                 max_rigid_contact_count=2**22,
                 # default in ManiSkill GPUMemoryConfig: max_rigid_patch_count=2**18
                 max_rigid_patch_count=2**21,
             )
-        ),
-    )
+        )
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
     if args.robot_uid is not None:
