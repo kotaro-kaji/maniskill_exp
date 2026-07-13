@@ -603,12 +603,12 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         span = self.TCP_LOW_START_Z - self.TCP_LOW_TARGET_Z
         assert span > 0.0, span
         left_reward = torch.clamp(
-            (self.TCP_LOW_START_Z - left_tcp_z) / span,
+            1.0 - torch.abs(left_tcp_z - self.TCP_LOW_TARGET_Z) / span,
             min=0.0,
             max=1.0,
         )
         right_reward = torch.clamp(
-            (self.TCP_LOW_START_Z - right_tcp_z) / span,
+            1.0 - torch.abs(right_tcp_z - self.TCP_LOW_TARGET_Z) / span,
             min=0.0,
             max=1.0,
         )
@@ -713,6 +713,7 @@ class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
 class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
     CONTACT_PENALTY_START_FORCE = 0.3
     CONTACT_PENALTY_FULL_FORCE = 50.0
+    BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
     def _contact_force_penalty(self, info) -> torch.Tensor:
         force = info["contact/max_tcp_ball_trash_bin_force_norm"].to(self.device)

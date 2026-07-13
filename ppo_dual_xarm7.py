@@ -468,6 +468,8 @@ if __name__ == "__main__":
     def clip_action(action: torch.Tensor):
         return torch.clamp(action.detach(), action_space_low, action_space_high)
 
+    best_eval_score = -float("inf")
+
     if args.checkpoint:
         agent.load_state_dict(torch.load(args.checkpoint))
     anchor_agent = None
@@ -517,17 +519,6 @@ if __name__ == "__main__":
                             eval_metrics[k].append(v)
             if eval_info_logger is not None:
                 eval_info_logger.close()
-            if eval_video_envs is not None:
-                eval_video_obs, _ = eval_video_envs.reset()
-                for eval_step in range(args.num_eval_steps):
-                    with torch.no_grad():
-                        eval_video_action = agent.get_action(
-                            eval_video_obs,
-                            deterministic=True,
-                        )
-                        eval_video_obs, _, _, _, _ = eval_video_envs.step(
-                            eval_video_action
-                        )
             print(f"Evaluated {args.num_eval_steps * args.num_eval_envs} steps resulting in {num_episodes} episodes")
             eval_metrics_mean = {}
             for k, v in eval_metrics.items():
@@ -545,6 +536,28 @@ if __name__ == "__main__":
             if mean_return is not None and return_plot_dir is not None:
                 eval_return_trace.append((global_step, mean_return))
                 _save_return_plot(eval_return_trace, return_plot_dir)
+            if args.save_model and not args.evaluate:
+                best_score = None
+                for key in ("success_at_end", "success", "reward", "r"):
+                    if key in eval_metrics_mean:
+                        best_score = float(eval_metrics_mean[key].detach().cpu().item())
+                        break
+                if best_score is not None and best_score >= best_eval_score:
+                    best_eval_score = best_score
+                    best_model_path = f"runs/{run_name}/best_ckpt.pt"
+                    torch.save(agent.state_dict(), best_model_path)
+                    print(f"best model saved to {best_model_path} score={best_eval_score}")
+            if eval_video_envs is not None:
+                eval_video_obs, _ = eval_video_envs.reset()
+                for eval_step in range(args.num_eval_steps):
+                    with torch.no_grad():
+                        eval_video_action = agent.get_action(
+                            eval_video_obs,
+                            deterministic=True,
+                        )
+                        eval_video_obs, _, _, _, _ = eval_video_envs.step(
+                            eval_video_action
+                        )
             if args.evaluate:
                 break
         if args.save_model and iteration % args.eval_freq == 1:
