@@ -80,6 +80,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     FINE_ORIENTATION_REWARD_MAX = 1.0
     FINE_ORIENTATION_DISTANCE_SCALE = 50.0
     SUCCESS_LOCAL_Y_WORLD_Y = 0.995
+    TCP_TARGET_ROTATION_DEG = 35.0
+    TCP_ROTATION_REWARD_ZERO_ERROR_DEG = 75.0
 
     def __init__(
         self,
@@ -628,30 +630,6 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             )
         )
 
-    def compute_dense_reward(self, obs, action, info):
-        _, local_y_world_y = self._bin_axis_scalars()
-        orientation_reward = local_y_world_y + 1.0
-        return (
-            orientation_reward
-            + self._fine_local_y_world_y_reward()
-            + self._tcp_reaching_reward()
-            + self._tcp_low_reward()
-        )
-
-    def compute_normalized_dense_reward(self, obs, action, info):
-        return self.compute_dense_reward(obs, action, info)
-
-
-@register_env("MyDualTrashBinRollingRotationOnly-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
-class MyDualTrashBinRollingRotationOnlyEnv(MyDualTrashBinRollingEnv):
-    RANDOMIZE_BIN_TRANSLATION = False
-
-
-@register_env("MyDualTrashBinRollingStage0-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
-class MyDualTrashBinRollingStage0Env(MyDualTrashBinRollingEnv):
-    TCP_TARGET_ROTATION_DEG = 35.0
-    TCP_ROTATION_REWARD_ZERO_ERROR_DEG = 75.0
-
     def _target_tcp_rotations(self) -> Tuple[torch.Tensor, torch.Tensor]:
         angle = math.radians(self.TCP_TARGET_ROTATION_DEG)
         c = math.cos(angle)
@@ -682,14 +660,16 @@ class MyDualTrashBinRollingStage0Env(MyDualTrashBinRollingEnv):
         q = q / torch.linalg.norm(q, dim=1, keepdim=True).clamp_min(1e-6)
         return quaternion_to_matrix(q)
 
-    def _tcp_rotation_angle_error(self, current: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def _tcp_rotation_angle_error(
+        self, current: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
         target = target.unsqueeze(0).expand(current.shape[0], -1, -1)
         relative = torch.bmm(target, current.transpose(1, 2))
         cos_angle = (relative[:, 0, 0] + relative[:, 1, 1] + relative[:, 2, 2] - 1.0) / 2.0
         cos_angle = torch.clamp(cos_angle, -1.0, 1.0)
         return torch.acos(cos_angle)
 
-    def compute_dense_reward(self, obs, action, info):
+    def _tcp_rotation_alignment_reward(self, info) -> torch.Tensor:
         target_left, target_right = self._target_tcp_rotations()
         left_error = self._tcp_rotation_angle_error(
             self._tcp_rotation_matrix(0),
@@ -704,11 +684,27 @@ class MyDualTrashBinRollingStage0Env(MyDualTrashBinRollingEnv):
         reward = torch.clamp(1.0 - mean_error / zero_reward_error, min=0.0, max=1.0)
         info["tcp_rotation_error_left_deg"] = torch.rad2deg(left_error).detach().cpu()
         info["tcp_rotation_error_right_deg"] = torch.rad2deg(right_error).detach().cpu()
-        info["reward_tcp_rotation_stage0"] = reward.detach().cpu()
+        info["reward_tcp_rotation_alignment"] = reward.detach().cpu()
         return reward
+
+    def compute_dense_reward(self, obs, action, info):
+        _, local_y_world_y = self._bin_axis_scalars()
+        orientation_reward = local_y_world_y + 1.0
+        return (
+            orientation_reward
+            + self._fine_local_y_world_y_reward()
+            + self._tcp_reaching_reward()
+            + self._tcp_low_reward()
+            + self._tcp_rotation_alignment_reward(info)
+        )
 
     def compute_normalized_dense_reward(self, obs, action, info):
         return self.compute_dense_reward(obs, action, info)
+
+
+@register_env("MyDualTrashBinRollingRotationOnly-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
+class MyDualTrashBinRollingRotationOnlyEnv(MyDualTrashBinRollingEnv):
+    RANDOMIZE_BIN_TRANSLATION = False
 
 
 @register_env("MyDualTrashBinRollingStage2-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
@@ -741,4 +737,5 @@ class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
             + self._tcp_low_reward()
+            + self._tcp_rotation_alignment_reward(info)
         )
