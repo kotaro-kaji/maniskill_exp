@@ -95,6 +95,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         self.initial_bin_xy = initial_bin_xy
         self._agent_obs_joint_indices: Dict[str, torch.Tensor] = dict()
         self._episode_bin_initial_xy: Optional[torch.Tensor] = None
+        self._prev_trash_bin_position: Optional[torch.Tensor] = None
+        self._prev_trash_bin_rotation_6d: Optional[torch.Tensor] = None
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     def _load_agent(self, options: Dict[str, Any]):
@@ -252,7 +254,11 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             positions[:, 2] = self._initial_bin_z()
             self._reset_episode_bin_initial_xy(env_idx, positions)
             self.trash_bin.set_pose(Pose.create_from_pq(positions, orientations))
+            self._reset_prev_trash_bin_obs(env_idx)
             self._update_trash_bin_frame_sites()
+
+    def _before_control_step(self):
+        self._save_prev_trash_bin_obs()
 
     def _after_control_step(self):
         self._update_trash_bin_frame_sites()
@@ -444,6 +450,8 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     def _clear(self):
         super()._clear()
         self._agent_obs_joint_indices = dict()
+        self._prev_trash_bin_position = None
+        self._prev_trash_bin_rotation_6d = None
 
     def _configure_observed_joint_indices(self):
         self._agent_obs_joint_indices = dict()
@@ -509,7 +517,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         idx = indices.to(device=tensor.device, dtype=torch.long)
         return tensor.index_select(tensor.dim() - 1, idx)
 
-    def _get_obs_extra(self, info: Dict[str, Any]):
+    def _trash_bin_obs_components(self) -> Tuple[torch.Tensor, torch.Tensor]:
         bin_pose = Pose.create(self.trash_bin.pose, device=self.device)
         bin_quat = bin_pose.q
         bin_quat = bin_quat / torch.linalg.norm(bin_quat, dim=1, keepdim=True).clamp_min(1e-6)
@@ -532,9 +540,40 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             dtype=bin_position.dtype,
             device=self.device,
         )
+        return bin_position - center, bin_rotation_6d
+
+    def _ensure_prev_trash_bin_obs_buffers(self):
+        if (
+            self._prev_trash_bin_position is not None
+            and self._prev_trash_bin_position.shape == (self.num_envs, 3)
+            and self._prev_trash_bin_rotation_6d is not None
+            and self._prev_trash_bin_rotation_6d.shape == (self.num_envs, 6)
+        ):
+            return
+        position, rotation_6d = self._trash_bin_obs_components()
+        self._prev_trash_bin_position = position.clone()
+        self._prev_trash_bin_rotation_6d = rotation_6d.clone()
+
+    def _save_prev_trash_bin_obs(self):
+        position, rotation_6d = self._trash_bin_obs_components()
+        self._prev_trash_bin_position = position.clone()
+        self._prev_trash_bin_rotation_6d = rotation_6d.clone()
+
+    def _reset_prev_trash_bin_obs(self, env_idx: torch.Tensor):
+        self._ensure_prev_trash_bin_obs_buffers()
+        position, rotation_6d = self._trash_bin_obs_components()
+        env_idx_long = env_idx.long()
+        self._prev_trash_bin_position[env_idx_long] = position[env_idx_long]
+        self._prev_trash_bin_rotation_6d[env_idx_long] = rotation_6d[env_idx_long]
+
+    def _get_obs_extra(self, info: Dict[str, Any]):
+        bin_position, bin_rotation_6d = self._trash_bin_obs_components()
+        self._ensure_prev_trash_bin_obs_buffers()
         return {
-            "trash_bin_position": bin_position - center,
+            "trash_bin_position": bin_position,
             "trash_bin_rotation_6d": bin_rotation_6d,
+            "prev_trash_bin_position": self._prev_trash_bin_position,
+            "prev_trash_bin_rotation_6d": self._prev_trash_bin_rotation_6d,
         }
 
     def _bin_axis_scalars(self) -> Tuple[torch.Tensor, torch.Tensor]:
