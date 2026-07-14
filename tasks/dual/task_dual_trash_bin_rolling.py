@@ -51,7 +51,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_TOP_RADIUS = 0.218 / 2.0
     BIN_RIM_RADIUS = 0.224 / 2.0
     BIN_RIM_THICKNESS = 0.003
-    BIN_DENSITY = 240.0
+    BIN_DENSITY = 28.52
     BIN_MESH_STATIC_FRICTION = 0.0
     BIN_MESH_DYNAMIC_FRICTION = 0.0
     BIN_CONTACT_STATIC_FRICTION = 2.0
@@ -76,6 +76,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     TCP_REACH_REWARD_MAX = 0.5
     TCP_LOW_START_Z = 0.40
     TCP_LOW_TARGET_Z = 0.102
+    TCP_LOW_ZERO_REWARD_Z = 0.085
     TCP_LOW_REWARD_MAX = 1.0
     FINE_ORIENTATION_REWARD_MAX = 1.0
     FINE_ORIENTATION_DISTANCE_SCALE = 50.0
@@ -641,16 +642,20 @@ class MyDualTrashBinRollingEnv(BaseEnv):
         right_tcp_z = Pose.create(self.agent.agents[1].tcp_pose, device=self.device).p[:, 2]
         span = self.TCP_LOW_START_Z - self.TCP_LOW_TARGET_Z
         assert span > 0.0, span
-        left_reward = torch.clamp(
-            1.0 - torch.abs(left_tcp_z - self.TCP_LOW_TARGET_Z) / span,
-            min=0.0,
-            max=1.0,
-        )
-        right_reward = torch.clamp(
-            1.0 - torch.abs(right_tcp_z - self.TCP_LOW_TARGET_Z) / span,
-            min=0.0,
-            max=1.0,
-        )
+        low_span = self.TCP_LOW_TARGET_Z - self.TCP_LOW_ZERO_REWARD_Z
+        assert low_span > 0.0, low_span
+
+        def tcp_z_reward(tcp_z: torch.Tensor) -> torch.Tensor:
+            high_side_reward = torch.clamp(
+                1.0 - (tcp_z - self.TCP_LOW_TARGET_Z) / span,
+                min=0.0,
+                max=1.0,
+            )
+            low_side_reward = (tcp_z - self.TCP_LOW_ZERO_REWARD_Z) / low_span
+            return torch.where(tcp_z >= self.TCP_LOW_TARGET_Z, high_side_reward, low_side_reward)
+
+        left_reward = tcp_z_reward(left_tcp_z)
+        right_reward = tcp_z_reward(right_tcp_z)
         return self.TCP_LOW_REWARD_MAX * 0.5 * (left_reward + right_reward)
 
     def _fine_local_y_world_y_reward(self) -> torch.Tensor:
