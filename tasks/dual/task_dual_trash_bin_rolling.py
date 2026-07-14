@@ -750,26 +750,39 @@ class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
 
 @register_env("MyDualTrashBinRollingStage3-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
-    CONTACT_PENALTY_START_FORCE = 1.0
-    CONTACT_PENALTY_FULL_FORCE = 50.0
+    CONTACT_REWARD_PEAK_FORCE = 0.1
+    CONTACT_REWARD_END_FORCE = 3.0
+    CONTACT_PENALTY_START_FORCE = 50.0
+    CONTACT_PENALTY_FULL_FORCE = 100.0
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
-    def _contact_force_penalty(self, info) -> torch.Tensor:
+    def _contact_force_penalty_or_reward(self, info) -> torch.Tensor:
         force = info["contact/max_tcp_ball_trash_bin_force_norm"].to(self.device)
-        span = self.CONTACT_PENALTY_FULL_FORCE - self.CONTACT_PENALTY_START_FORCE
-        assert span > 0.0, span
-        return torch.clamp(
-            (force - self.CONTACT_PENALTY_START_FORCE) / span,
+        reward_peak = self.CONTACT_REWARD_PEAK_FORCE
+        reward_end = self.CONTACT_REWARD_END_FORCE
+        penalty_span = self.CONTACT_PENALTY_FULL_FORCE - self.CONTACT_PENALTY_START_FORCE
+        assert 0.0 < reward_peak < reward_end, (reward_peak, reward_end)
+        assert penalty_span > 0.0, penalty_span
+
+        gentle_contact_reward = torch.where(
+            force <= reward_peak,
+            -force / reward_peak,
+            -(reward_end - force) / (reward_end - reward_peak),
+        )
+        gentle_contact_reward = torch.clamp(gentle_contact_reward, min=-1.0, max=0.0)
+        hard_contact_penalty = torch.clamp(
+            (force - self.CONTACT_PENALTY_START_FORCE) / penalty_span,
             min=0.0,
             max=1.0,
         )
+        return gentle_contact_reward + hard_contact_penalty
 
     def compute_dense_reward(self, obs, action, info):
         _, local_y_world_y = self._bin_axis_scalars()
         orientation_reward = local_y_world_y + 1.0
-        penalty = self._contact_force_penalty(info)
-        info["contact/force_penalty"] = penalty.detach().cpu()
-        return (1.0 - penalty) * (
+        penalty_or_reward = self._contact_force_penalty_or_reward(info)
+        info["contact/force_penalty_or_reward"] = penalty_or_reward.detach().cpu()
+        return (1.0 - penalty_or_reward) * (
             orientation_reward
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
