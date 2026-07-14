@@ -711,7 +711,7 @@ class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
 
 @register_env("MyDualTrashBinRollingStage3-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
-    CONTACT_PENALTY_START_FORCE = 0.3
+    CONTACT_PENALTY_START_FORCE = 1.0
     CONTACT_PENALTY_FULL_FORCE = 50.0
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
