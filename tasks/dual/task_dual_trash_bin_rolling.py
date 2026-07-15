@@ -74,11 +74,14 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     TCP_REACH_TARGET_DISTANCE = 0.12 + 0.02
     TCP_REACH_DISTANCE_SCALE = 10.0
     TCP_REACH_REWARD_MAX = 0.5
+    TCP_BIN_LOCAL_Z_REWARD_MAX = 1.5
+    TCP_BIN_LOCAL_Z_ZERO_REWARD_ABS = 0.05
     TCP_LOW_START_Z = 0.40
     TCP_LOW_TARGET_Z = 0.102
     TCP_LOW_ZERO_REWARD_Z = 0.085
     TCP_LOW_REWARD_MAX = 1.0
-    FINE_ORIENTATION_REWARD_MAX = 1.0
+    ORIENTATION_REWARD_SCALE = 1.5
+    FINE_ORIENTATION_REWARD_MAX = 1.5
     FINE_ORIENTATION_DISTANCE_SCALE = 50.0
     SUCCESS_LOCAL_Y_WORLD_Y = 0.995
     TCP_TARGET_ROTATION_DEG = 35.0
@@ -637,6 +640,34 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             1.0 - torch.tanh(self.TCP_REACH_DISTANCE_SCALE * distance_error)
         )
 
+    def _tcp_bin_local_z_reward(self, info) -> torch.Tensor:
+        bin_pose = Pose.create(self.trash_bin.pose, device=self.device)
+        bin_q = bin_pose.q
+        bin_q = bin_q / torch.linalg.norm(bin_q, dim=1, keepdim=True).clamp_min(1e-6)
+        bin_rotation = quaternion_to_matrix(bin_q)
+        bin_rotation_t = bin_rotation.transpose(1, 2)
+
+        left_tcp_pos = Pose.create(self.agent.agents[0].tcp_pose, device=self.device).p
+        right_tcp_pos = Pose.create(self.agent.agents[1].tcp_pose, device=self.device).p
+        left_local = torch.bmm(
+            bin_rotation_t,
+            (left_tcp_pos - bin_pose.p).unsqueeze(-1),
+        ).squeeze(-1)
+        right_local = torch.bmm(
+            bin_rotation_t,
+            (right_tcp_pos - bin_pose.p).unsqueeze(-1),
+        ).squeeze(-1)
+
+        mean_abs_z = 0.5 * (torch.abs(left_local[:, 2]) + torch.abs(right_local[:, 2]))
+        reward = self.TCP_BIN_LOCAL_Z_REWARD_MAX * (
+            1.0 - mean_abs_z / self.TCP_BIN_LOCAL_Z_ZERO_REWARD_ABS
+        )
+        info["tcp_bin_local_z_left"] = left_local[:, 2].detach().cpu()
+        info["tcp_bin_local_z_right"] = right_local[:, 2].detach().cpu()
+        info["tcp_bin_local_z_abs_mean"] = mean_abs_z.detach().cpu()
+        info["reward_tcp_bin_local_z"] = reward.detach().cpu()
+        return reward
+
     def _tcp_low_reward(self) -> torch.Tensor:
         left_tcp_z = Pose.create(self.agent.agents[0].tcp_pose, device=self.device).p[:, 2]
         right_tcp_z = Pose.create(self.agent.agents[1].tcp_pose, device=self.device).p[:, 2]
@@ -730,11 +761,12 @@ class MyDualTrashBinRollingEnv(BaseEnv):
 
     def compute_dense_reward(self, obs, action, info):
         _, local_y_world_y = self._bin_axis_scalars()
-        orientation_reward = local_y_world_y + 1.0
+        orientation_reward = self.ORIENTATION_REWARD_SCALE * (local_y_world_y + 1.0)
         return (
             orientation_reward
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
+            + self._tcp_bin_local_z_reward(info)
             + self._tcp_low_reward()
             + self._tcp_rotation_alignment_reward(info)
         )
@@ -784,13 +816,14 @@ class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
 
     def compute_dense_reward(self, obs, action, info):
         _, local_y_world_y = self._bin_axis_scalars()
-        orientation_reward = local_y_world_y + 1.0
+        orientation_reward = self.ORIENTATION_REWARD_SCALE * (local_y_world_y + 1.0)
         penalty_or_reward = self._contact_force_penalty_or_reward(info)
         info["contact/force_penalty_or_reward"] = penalty_or_reward.detach().cpu()
         return (1.0 - penalty_or_reward) * (
             orientation_reward
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
+            + self._tcp_bin_local_z_reward(info)
             + self._tcp_low_reward()
             + self._tcp_rotation_alignment_reward(info)
         )
