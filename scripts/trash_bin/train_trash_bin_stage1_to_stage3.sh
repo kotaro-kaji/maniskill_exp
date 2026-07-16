@@ -14,8 +14,8 @@ RUN_TAG="$(date +%Y%m%d_%H%M%S)"
 
 export SEED
 export RUN_TAG
-export STAGE1_RUN_NAME="trash_bin_stage1_rotation_only_40m_seed${SEED}_${RUN_TAG}"
-export STAGE2_RUN_NAME="trash_bin_stage2_from_stage1_75m_seed${SEED}_${RUN_TAG}"
+export STAGE1_RUN_NAME="trash_bin_stage1_rotation_only_25m_seed${SEED}_${RUN_TAG}"
+export STAGE2_RUN_NAME="trash_bin_stage2_from_stage1_20m_seed${SEED}_${RUN_TAG}"
 STAGE3_RUN_NAME="trash_bin_stage3_from_stage2_best_seed${SEED}_${RUN_TAG}"
 
 echo
