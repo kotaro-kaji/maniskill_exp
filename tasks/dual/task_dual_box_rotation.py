@@ -914,11 +914,13 @@ class MyDualBoxRotationEnv(BaseEnv):
 
     def compute_closeness_score_to_reset_state(self) -> torch.Tensor:
         """
-        Return how close the current joint configuration is to the baseline reset pose.
+        Return the joint-position return reward for both arms.
 
-        The score is averaged over all joints (and both arms) and mapped into (0, 1]:
-        - 1.0 when all joints match the baseline exactly
-        - approaches 0.0 smoothly as joints drift away (tanh)
+        Each arm joint contributes linearly:
+        - 0.25 reward at the exact baseline reset pose
+        - 0.0 reward at pi radians or farther from the baseline
+
+        With two xArm7 arms, the maximum return reward is 14 * 0.25 = 3.5.
 
         This score is intentionally independent of any initialization noise parameters
         (e.g., ``robot_init_noise_scale`` / ``noise_scale`` / ``_OFFSET_LOW/_OFFSET_HIGH``).
@@ -946,12 +948,13 @@ class MyDualBoxRotationEnv(BaseEnv):
             qpos_joint_only = qpos[..., :7].to(device=self.device, dtype=torch.float32)
 
             delta = (qpos_joint_only - baseline.unsqueeze(0)).abs()
-            joint_scores = 1.0 - torch.tanh(delta)
-            scores.append(joint_scores.mean(dim=-1))
+            normalized_delta = torch.clamp(delta / torch.pi, min=0.0, max=1.0)
+            joint_rewards = 0.25 * (1.0 - normalized_delta)
+            scores.append(joint_rewards.sum(dim=-1))
 
         if not scores:
             return torch.zeros((self.num_envs,), device=self.device, dtype=torch.float32)
-        return torch.stack(scores, dim=0).mean(dim=0)
+        return torch.stack(scores, dim=0).sum(dim=0)
 
     def _compute_pushpoints_from_pose(
         self,
@@ -1585,7 +1588,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         positive_rotation = rotation_step_score > 0.0
         
         reward_closeness_to_reset_state = self.compute_closeness_score_to_reset_state() 
-        # min = 0.0, max = 1.0
+        # min = 0.0, max = 3.5
 
         penalty_inverse_rotation = torch.where(
             positive_rotation, torch.zeros_like(rotation_step_score), rotation_step_score
@@ -1627,7 +1630,7 @@ class MyDualBoxRotationEnv(BaseEnv):
         reward[stage_2_mask] = stage_2_reward[stage_2_mask] #approx range: (1 + TCP_LEAD_MAX - 2.0 + 1.5 - 1.5, 1 + TCP_LEAD_MAX + 2.0 + 1.5 +0.0)
 
         #Stage 3: goes bask to its initial pose.
-        stage_3_reward = 4.75 + reward_closeness_to_reset_state # min = 4.75(at least bigger than stage2) max = 5.75
+        stage_3_reward = 4.75 + reward_closeness_to_reset_state # min = 4.75(at least bigger than stage2) max = 8.25
         stage_3_mask = (context.box_theta_deg >= float(self.BOX_GOAL_YAW_DEG)) & \
                        (context.box_theta_deg <= (float(self.BOX_GOAL_YAW_DEG) + 10.0))
         reward[stage_3_mask] = stage_3_reward[stage_3_mask]
@@ -1740,7 +1743,7 @@ class MyDualBoxRotationEnv(BaseEnv):
 class MyDualBoxRotationJustReturnEnv(MyDualBoxRotationEnv):
     """Only train both arms to return to the fixed reset joint pose."""
 
-    RETURN_SUCCESS_SCORE = 0.98
+    RETURN_SUCCESS_SCORE = 3.45
 
     def compute_normalized_dense_reward(self, obs, action, info):
         if not isinstance(self.agent, MultiAgent):
