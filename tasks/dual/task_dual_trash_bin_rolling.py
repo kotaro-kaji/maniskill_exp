@@ -51,7 +51,7 @@ class MyDualTrashBinRollingEnv(BaseEnv):
     BIN_TOP_RADIUS = 0.218 / 2.0
     BIN_RIM_RADIUS = 0.224 / 2.0
     BIN_RIM_THICKNESS = 0.003
-    BIN_DENSITY = 28.52
+    BIN_DENSITY = 85.7066
     BIN_MESH_STATIC_FRICTION = 0.0
     BIN_MESH_DYNAMIC_FRICTION = 0.0
     BIN_CONTACT_STATIC_FRICTION = 2.0
@@ -790,8 +790,8 @@ class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
 @register_env("MyDualTrashBinRollingStage3-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
     CONTACT_REWARD_PEAK_FORCE = 0.1
-    CONTACT_REWARD_END_FORCE = 3.0
-    CONTACT_PENALTY_START_FORCE = 6.5
+    CONTACT_REWARD_END_FORCE = 5.5
+    CONTACT_PENALTY_START_FORCE = 10.5
     CONTACT_PENALTY_FULL_FORCE = 50.0
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
@@ -821,7 +821,7 @@ class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
         orientation_reward = self.ORIENTATION_REWARD_SCALE * (local_y_world_y + 1.0)
         penalty_or_reward = self._contact_force_penalty_or_reward(info)
         info["contact/force_penalty_or_reward"] = penalty_or_reward.detach().cpu()
-        return (1.0 - penalty_or_reward) * (
+        return (1.0 - 0.5 * penalty_or_reward) * (
             orientation_reward
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
