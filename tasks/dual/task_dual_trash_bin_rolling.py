@@ -658,13 +658,15 @@ class MyDualTrashBinRollingEnv(BaseEnv):
             (right_tcp_pos - bin_pose.p).unsqueeze(-1),
         ).squeeze(-1)
 
-        mean_abs_z = 0.5 * (torch.abs(left_local[:, 2]) + torch.abs(right_local[:, 2]))
+        left_negative_z = torch.clamp(-left_local[:, 2], min=0.0)
+        right_negative_z = torch.clamp(-right_local[:, 2], min=0.0)
+        mean_negative_z = 0.5 * (left_negative_z + right_negative_z)
         reward = self.TCP_BIN_LOCAL_Z_REWARD_MAX * (
-            1.0 - mean_abs_z / self.TCP_BIN_LOCAL_Z_ZERO_REWARD_ABS
+            1.0 - mean_negative_z / self.TCP_BIN_LOCAL_Z_ZERO_REWARD_ABS
         )
         info["tcp_bin_local_z_left"] = left_local[:, 2].detach().cpu()
         info["tcp_bin_local_z_right"] = right_local[:, 2].detach().cpu()
-        info["tcp_bin_local_z_abs_mean"] = mean_abs_z.detach().cpu()
+        info["tcp_bin_local_z_negative_mean"] = mean_negative_z.detach().cpu()
         info["reward_tcp_bin_local_z"] = reward.detach().cpu()
         return reward
 
@@ -789,8 +791,8 @@ class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
 class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
     CONTACT_REWARD_PEAK_FORCE = 0.1
     CONTACT_REWARD_END_FORCE = 3.0
-    CONTACT_PENALTY_START_FORCE = 50.0
-    CONTACT_PENALTY_FULL_FORCE = 100.0
+    CONTACT_PENALTY_START_FORCE = 6.5
+    CONTACT_PENALTY_FULL_FORCE = 50.0
     BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
     def _contact_force_penalty_or_reward(self, info) -> torch.Tensor:
