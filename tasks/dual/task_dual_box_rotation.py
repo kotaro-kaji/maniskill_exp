@@ -59,7 +59,7 @@ def smoothstep(x: torch.Tensor) -> torch.Tensor:
     return 6 * x**5 - 15 * x**4 + 10 * x**3
 
 
-@register_env("MyDualBoxRotation-v0", max_episode_steps=120)
+@register_env("MyDualBoxRotation-v0", max_episode_steps=200)
 class MyDualBoxRotationEnv(BaseEnv):
     SUPPORTED_ROBOTS = [
         ("xarm7_ball_ee", "xarm7_ball_ee"),
