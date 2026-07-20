@@ -6,10 +6,16 @@ from robotagents.xarm_ball_ee_wo_force_sensor import Xarm7BallEEWoForceSensor
 @register_agent()
 class Xarm7BallEEKinematicsLeft(Xarm7BallEEWoForceSensor):
     uid = "xarm7_ball_ee_kinematics_left"
+    arm_stiffness_default = 4400
+    arm_damping_default = 320
+    arm_force_limit_default = 4000
     urdf_path = "robotagents/assets/xarm7/xarm7_1305_left_ball_ee_wo_force_sensor_kinematics.urdf"
 
 
 @register_agent()
 class Xarm7BallEEKinematicsRight(Xarm7BallEEWoForceSensor):
     uid = "xarm7_ball_ee_kinematics_right"
+    arm_stiffness_default = 4400
+    arm_damping_default = 320
+    arm_force_limit_default = 4000
     urdf_path = "robotagents/assets/xarm7/xarm7_1305_right_ball_ee_wo_force_sensor_kinematics.urdf"
