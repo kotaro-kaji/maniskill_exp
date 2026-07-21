@@ -784,16 +784,15 @@ class MyDualTrashBinRollingRotationOnlyEnv(MyDualTrashBinRollingEnv):
 
 @register_env("MyDualTrashBinRollingStage2-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage2Env(MyDualTrashBinRollingEnv):
-    pass
+    BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
 
 @register_env("MyDualTrashBinRollingStage3-v0", max_episode_steps=TRASH_BIN_ROLLING_MAX_EPISODE_STEPS)
 class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
     CONTACT_REWARD_PEAK_FORCE = 0.1
-    CONTACT_REWARD_END_FORCE = 7.5
+    CONTACT_REWARD_END_FORCE = 10.0
     CONTACT_PENALTY_START_FORCE = 17.5
     CONTACT_PENALTY_FULL_FORCE = 50.0
-    BIN_LOCAL_Z_RANDOMIZATION_DEG = 180.0
 
     def _contact_force_penalty_or_reward(self, info) -> torch.Tensor:
         force = info["contact/max_tcp_ball_trash_bin_force_norm"].to(self.device)
