@@ -57,6 +57,7 @@ TCP_TRACE_PNG_PREFIX = "rollout_tcp_trace"
 def _camera_config(camera_name: str, width: int, height: int):
     if camera_name == "slot_open":
         return {
+            "shader_pack": "default",
             "render_camera": {
                 "pose": sapien_utils.look_at(
                     eye=[-0.44, 0.42, 0.15],
@@ -69,6 +70,7 @@ def _camera_config(camera_name: str, width: int, height: int):
         }
     if camera_name == "overview":
         return {
+            "shader_pack": "default",
             "render_camera": {
                 "pose": sapien_utils.look_at([1.2, 1.0, 0.9], [0.0, 0.0, 0.22]),
                 "width": width,
@@ -77,7 +79,10 @@ def _camera_config(camera_name: str, width: int, height: int):
             }
         }
     assert camera_name == "default", camera_name
-    return {"render_camera": {"width": width, "height": height}}
+    return {
+        "shader_pack": "default",
+        "render_camera": {"width": width, "height": height},
+    }
 
 
 def _to_serializable(obj: Any):

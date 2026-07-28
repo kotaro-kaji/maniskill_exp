@@ -49,7 +49,6 @@ class MyDualCardboardCabinetEnv(BaseEnv):
     OUTER_CARDBOARD_BASE_SPEC = DEFAULT_CARDBOARD_CABINET_SPEC
     CABINET_SPEC = replace(
         OUTER_CARDBOARD_BASE_SPEC,
-        color_hex="#4C78A8",
         density=2500.0,
     )
     INNER_BOX_SPEC = replace(

@@ -85,14 +85,7 @@ def build_cardboard_cabinet_actor(
         base_color=sapien_utils.hex2rgba(spec.color_hex),
         roughness=0.6,
     )
-    marker_render_material = sapien.render.RenderMaterial(
-        base_color=sapien_utils.hex2rgba("#2DD4BF"),
-        roughness=0.6,
-    )
-
-    for panel_idx, (panel_pose, half_size) in enumerate(
-        cardboard_cabinet_panel_specs(spec)
-    ):
+    for panel_pose, half_size in cardboard_cabinet_panel_specs(spec):
         builder.add_box_collision(
             pose=panel_pose,
             half_size=half_size,
@@ -102,9 +95,7 @@ def build_cardboard_cabinet_actor(
         builder.add_box_visual(
             pose=panel_pose,
             half_size=half_size,
-            material=marker_render_material
-            if panel_idx == OUTER_MARKER_PANEL_INDEX
-            else render_material,
+            material=render_material,
         )
 
     builder.initial_pose = initial_pose
@@ -127,11 +118,6 @@ def build_cardboard_inner_box_actor(
         base_color=sapien_utils.hex2rgba(spec.color_hex),
         roughness=0.6,
     )
-    marker_render_material = sapien.render.RenderMaterial(
-        base_color=sapien_utils.hex2rgba(spec.marker_panel_color_hex),
-        roughness=0.6,
-    )
-
     for panel_idx, (panel_pose, half_size) in enumerate(cardboard_inner_box_panel_specs(spec)):
         if spec.notch_side_collision or panel_idx < 4:
             builder.add_box_collision(
@@ -143,9 +129,7 @@ def build_cardboard_inner_box_actor(
         builder.add_box_visual(
             pose=panel_pose,
             half_size=half_size,
-            material=marker_render_material
-            if panel_idx == INNER_MARKER_PANEL_INDEX
-            else render_material,
+            material=render_material,
         )
 
     builder.initial_pose = initial_pose
