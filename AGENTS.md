@@ -25,6 +25,27 @@ and `knowledge/remote_experiment_workflow.md`. Reuse those notes when the server
 looks similar, but still verify the actual GPU, Python environment, CUDA, Vulkan,
 and ManiSkill smoke tests on the current server.
 
+### GPU evaluation and sandbox false negatives
+
+A failed `nvidia-smi`, CUDA, or Vulkan probe inside the sandbox is not evidence
+that the machine has no usable GPU. The sandbox may hide the host GPU or deny
+driver access. Before reporting that GPU execution is unavailable, rerun the
+relevant checks with host/escalated execution and verify `nvidia-smi`,
+`torch.cuda.is_available()`, and a small ManiSkill CUDA smoke test as needed.
+If a required GPU command fails only because of sandbox restrictions, request
+escalation instead of silently changing the evaluation method.
+
+When an experiment or reference command uses GPU-vectorized environments, never
+replace it with CPU-sequential rollouts for success-rate measurement or
+reproduction. CPU and GPU simulation backends, vectorization, reset behavior,
+and random-number consumption are not equivalent, and ManiSkill CPU execution
+may support only one environment. Preserve the requested/reference simulation
+backend, number of parallel environments, environment ID, controller, seed,
+noise settings, and rollout horizon. A CPU run may be used only as an explicitly
+labeled diagnostic; it must not be presented as a comparable evaluation result.
+Always report the actual simulation backend and parallel environment count with
+evaluation metrics.
+
 Keep server-specific runtime files such as `server_env.sh` untracked unless the
 user explicitly asks to commit them. Store durable operational findings in
 `knowledge/`, and keep throwaway scripts/logs in `tmp_note/`.
