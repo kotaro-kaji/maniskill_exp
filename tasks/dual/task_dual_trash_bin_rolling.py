@@ -793,6 +793,73 @@ class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
     CONTACT_REWARD_END_FORCE = 10.0
     CONTACT_PENALTY_START_FORCE = 17.5
     CONTACT_PENALTY_FULL_FORCE = 50.0
+    ACTION_CHANGE_NO_PENALTY_THRESHOLD = 0.01
+    ACTION_CHANGE_REFERENCE_DELTA = 0.2
+    ACTION_CHANGE_REFERENCE_PENALTY = 0.25
+
+    def __init__(self, *args, **kwargs):
+        self._previous_arm_action: Optional[torch.Tensor] = None
+        self._has_previous_arm_action: Optional[torch.Tensor] = None
+        super().__init__(*args, **kwargs)
+
+    def _initialize_episode(self, env_idx: torch.Tensor, options: Dict[str, Any]):
+        super()._initialize_episode(env_idx, options)
+        self._ensure_previous_arm_action()
+        env_idx = env_idx.long()
+        self._previous_arm_action[env_idx] = 0.0
+        self._has_previous_arm_action[env_idx] = False
+
+    def _ensure_previous_arm_action(self):
+        if self._previous_arm_action is not None:
+            return
+        self._previous_arm_action = torch.zeros(
+            (self.num_envs, 14),
+            dtype=torch.float32,
+            device=self.device,
+        )
+        self._has_previous_arm_action = torch.zeros(
+            self.num_envs,
+            dtype=torch.bool,
+            device=self.device,
+        )
+
+    def _arm_action(self, action) -> torch.Tensor:
+        assert isinstance(action, dict), type(action)
+        arm_actions = []
+        for uid, sub_agent in self.agent.agents_dict.items():
+            assert (
+                sub_agent.control_mode == "pd_joint_delta_pos"
+            ), sub_agent.control_mode
+            sub_action = action[uid]
+            assert sub_action.shape == (self.num_envs, 8), sub_action.shape
+            arm_actions.append(sub_action[:, :7])
+        assert len(arm_actions) == 2, len(arm_actions)
+        return torch.cat(arm_actions, dim=-1)
+
+    def _action_change_penalty(self, action) -> Tuple[torch.Tensor, torch.Tensor]:
+        current_arm_action = self._arm_action(action)
+        self._ensure_previous_arm_action()
+
+        max_change = torch.abs(
+            current_arm_action - self._previous_arm_action
+        ).amax(dim=-1)
+        penalty_span = (
+            self.ACTION_CHANGE_REFERENCE_DELTA
+            - self.ACTION_CHANGE_NO_PENALTY_THRESHOLD
+        )
+        assert penalty_span > 0.0, penalty_span
+        penalty = torch.clamp(
+            max_change - self.ACTION_CHANGE_NO_PENALTY_THRESHOLD,
+            min=0.0,
+        )
+        penalty *= self.ACTION_CHANGE_REFERENCE_PENALTY / penalty_span
+
+        has_previous = self._has_previous_arm_action
+        max_change = torch.where(has_previous, max_change, 0.0)
+        penalty = torch.where(has_previous, penalty, 0.0)
+        self._previous_arm_action.copy_(current_arm_action.detach())
+        self._has_previous_arm_action.fill_(True)
+        return max_change, penalty
 
     def _contact_force_penalty_or_reward(self, info) -> torch.Tensor:
         force = info["contact/max_tcp_ball_trash_bin_force_norm"].to(self.device)
@@ -819,8 +886,11 @@ class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
         _, local_y_world_y = self._bin_axis_scalars()
         orientation_reward = self.ORIENTATION_REWARD_SCALE * (local_y_world_y + 1.0)
         penalty_or_reward = self._contact_force_penalty_or_reward(info)
+        max_action_change, action_change_penalty = self._action_change_penalty(action)
         info["contact/force_penalty_or_reward"] = penalty_or_reward.detach().cpu()
-        return (1.0 - 0.5 * penalty_or_reward) * (
+        info["action_change/max_arm_delta"] = max_action_change.detach().cpu()
+        info["action_change/penalty"] = action_change_penalty.detach().cpu()
+        task_reward = (1.0 - 0.5 * penalty_or_reward) * (
             orientation_reward
             + self._fine_local_y_world_y_reward()
             + self._tcp_reaching_reward()
@@ -828,3 +898,4 @@ class MyDualTrashBinRollingStage3Env(MyDualTrashBinRollingStage2Env):
             + self._tcp_low_reward()
             + self._tcp_rotation_alignment_reward(info)
         )
+        return task_reward - action_change_penalty
