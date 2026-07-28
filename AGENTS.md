@@ -71,6 +71,21 @@ When editing command-list files such as `some_commands.sh` or `some_commands2.sh
 ## Testing Guidelines
 There is no single pytest suite yet; verification is script-driven. Add targeted checks under `tests/` and name files after the behavior being exercised, such as `rollout_record.py` or `search_camera_transform.py`. Run validation commands via `uv run python ...`, and for task or controller changes, run at least one relevant training or rollout script and capture the exact command in your PR notes.
 
+## Working Tree Hygiene
+During long tasks, periodically inspect `git status --short --untracked-files=all`
+instead of waiting until the end. In particular, check it before sending a
+user-facing completion report after running experiments, evaluations, or plotting
+commands. Remove generated logs, raw CSV files, temporary plots, probe outputs,
+and other reproducible scratch artifacts that are no longer needed. Keep polished
+user-facing artifacts in `outputs_to_user/` and reusable evaluation code in
+`eval_scripts/`.
+
+Before cleaning, classify every changed or untracked path so that necessary work
+is preserved. Never discard, overwrite, stage, or commit pre-existing or
+unrelated user changes merely to make the working tree look clean. The goal is
+for `git status` to show only intentional, necessary changes. Do not create a
+commit solely for cleanliness unless the user requested or authorized it.
+
 ## Commit & Pull Request Guidelines
 Recent history mixes short sync commits with conventional prefixes like `feat:` and `refactor:`. Prefer `feat:`, `fix:`, or `refactor:` followed by a concise imperative summary. Keep each commit scoped to one task, controller, or asset update.
 
